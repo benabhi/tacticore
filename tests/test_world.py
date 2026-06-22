@@ -28,6 +28,22 @@ def test_world_structure():
                 assert club.country_code == country.code
 
 
+def test_higher_tier_is_stronger():
+    # El OVR promedio de los clubes debe bajar de la liga A a la E.
+    world = WorldGenerator(new_rng(99)).generate()
+    by_tier: dict[LeagueTier, list[int]] = {tier: [] for tier in LeagueTier}
+    for country in world:
+        for league in country.leagues:
+            for club in league.clubs:
+                by_tier[league.tier].append(club.overall)
+
+    averages = [
+        sum(by_tier[tier]) / len(by_tier[tier]) for tier in LeagueTier
+    ]
+    # Estrictamente decreciente: A > B > C > D > E.
+    assert all(a > b for a, b in zip(averages, averages[1:]))
+
+
 def test_progress_callback_reaches_total():
     calls: list[tuple[int, int]] = []
     WorldGenerator(new_rng(2)).generate(

@@ -1,8 +1,19 @@
-"""Generador de jugadores de fantasia."""
+"""Generador de jugadores de fantasia.
+
+La calidad depende del nivel de liga (`LeagueTier`): la liga A genera a los
+mejores y la E a los mas flojos. Para cada skill el valor sale de:
+
+    base_del_tier + offset_por_posicion + talento_individual + ruido
+
+asi un jugador NO tiene todos los skills en el mismo rango: un arquero de la
+liga E puede tener porteria ~6-9 pero regate/definicion en 1. Esos minimos
+suben de a poco en las ligas mejores (porque sube el base), y ademas hay cracks
+(talento alto) dentro de cualquier liga. El `overall` (OVR) resume todo eso.
+"""
 
 import random
 
-from ..domain.enums import Foot, Morale, Position, Specialty
+from ..domain.enums import Foot, LeagueTier, Morale, Position, Specialty
 from ..domain.player import Player
 from .name_generator import NameGenerator
 
@@ -12,32 +23,46 @@ _SKILLS = (
     "set_pieces",
 )
 
-# Rango (min, max) de cada skill segun la posicion natural. Los skills no
-# listados usan _DEFAULT_RANGE (valores bajos). Asi un arquero tiene goalkeeping
-# alto y scoring bajo, un delantero al reves, etc.
-_DEFAULT_RANGE = (1, 7)
-_POSITION_PROFILE: dict[Position, dict[str, tuple[int, int]]] = {
+# Nivel base de un skill PRINCIPAL segun el nivel de la liga.
+_TIER_BASE: dict[LeagueTier, int] = {
+    LeagueTier.A: 14,
+    LeagueTier.B: 12,
+    LeagueTier.C: 10,
+    LeagueTier.D: 8,
+    LeagueTier.E: 6,
+}
+
+# Cuanto sube/baja cada skill respecto del base segun la posicion. Lo que no
+# esta listado usa _IRRELEVANT_OFFSET (skills que no van con el puesto, quedan
+# muy bajos). Esto es lo que da la variedad dentro de un mismo jugador.
+_IRRELEVANT_OFFSET = -8
+_ROLE_OFFSETS: dict[Position, dict[str, int]] = {
     Position.GOALKEEPER: {
-        "goalkeeping": (10, 20), "defending": (3, 9), "set_pieces": (2, 9),
-        "passing": (3, 9),
+        "goalkeeping": 4, "defending": -2, "set_pieces": -4, "passing": -4,
+        "playmaking": -6, "winger": -9, "scoring": -9,
     },
     Position.DEFENDER: {
-        "defending": (10, 20), "playmaking": (5, 13), "passing": (6, 14),
-        "winger": (3, 12), "set_pieces": (3, 12), "scoring": (2, 8),
+        "defending": 3, "playmaking": -1, "passing": 0, "winger": -2,
+        "set_pieces": -2, "scoring": -5, "goalkeeping": -12,
     },
     Position.MIDFIELDER: {
-        "playmaking": (10, 20), "passing": (9, 18), "winger": (5, 15),
-        "scoring": (5, 14), "set_pieces": (4, 14), "defending": (5, 13),
+        "playmaking": 3, "passing": 2, "winger": 0, "scoring": -1,
+        "defending": -1, "set_pieces": -1, "goalkeeping": -12,
     },
     Position.FORWARD: {
-        "scoring": (10, 20), "passing": (6, 15), "winger": (6, 15),
-        "set_pieces": (4, 13), "playmaking": (5, 13), "defending": (2, 8),
+        "scoring": 3, "passing": 0, "winger": 0, "set_pieces": -1,
+        "playmaking": -1, "defending": -5, "goalkeeping": -12,
     },
 }
 
 # Probabilidad de que un jugador tenga especialidad (0-1) y de que tenga apodo.
 _SPECIALTY_CHANCE = 0.35
 _NICKNAME_CHANCE = 0.08
+
+
+def _clamp_skill(value: int) -> int:
+    """Acota un skill al rango valido 1-20."""
+    return max(1, min(20, value))
 
 
 class PlayerGenerator:
@@ -53,14 +78,27 @@ class PlayerGenerator:
         # determinismo en una sola cadena de azar.
         self._names = names or NameGenerator(self._rng)
 
-    def generate(self, position: Position | None = None) -> Player:
-        """Genera un jugador; si no se da `position`, se elige al azar."""
+    def generate(
+        self,
+        position: Position | None = None,
+        tier: LeagueTier = LeagueTier.C,
+    ) -> Player:
+        """Genera un jugador de la liga `tier`.
+
+        Si no se da `position`, se elige al azar. El `tier` define la calidad
+        general (la liga A es la mejor, la E la mas floja).
+        """
         rng = self._rng
         pos = position or rng.choice(list(Position))
-        profile = _POSITION_PROFILE[pos]
+        base = _TIER_BASE[tier]
+        offsets = _ROLE_OFFSETS[pos]
+        # Talento individual: algunos jugadores destacan dentro de su liga.
+        talent = rng.randint(-2, 3)
 
-        # Skills principales segun el perfil de la posicion.
-        skills = {s: rng.randint(*profile.get(s, _DEFAULT_RANGE)) for s in _SKILLS}
+        skills = {}
+        for skill in _SKILLS:
+            offset = offsets.get(skill, _IRRELEVANT_OFFSET)
+            skills[skill] = _clamp_skill(base + offset + talent + rng.randint(-2, 2))
 
         age = rng.randint(16, 36)
         # Arqueros y defensores suelen ser mas altos.
@@ -103,5 +141,5 @@ class PlayerGenerator:
         # El potencial es un techo por encima del nivel actual; los jovenes
         # tienen mas margen de crecimiento.
         growth = max(0, (24 - age)) // 2
-        player.potential = min(20, player.overall + rng.randint(0, 3) + growth)
+        player.potential = _clamp_skill(player.overall + rng.randint(0, 3) + growth)
         return player
