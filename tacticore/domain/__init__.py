@@ -14,7 +14,6 @@ from .enums import (
 from .injury import Injury
 from .league import League
 from .player import Player
-from .skills import skill_level_name
 from .stadium import Stadium
 
 __all__ = [
@@ -31,5 +30,4 @@ __all__ = [
     "Position",
     "Specialty",
     "Stadium",
-    "skill_level_name",
 ]

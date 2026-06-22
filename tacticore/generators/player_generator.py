@@ -1,72 +1,74 @@
 """Generador de jugadores de fantasia.
 
 La calidad depende del nivel de liga (`LeagueTier`): la liga A genera a los
-mejores y la E a los mas flojos. Para cada skill el valor sale de:
+mejores y la E a los mas flojos. Para cada atributo el valor sale de:
 
     base_del_tier + offset_por_posicion + talento_individual + ruido
 
-asi un jugador NO tiene todos los skills en el mismo rango: un arquero de la
-liga E puede tener porteria ~6-9 pero regate/definicion en 1. Esos minimos
-suben de a poco en las ligas mejores (porque sube el base), y ademas hay cracks
-(talento alto) dentro de cualquier liga. El `overall` (OVR) resume todo eso.
+Escala 1-100 con decimales. Asi un jugador NO tiene todos los atributos en la
+misma banda (un arquero tiene reflejos altos pero remate bajo), los minimos
+suben en las ligas mejores, y hay cracks (talento alto) en cualquier liga.
 """
 
 import random
 
 from ..domain.enums import Foot, LeagueTier, Morale, Position, Specialty
-from ..domain.player import Player
+from ..domain.player import ALL_ATTRS, GK_ATTRS, Player
 from .name_generator import NameGenerator
 
-# Los 7 skills principales.
-_SKILLS = (
-    "goalkeeping", "defending", "playmaking", "winger", "passing", "scoring",
-    "set_pieces",
-)
-
-# Nivel base de un skill PRINCIPAL segun el nivel de la liga.
-_TIER_BASE: dict[LeagueTier, int] = {
-    LeagueTier.A: 14,
-    LeagueTier.B: 12,
-    LeagueTier.C: 10,
-    LeagueTier.D: 8,
-    LeagueTier.E: 6,
+# Nivel base de un atributo "neutro" segun el nivel de la liga (1-100).
+_TIER_BASE: dict[LeagueTier, float] = {
+    LeagueTier.A: 78.0,
+    LeagueTier.B: 66.0,
+    LeagueTier.C: 54.0,
+    LeagueTier.D: 44.0,
+    LeagueTier.E: 35.0,
 }
 
-# Cuanto sube/baja cada skill respecto del base segun la posicion. Lo que no
-# esta listado usa _IRRELEVANT_OFFSET (skills que no van con el puesto, quedan
-# muy bajos). Esto es lo que da la variedad dentro de un mismo jugador.
-_IRRELEVANT_OFFSET = -8
-_ROLE_OFFSETS: dict[Position, dict[str, int]] = {
+# A los jugadores de campo, los atributos de arquero les quedan muy por debajo.
+_GK_PENALTY_OUTFIELD = -45.0
+
+# Offset por posicion: cuanto sube/baja cada atributo respecto del base. Lo no
+# listado queda en 0 (atributos "generales": fisico, etc.).
+_ROLE_OFFSETS: dict[Position, dict[str, float]] = {
     Position.GOALKEEPER: {
-        "goalkeeping": 4, "defending": -2, "set_pieces": -4, "passing": -4,
-        "playmaking": -6, "winger": -9, "scoring": -9,
+        "reflexes": 12, "handling": 12, "aerial_reach": 10, "positioning": 6,
+        "anticipation": 4, "jumping": 4, "composure": 3,
+        "passing": -12, "shooting": -35, "dribbling": -28, "tackling": -10,
+        "heading": -6, "speed": -6, "vision": -8, "work_rate": -6,
     },
     Position.DEFENDER: {
-        "defending": 3, "playmaking": -1, "passing": 0, "winger": -2,
-        "set_pieces": -2, "scoring": -5, "goalkeeping": -12,
+        "tackling": 12, "positioning": 10, "strength": 8, "heading": 8,
+        "anticipation": 7, "jumping": 6, "composure": 2,
+        "shooting": -18, "dribbling": -10, "vision": -4, "passing": -2,
     },
     Position.MIDFIELDER: {
-        "playmaking": 3, "passing": 2, "winger": 0, "scoring": -1,
-        "defending": -1, "set_pieces": -1, "goalkeeping": -12,
+        "passing": 12, "vision": 12, "work_rate": 9, "dribbling": 7,
+        "positioning": 5, "stamina": 7, "composure": 5, "tackling": 3,
+        "agility": 3, "heading": -5, "shooting": -2, "strength": -3,
+        "jumping": -4,
     },
     Position.FORWARD: {
-        "scoring": 3, "passing": 0, "winger": 0, "set_pieces": -1,
-        "playmaking": -1, "defending": -5, "goalkeeping": -12,
+        "shooting": 14, "dribbling": 11, "speed": 9, "acceleration": 8,
+        "positioning": 5, "heading": 5, "agility": 5, "composure": 4,
+        "tackling": -14, "vision": -2, "work_rate": -2, "strength": -2,
     },
 }
+
+_NOISE = 5.0  # ruido por atributo (+/-)
 
 # Probabilidad de que un jugador tenga especialidad (0-1) y de que tenga apodo.
 _SPECIALTY_CHANCE = 0.35
 _NICKNAME_CHANCE = 0.08
 
 
-def _clamp_skill(value: int) -> int:
-    """Acota un skill al rango valido 1-20."""
-    return max(1, min(20, value))
+def _clamp(value: float) -> float:
+    """Acota a 1.0-100.0 y redondea a un decimal."""
+    return round(max(1.0, min(100.0, value)), 1)
 
 
 class PlayerGenerator:
-    """Crea jugadores con skills, fisico, estado y rasgos (deterministas)."""
+    """Crea jugadores con atributos, fisico, estado y rasgos (deterministas)."""
 
     def __init__(
         self,
@@ -92,13 +94,18 @@ class PlayerGenerator:
         pos = position or rng.choice(list(Position))
         base = _TIER_BASE[tier]
         offsets = _ROLE_OFFSETS[pos]
-        # Talento individual: algunos jugadores destacan dentro de su liga.
-        talent = rng.randint(-2, 3)
+        is_gk = pos is Position.GOALKEEPER
+        # Talento individual: corre todos los atributos del jugador hacia
+        # arriba o abajo (cracks vs jugadores del monton dentro de su liga).
+        talent = rng.uniform(-5, 10)
 
-        skills = {}
-        for skill in _SKILLS:
-            offset = offsets.get(skill, _IRRELEVANT_OFFSET)
-            skills[skill] = _clamp_skill(base + offset + talent + rng.randint(-2, 2))
+        attrs = {}
+        for attr in ALL_ATTRS:
+            if attr in GK_ATTRS and not is_gk:
+                offset = _GK_PENALTY_OUTFIELD
+            else:
+                offset = offsets.get(attr, 0.0)
+            attrs[attr] = _clamp(base + offset + talent + rng.uniform(-_NOISE, _NOISE))
 
         age = rng.randint(16, 36)
         # Arqueros y defensores suelen ser mas altos.
@@ -125,21 +132,17 @@ class PlayerGenerator:
             age=age,
             height_cm=height,
             weight_kg=weight,
-            **skills,
-            stamina=rng.randint(6, 18),
-            # La experiencia crece con la edad.
-            experience=min(20, max(1, (age - 16) // 2 + rng.randint(0, 4))),
-            leadership=rng.randint(2, 16),
-            form=rng.randint(6, 16),
-            fitness=100,
+            **attrs,
+            form=_clamp(rng.uniform(40, 80)),
+            fitness=100.0,
             morale=rng.choices(list(Morale), weights=[1, 2, 4, 3, 2])[0],
             specialty=specialty,
             nickname=nickname,
-            injury_proneness=rng.randint(3, 18),
+            injury_proneness=_clamp(rng.uniform(10, 80)),
         )
 
         # El potencial es un techo por encima del nivel actual; los jovenes
         # tienen mas margen de crecimiento.
-        growth = max(0, (24 - age)) // 2
-        player.potential = _clamp_skill(player.overall + rng.randint(0, 3) + growth)
+        growth_room = max(0.0, (24 - age)) * 1.2 + rng.uniform(0, 5)
+        player.potential = _clamp(player.overall + growth_room)
         return player

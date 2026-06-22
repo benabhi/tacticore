@@ -1,8 +1,8 @@
 """Entidad Jugador.
 
-Modelo de atributos al estilo Hattrick: pocos skills principales (1-20), unos
-de soporte, estado dinamico (forma, moral, lesion) y a lo sumo una especialidad
-rara. Pensado para alimentar simulaciones complejas mas adelante.
+Atributos pensados para el partido en tiempo real (ver docs/DESIGN.md, seccion
+3). Escala 1.0-100.0 con decimales: permite progreso fino por entreno/partido
+(ej. +0.59) sin techos rapidos. Sin etiquetas tipo "pobre/divino".
 """
 
 from dataclasses import dataclass, field
@@ -10,19 +10,31 @@ from dataclasses import dataclass, field
 from .enums import Foot, Morale, Position, Specialty
 from .injury import Injury
 
-# Pesos por posicion para el calculo del overall: que skills importan y cuanto.
-# Es provisional; la simulacion real usara los skills crudos, no este promedio.
+# Atributos agrupados (todos float 1-100). El orden es el que usa el generador.
+PHYSICAL_ATTRS = ("speed", "acceleration", "stamina", "strength", "agility", "jumping")
+TECHNICAL_ATTRS = ("passing", "shooting", "dribbling", "tackling", "heading")
+MENTAL_ATTRS = ("vision", "positioning", "anticipation", "composure", "work_rate")
+GK_ATTRS = ("reflexes", "handling", "aerial_reach")
+ALL_ATTRS = PHYSICAL_ATTRS + TECHNICAL_ATTRS + MENTAL_ATTRS + GK_ATTRS
+
+# Pesos por posicion para el overall: que atributos importan y cuanto. Es
+# provisional; la simulacion real usa los atributos crudos, no este promedio.
 _OVERALL_WEIGHTS: dict[Position, dict[str, int]] = {
-    Position.GOALKEEPER: {"goalkeeping": 3, "defending": 1, "set_pieces": 1},
+    Position.GOALKEEPER: {
+        "reflexes": 3, "handling": 2, "aerial_reach": 2, "positioning": 1,
+        "anticipation": 1,
+    },
     Position.DEFENDER: {
-        "defending": 3, "passing": 1, "playmaking": 1, "winger": 1, "set_pieces": 1,
+        "tackling": 3, "positioning": 2, "strength": 1, "heading": 1,
+        "anticipation": 1, "speed": 1, "passing": 1,
     },
     Position.MIDFIELDER: {
-        "playmaking": 3, "passing": 2, "winger": 1, "scoring": 1, "defending": 1,
-        "set_pieces": 1,
+        "passing": 3, "vision": 2, "dribbling": 1, "work_rate": 1,
+        "positioning": 1, "stamina": 1, "tackling": 1,
     },
     Position.FORWARD: {
-        "scoring": 3, "passing": 1, "winger": 1, "playmaking": 1, "set_pieces": 1,
+        "shooting": 3, "dribbling": 2, "speed": 1, "positioning": 1,
+        "heading": 1, "passing": 1,
     },
 }
 
@@ -40,35 +52,48 @@ class Player:
     height_cm: int
     weight_kg: int
 
-    # --- Skills principales (1-20) ---
-    goalkeeping: int = 1
-    defending: int = 1
-    playmaking: int = 1
-    winger: int = 1
-    passing: int = 1
-    scoring: int = 1
-    set_pieces: int = 1
+    # --- Atributos fisicos (1-100) ---
+    speed: float = 1.0
+    acceleration: float = 1.0
+    stamina: float = 1.0
+    strength: float = 1.0
+    agility: float = 1.0
+    jumping: float = 1.0
 
-    # --- Skills de soporte (1-20) ---
-    stamina: int = 1      # resistencia: cuanto aguanta el partido
-    experience: int = 1   # experiencia: sube jugando
-    leadership: int = 1   # liderazgo
+    # --- Atributos tecnicos (1-100) ---
+    passing: float = 1.0
+    shooting: float = 1.0
+    dribbling: float = 1.0
+    tackling: float = 1.0
+    heading: float = 1.0
 
-    # --- Estado dinamico (cambia al pasar fechas) ---
-    form: int = 10            # estado de forma actual (1-20)
-    fitness: int = 100        # energia disponible (0-100)
+    # --- Atributos mentales (1-100) ---
+    vision: float = 1.0
+    positioning: float = 1.0
+    anticipation: float = 1.0
+    composure: float = 1.0
+    work_rate: float = 1.0
+
+    # --- Atributos de arquero (1-100; bajos en jugadores de campo) ---
+    reflexes: float = 1.0
+    handling: float = 1.0
+    aerial_reach: float = 1.0
+
+    # --- Estado dinamico (cambia al pasar fechas / en el partido) ---
+    form: float = 50.0        # estado de forma actual (1-100)
+    fitness: float = 100.0    # energia disponible (0-100)
     morale: Morale = Morale.NEUTRAL
     injury: Injury | None = None
 
     # --- Rasgos ---
-    specialty: Specialty | None = None  # 0 o 1 (estilo Hattrick)
-    nickname: str | None = None         # alias raro, ej. "La Pulga"
+    specialty: Specialty | None = None  # 0 o 1 (raro)
+    nickname: str | None = None         # alias, ej. "La Pulga"
     shirt_number: int | None = None     # lo asigna el club
     origin_club: str | None = None      # club de origen / cantera
 
     # --- Ocultos / desarrollo ---
-    potential: int = 1          # techo de habilidad (1-20)
-    injury_proneness: int = 10  # propension a lesionarse (1-20)
+    potential: float = 1.0          # techo de habilidad (1-100)
+    injury_proneness: float = 50.0  # propension a lesionarse (1-100)
     injury_history: list[Injury] = field(default_factory=list)
 
     @property
@@ -87,8 +112,8 @@ class Player:
         return self.injury is not None
 
     @property
-    def overall(self) -> int:
-        """Media ponderada de los skills relevantes a su posicion (1-20)."""
+    def overall(self) -> float:
+        """Media ponderada de los atributos relevantes a su posicion (1-100)."""
         weights = _OVERALL_WEIGHTS[self.position]
-        total = sum(getattr(self, skill) * w for skill, w in weights.items())
-        return round(total / sum(weights.values()))
+        total = sum(getattr(self, attr) * w for attr, w in weights.items())
+        return round(total / sum(weights.values()), 1)
