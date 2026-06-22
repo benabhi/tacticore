@@ -3,7 +3,7 @@
 from tacticore.core.rng import new_rng
 from tacticore.domain.enums import LeagueTier
 from tacticore.generators import ClubGenerator
-from tacticore.simulation.match import MatchEngine, Side, kickoff_state
+from tacticore.simulation.match import DEFAULT_DT, MatchEngine, Side, kickoff_state
 from tacticore.simulation.match import ai
 from tacticore.simulation.match.geometry import Vec2
 
@@ -35,15 +35,20 @@ def test_arrive_slows_near_target():
 
 
 def test_a_chaser_reaches_the_ball():
+    # En algun momento del juego alguien alcanza (practicamente) la pelota.
     engine = MatchEngine(_fresh_state(), new_rng(1))
-    engine.run(6.0)
-    ball = engine.state.ball.position
-    nearest = min(
-        engine.state.all_players(),
-        key=lambda mp: mp.position.distance_to(ball),
-    )
-    # Alguien llego (practicamente) a la pelota.
-    assert nearest.position.distance_to(ball) < 1.5
+    reached = False
+    for _ in range(int(6.0 / DEFAULT_DT)):
+        engine.step()
+        ball = engine.state.ball.position
+        nearest = min(
+            engine.state.all_players(),
+            key=lambda mp: mp.position.distance_to(ball),
+        )
+        if nearest.position.distance_to(ball) < 1.0:
+            reached = True
+            break
+    assert reached
 
 
 def test_chasers_move_others_hold():

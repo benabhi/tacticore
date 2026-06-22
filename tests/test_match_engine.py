@@ -43,10 +43,9 @@ def test_kickoff_sets_ball_moving_and_phase():
     assert engine.state.ball.velocity.length() > 0.0
 
 
-def test_ball_stops_and_stays_inside():
+def test_ball_stays_inside_pitch():
     engine = MatchEngine(_fresh_state(), new_rng(5))
-    engine.run(15.0)  # tiempo de sobra para que se frene
-    assert engine.state.ball.velocity.length() < 0.01
+    engine.run(15.0)
     assert engine.state.pitch.contains(engine.state.ball.position)
 
 

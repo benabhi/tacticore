@@ -49,6 +49,47 @@ def team_ball_chaser(state: MatchState, side: Side) -> MatchPlayer:
     return min(state.team(side), key=lambda mp: mp.position.distance_to(ball))
 
 
+def _other(side: Side) -> Side:
+    return Side.AWAY if side is Side.HOME else Side.HOME
+
+
+def attacking_goal(state: MatchState, side: Side) -> Vec2:
+    """Arco al que ataca el equipo `side`."""
+    return state.pitch.away_goal if side is Side.HOME else state.pitch.home_goal
+
+
+def nearest_opponent(mp: MatchPlayer, state: MatchState) -> MatchPlayer:
+    """Rival mas cercano a un jugador."""
+    rivals = state.team(_other(mp.team))
+    return min(rivals, key=lambda o: o.position.distance_to(mp.position))
+
+
+def best_pass_target(
+    owner: MatchPlayer, state: MatchState, max_dist: float
+) -> MatchPlayer | None:
+    """Mejor companero para pasarle: el mas desmarcado, preferentemente adelante.
+
+    "Desmarcado" = lejos del rival mas cercano. "Adelante" = mas cerca del arco
+    rival que el que tiene la pelota. Devuelve None si no hay nadie al alcance.
+    """
+    goal = attacking_goal(state, owner.team)
+    owner_to_goal = owner.position.distance_to(goal)
+    rivals = state.team(_other(owner.team))
+
+    def openness(mate: MatchPlayer) -> float:
+        return min(
+            (o.position.distance_to(mate.position) for o in rivals), default=999.0
+        )
+
+    mates = [m for m in state.team(owner.team) if m is not owner]
+    in_range = [m for m in mates if m.position.distance_to(owner.position) <= max_dist]
+    ahead = [m for m in in_range if m.position.distance_to(goal) < owner_to_goal - 1.0]
+    pool = ahead or in_range
+    if not pool:
+        return None
+    return max(pool, key=openness)
+
+
 def decide_velocity(mp: MatchPlayer, state: MatchState, is_chaser: bool) -> Vec2:
     """Velocidad deseada de un jugador en este tick.
 

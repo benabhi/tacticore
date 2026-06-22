@@ -268,6 +268,9 @@ igual que las secciones de gestión):
 **Fase D — Profundidad**
 10. Tarjetas, faltas, pelota parada, lesiones, fuera de juego.
 11. Gestión: calendario/eventos, entrenos (usan la granularidad `float`).
+12. **Cansancio en partido:** el `fitness` baja al correr/esprintar durante el
+    partido y modula `max_speed` y la precisión de pase/remate (se nota el
+    desgaste sobre el final). Hoy `fitness` esta fijo en 100.
 
 ## 15. Backlog de ideas futuras
 
