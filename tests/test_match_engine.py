@@ -50,15 +50,6 @@ def test_ball_stops_and_stays_inside():
     assert engine.state.pitch.contains(engine.state.ball.position)
 
 
-def test_players_stay_still_without_ai():
-    state = _fresh_state()
-    before = [(mp.position.x, mp.position.y) for mp in state.all_players()]
-    engine = MatchEngine(state, new_rng(7))
-    engine.run(3.0)
-    after = [(mp.position.x, mp.position.y) for mp in engine.state.all_players()]
-    assert before == after  # sin IA, nadie se mueve
-
-
 def test_clock_advances():
     engine = MatchEngine(_fresh_state(), new_rng(9))
     engine.run(1.0, DEFAULT_DT)

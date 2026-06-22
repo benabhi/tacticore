@@ -11,6 +11,8 @@ El movimiento de los jugadores y las decisiones llegan en B3.
 import math
 import random
 
+from . import ai
+from .entities import Side
 from .geometry import Vec2
 from .state import MatchPhase, MatchState
 
@@ -68,7 +70,14 @@ class MatchEngine:
             ball.velocity = Vec2(0.0, 0.0)
 
     def _update_players(self, dt: float) -> None:
-        pitch = self.state.pitch
-        for mp in self.state.all_players():
-            if mp.velocity.length_sq() > 0.0:
-                mp.position = pitch.clamp(mp.position + mp.velocity * dt)
+        state = self.state
+        pitch = state.pitch
+        # El mas cercano a la pelota de cada equipo la persigue (segun posiciones
+        # actuales); el resto sostiene su formacion.
+        chasers = {
+            id(ai.team_ball_chaser(state, Side.HOME)),
+            id(ai.team_ball_chaser(state, Side.AWAY)),
+        }
+        for mp in state.all_players():
+            mp.velocity = ai.decide_velocity(mp, state, id(mp) in chasers)
+            mp.position = pitch.clamp(mp.position + mp.velocity * dt)
