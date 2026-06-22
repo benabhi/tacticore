@@ -1,0 +1,24 @@
+[project]
+name = "soccer-manager"
+version = "0.1.0"
+description = "Juego de manager de futbol de fantasia para terminal."
+requires-python = ">=3.11"
+dependencies = [
+    "textual",
+]
+
+[project.optional-dependencies]
+dev = [
+    "textual-dev",
+    "pytest",
+]
+
+[project.scripts]
+soccer-manager = "soccer_manager.ui.app:run"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["soccer_manager*"]
