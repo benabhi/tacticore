@@ -32,6 +32,11 @@ class ClubGenerator:
         players = [self._players.generate(Position.GOALKEEPER) for _ in range(2)]
         players += [self._players.generate() for _ in range(squad_size - 2)]
 
+        # Asignar dorsales y club de origen (por ahora asumimos canteranos).
+        for number, player in enumerate(players, start=1):
+            player.shirt_number = number
+            player.origin_club = name
+
         return Club(
             name=name,
             short_name=short_name,

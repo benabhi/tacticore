@@ -15,11 +15,20 @@ class NameGenerator:
     def __init__(self, rng: random.Random | None = None) -> None:
         self._rng = rng or random.Random()
 
-    def player_name(self) -> str:
-        """Devuelve un nombre completo de jugador (nombre + apellido)."""
+    def player_first_last(self) -> tuple[str, str]:
+        """Devuelve (nombre, apellido) por separado."""
         first = self._build_word(name_data.FIRST_SYLLABLES, 2, 3)
         last = self._build_word(name_data.LAST_SYLLABLES, 2, 3)
+        return first, last
+
+    def player_name(self) -> str:
+        """Devuelve un nombre completo de jugador (nombre + apellido)."""
+        first, last = self.player_first_last()
         return f"{first} {last}"
+
+    def nickname(self) -> str:
+        """Devuelve un apodo al azar (ej. 'La Pulga')."""
+        return self._rng.choice(name_data.NICKNAMES)
 
     def club_name(self) -> str:
         """Devuelve un nombre de club (prefijo + nucleo inventado)."""

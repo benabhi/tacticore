@@ -28,3 +28,10 @@ CLUB_SYLLABLES = [
     "jorn", "kel", "lund", "mor", "nard", "oste", "prav", "quel", "rast",
     "sund", "torv", "ulm", "verd", "wess", "zar",
 ]
+
+# --- Apodos / alias (raros, ej. "La Pulga") ---
+NICKNAMES = [
+    "El Mago", "La Pulga", "El Toro", "La Roca", "El Pibe", "El Loco",
+    "El Tanque", "La Joya", "El Pipa", "El Fenomeno", "La Bestia",
+    "El Principe", "El Matador", "El Gato", "El Rayo", "El Cano",
+]
