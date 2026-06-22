@@ -2,17 +2,23 @@
 
 from dataclasses import dataclass, field
 
+from .enums import LeagueTier
 from .player import Player
+from .stadium import Stadium
 
 
 @dataclass
 class Club:
-    """Un club: nombre, plantilla y finanzas basicas."""
+    """Un club: identidad, finanzas basicas, estadio y plantilla."""
 
     name: str
     short_name: str
+    country_code: str   # pais al que pertenece (ej. "ARG")
+    tier: LeagueTier    # nivel de liga en el que juega
+    stadium: Stadium
+    capital: int = 0    # dinero inicial
+    members: int = 0    # cantidad de asociados / socios
     players: list[Player] = field(default_factory=list)
-    budget: int = 0
 
     @property
     def squad_size(self) -> int:

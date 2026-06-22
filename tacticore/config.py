@@ -15,6 +15,11 @@ SCREEN_HEIGHT = 25
 # Altura reservada para la barra de menu inferior (HUD).
 MENU_BAR_HEIGHT = 1
 
+# --- Generacion del mundo (escala chica por ahora, se ira ampliando) ---
+WORLD_COUNTRY_COUNT = 6   # cuantos paises generar (de la lista disponible)
+CLUBS_PER_LEAGUE = 8      # clubes en cada liga (mismo para los 5 niveles)
+SQUAD_SIZE = 16           # jugadores por club
+
 # --- Rutas ---
 # Carpeta raiz del proyecto (dos niveles arriba de este archivo).
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

@@ -20,6 +20,20 @@ class Foot(Enum):
     BOTH = "B"
 
 
+class LeagueTier(Enum):
+    """Nivel de una liga dentro de un pais (A es la mejor, E la mas baja).
+
+    Los managers nuevos arrancan en la liga E. El orden de definicion (A->E)
+    es el orden de calidad.
+    """
+
+    A = "A"
+    B = "B"
+    C = "C"
+    D = "D"
+    E = "E"
+
+
 class Specialty(Enum):
     """Especialidades raras al estilo Hattrick (un jugador tiene 0 o 1).
 

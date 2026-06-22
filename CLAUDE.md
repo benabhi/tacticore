@@ -2,8 +2,11 @@
 
 Juego de **manager de fútbol de fantasía** para jugar en la terminal, construido
 con [Textual](https://textual.textualize.io/). El mundo (clubes, jugadores,
-ligas) se **genera proceduralmente**: no usa equipos, jugadores ni nombres
-reales.
+ligas, estadios) se **genera proceduralmente**. Los **clubes, jugadores y
+estadios son de fantasía** (nada real); los **países sí usan nombres reales**
+(Argentina, Brasil, …) como contenedores, escritos en ASCII sin acentos por la
+directiva 2. Cada país tiene **5 ligas** (niveles A a E): la A es la mejor y la
+E es donde arrancan los managers nuevos.
 
 ## Directivas
 
