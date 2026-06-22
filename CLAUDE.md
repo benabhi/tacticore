@@ -31,7 +31,9 @@ E es donde arrancan los managers nuevos.
      [ui/widgets/field.py](tacticore/ui/widgets/field.py); **antes de
      cerrar el proyecto hay que ponerlo en `False`** para cumplir la directiva.
 4. **Código en inglés.** Identificadores (variables, funciones, clases,
-   módulos) siempre en inglés.
+   módulos) siempre en inglés. **Esto incluye los nombres de archivo**:
+   `players_screen.py`, no `jugadores_screen.py`. En cambio, el **texto que ve
+   el jugador en pantalla va en español** (labels, mensajes), siempre en ASCII.
 5. **Comentarios en español.** Comentarios y docstrings en español.
 
 ## Stack

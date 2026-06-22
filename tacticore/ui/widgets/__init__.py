@@ -1,6 +1,7 @@
 """Widgets reutilizables de la interfaz."""
 
 from .field import SoccerField
-from .menu_bar import MenuBar
+from .nav_bar import NavBar
+from .progress_bar import ProgressBar
 
-__all__ = ["SoccerField", "MenuBar"]
+__all__ = ["SoccerField", "NavBar", "ProgressBar"]

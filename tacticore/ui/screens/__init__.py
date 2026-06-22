@@ -1,4 +1,17 @@
-"""Pantallas del juego (menu principal, partido, plantilla, ...).
+"""Pantallas del juego (titulo, carga, nuevo juego y secciones)."""
 
-Por ahora vacio: las pantallas se agregaran a medida que crezca la UI.
-"""
+from .club_screen import ClubScreen
+from .loading_screen import LoadingScreen
+from .new_game_screen import NewGameScreen
+from .office_screen import OfficeScreen
+from .players_screen import PlayersScreen
+from .title_screen import TitleScreen
+
+__all__ = [
+    "ClubScreen",
+    "LoadingScreen",
+    "NewGameScreen",
+    "OfficeScreen",
+    "PlayersScreen",
+    "TitleScreen",
+]
