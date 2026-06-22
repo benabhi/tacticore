@@ -12,7 +12,7 @@ from .widgets.field import GRASS_DARK, SoccerField
 from .widgets.menu_bar import MenuBar
 
 
-class SoccerManagerApp(App):
+class TacticoreApp(App):
     """App raiz del juego."""
 
     # El fondo de la cancha usa el verde oscuro del cesped, asi la columna/fila
@@ -35,9 +35,9 @@ class SoccerManagerApp(App):
         # Contenedor fijo de 80x25: cancha (resto) + barra de menu (1 fila).
         with Vertical(id="game"):
             yield SoccerField()
-            yield MenuBar(" Soccer Manager ")
+            yield MenuBar(" Tacticore ")
 
 
 def run() -> None:
     """Lanza la aplicacion."""
-    SoccerManagerApp().run()
+    TacticoreApp().run()

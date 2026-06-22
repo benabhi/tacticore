@@ -1,6 +1,6 @@
 """Tests del widget de cancha (logica de dibujo, sin UI)."""
 
-from soccer_manager.ui.widgets.field import CH_KICKOFF, build_field
+from tacticore.ui.widgets.field import CH_KICKOFF, build_field
 
 
 def test_field_dimensions_are_odd():

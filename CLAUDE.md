@@ -1,4 +1,4 @@
-# Soccer Manager — Guía del proyecto
+# Tacticore — Guía del proyecto
 
 Juego de **manager de fútbol de fantasía** para jugar en la terminal, construido
 con [Textual](https://textual.textualize.io/). El mundo (clubes, jugadores,
@@ -11,7 +11,7 @@ reales.
 
 1. **Resolución fija: 80×25.** Toda la interfaz se diseña para una terminal de
    80 columnas × 25 filas. Las constantes viven en
-   [soccer_manager/config.py](soccer_manager/config.py) (`SCREEN_WIDTH`,
+   [tacticore/config.py](tacticore/config.py) (`SCREEN_WIDTH`,
    `SCREEN_HEIGHT`). Si sobra alguna fila/columna, se reserva para HUD o menús.
 2. **Solo caracteres ASCII en pantalla.** Todo lo que se dibuje debe usar
    únicamente ASCII imprimible (`0x20`–`0x7E`). Nada de box-drawing Unicode,
@@ -25,7 +25,7 @@ reales.
      usan dos verdes RGB provisionales porque en muchas terminales el `green` y
      el `bright_green` se ven casi iguales. Está detrás del flag
      `DEV_TRUECOLOR_GRASS` en
-     [ui/widgets/field.py](soccer_manager/ui/widgets/field.py); **antes de
+     [ui/widgets/field.py](tacticore/ui/widgets/field.py); **antes de
      cerrar el proyecto hay que ponerlo en `False`** para cumplir la directiva.
 4. **Código en inglés.** Identificadores (variables, funciones, clases,
    módulos) siempre en inglés.
@@ -41,7 +41,7 @@ reales.
 
 ```bash
 # con el venv activado
-python main.py            # equivalente: python -m soccer_manager
+python main.py            # equivalente: python -m tacticore
 ```
 
 Entorno de desarrollo (tests, herramientas de Textual):
@@ -54,7 +54,7 @@ pytest
 ## Estructura
 
 ```
-soccer_manager/
+tacticore/
 ├── config.py            # Constantes globales (resolución, rutas, etc.)
 ├── core/                # Estado del juego, calendario y aleatoriedad
 │   ├── game.py          #   GameState: contenedor raíz del estado
@@ -99,7 +99,7 @@ soccer_manager/
 
 ## Estado actual
 
-- Widget de cancha ([ui/widgets/field.py](soccer_manager/ui/widgets/field.py))
+- Widget de cancha ([ui/widgets/field.py](tacticore/ui/widgets/field.py))
   con centro exacto (columna y fila centrales) y franjas de césped.
 - Barra de menú inferior (placeholder).
 - Generadores de nombres / jugadores / clubes: esqueleto inicial funcional.
