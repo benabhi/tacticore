@@ -8,6 +8,13 @@ estadios son de fantasía** (nada real); los **países sí usan nombres reales**
 directiva 2. Cada país tiene **5 ligas** (niveles A a E): la A es la mejor y la
 E es donde arrancan los managers nuevos.
 
+El juego tiene **dos fases**: gestión por turnos (días/eventos) y **partidos en
+tiempo real** (los jugadores se mueven en la cancha y el manager da órdenes en
+vivo). El plan del motor, el rediseño de atributos a **escala 1–100 con
+decimales**, el modelo de cancha continua, la IA y la estrategia de render viven
+en **[docs/DESIGN.md](docs/DESIGN.md)** — leerlo antes de tocar atributos,
+generadores o el motor de partido.
+
 ## Directivas
 
 > Reglas que aplican a TODO el código del proyecto. Respetarlas siempre.

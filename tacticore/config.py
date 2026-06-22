@@ -30,3 +30,7 @@ LOADING_STEP_DELAY = 0.015
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # Carpeta donde se guardan las partidas.
 SAVE_DIR = PROJECT_ROOT / "saves"
+# Dataset externo de nombres reales por pais (CSV por pais, ISO alpha2).
+# Pesa ~10GB y esta gitignored; se usa como SOURCE para destilar una base de
+# nombres compacta. Ver docs/DESIGN.md.
+NAMES_DATASET_DIR = PROJECT_ROOT / "datasets" / "names"

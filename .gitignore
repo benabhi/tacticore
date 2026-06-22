@@ -12,6 +12,10 @@ __pycache__/
 saves/
 *.save
 
+# Datasets externos pesados (ej. names-dataset, ~10GB). Son SOURCE local; de
+# aca se destila una base compacta y distribuible (ver docs/DESIGN.md).
+datasets/
+
 # Editor
 .vscode/
 .idea/
