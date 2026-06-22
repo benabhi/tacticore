@@ -84,11 +84,13 @@ class PlayerGenerator:
         self,
         position: Position | None = None,
         tier: LeagueTier = LeagueTier.C,
+        country_code: str | None = None,
     ) -> Player:
         """Genera un jugador de la liga `tier`.
 
         Si no se da `position`, se elige al azar. El `tier` define la calidad
-        general (la liga A es la mejor, la E la mas floja).
+        general (la liga A es la mejor, la E la mas floja). `country_code` define
+        la nacionalidad de los nombres (si hay pool para ese pais).
         """
         rng = self._rng
         pos = position or rng.choice(list(Position))
@@ -115,7 +117,7 @@ class PlayerGenerator:
             height = rng.randint(165, 190)
         weight = height - 100 + rng.randint(-5, 8)
 
-        first, last = self._names.player_first_last()
+        first, last = self._names.player_first_last(country_code)
         specialty = (
             rng.choice(list(Specialty)) if rng.random() < _SPECIALTY_CHANCE else None
         )

@@ -54,10 +54,12 @@ class ClubGenerator:
         stadium = self._stadiums.generate(tier, name)
 
         players = [
-            self._players.generate(Position.GOALKEEPER, tier) for _ in range(2)
+            self._players.generate(Position.GOALKEEPER, tier, country_code)
+            for _ in range(2)
         ]
         players += [
-            self._players.generate(tier=tier) for _ in range(squad_size - 2)
+            self._players.generate(tier=tier, country_code=country_code)
+            for _ in range(squad_size - 2)
         ]
 
         # Asignar dorsales y club de origen (por ahora asumimos canteranos).

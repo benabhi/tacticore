@@ -205,6 +205,12 @@ igual que las secciones de gestión):
   cargar el archivo).
 - **Nacionalidad:** alinear los códigos de país del juego a **ISO alpha2**
   (AR, BR, ES…) para usar directo el CSV del país.
+- **Selección de país en "nuevo juego" (pendiente):** al crear la partida,
+  además del nombre del club, el jugador **elige el país**. Eso define en qué
+  país arranca su club (en la liga E) y la nacionalidad de su cantera. La UI
+  debe ser una **pantalla full-screen seleccionable, en varias columnas, sin
+  scroll** (se planean muchos países al final del desarrollo; mantener la
+  prioridad de pantallas completas estilo ADOM).
 
 ## 11. Persistencia y reproducibilidad
 
