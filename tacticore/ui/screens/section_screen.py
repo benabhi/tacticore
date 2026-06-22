@@ -9,13 +9,13 @@ from collections.abc import Iterator
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.screen import Screen
 from textual.widget import Widget
 
 from ..widgets.nav_bar import NavBar
+from .base_screen import BaseScreen
 
 
-class SectionScreen(Screen):
+class SectionScreen(BaseScreen):
     """Base de las pantallas de seccion. La subclase fija `section_key`."""
 
     section_key = "O"
@@ -27,9 +27,6 @@ class SectionScreen(Screen):
     ]
 
     CSS = """
-    SectionScreen {
-        background: black;
-    }
     #content {
         height: 1fr;
         padding: 1 2;
@@ -37,7 +34,8 @@ class SectionScreen(Screen):
     }
     """
 
-    def compose(self) -> ComposeResult:
+    def compose_viewport(self) -> ComposeResult:
+        # Dentro del viewport de 80x25: contenido (resto) + barra abajo (fila 25).
         with Vertical(id="content"):
             yield from self.content()
         yield NavBar(active=self.section_key)

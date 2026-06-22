@@ -9,7 +9,6 @@ import time
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.screen import Screen
 from textual.widgets import Static
 
 from ... import config
@@ -17,34 +16,39 @@ from ...core.rng import new_rng
 from ...domain.country import Country
 from ...generators import WorldGenerator
 from ..widgets.progress_bar import ProgressBar
+from .base_screen import BaseScreen
 from .new_game_screen import NewGameScreen
 
 
-class LoadingScreen(Screen):
+class LoadingScreen(BaseScreen):
     """Genera el mundo y muestra el avance."""
 
     CSS = """
-    LoadingScreen {
+    #viewport {
         align: center middle;
-        background: black;
     }
     #box {
         width: 64;
         height: auto;
     }
     #title {
+        width: 1fr;
         text-align: center;
         color: green;
         text-style: bold;
     }
     #label {
+        width: 1fr;
         text-align: center;
         color: white;
         padding: 1 0;
     }
+    #bar {
+        width: 1fr;
+    }
     """
 
-    def compose(self) -> ComposeResult:
+    def compose_viewport(self) -> ComposeResult:
         with Vertical(id="box"):
             yield Static("T A C T I C O R E", id="title")
             yield Static("Preparando el mundo...", id="label")

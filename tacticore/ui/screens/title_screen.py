@@ -6,40 +6,42 @@ la pantalla de carga; si ya existe, va directo a la Oficina.
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.screen import Screen
 from textual.widgets import Static
 
 from ..art import render_banner
+from .base_screen import BaseScreen
 
 _PROMPT = "Presiona <ENTER> para comenzar"
 
 
-class TitleScreen(Screen):
+class TitleScreen(BaseScreen):
     """Portada del juego."""
 
     BINDINGS = [("enter", "start", "Comenzar")]
 
     CSS = """
-    TitleScreen {
+    #viewport {
         align: center middle;
-        background: black;
     }
     #box {
-        width: auto;
+        width: 60;
         height: auto;
     }
     #banner {
+        width: 1fr;
+        text-align: center;
         color: green;
         text-style: bold;
     }
     #prompt {
+        width: 1fr;
         text-align: center;
         color: yellow;
         padding-top: 2;
     }
     """
 
-    def compose(self) -> ComposeResult:
+    def compose_viewport(self) -> ComposeResult:
         with Vertical(id="box"):
             yield Static("\n".join(render_banner("TACTICORE")), id="banner")
             yield Static(_PROMPT, id="prompt")
