@@ -5,6 +5,7 @@ inicial (entities/formation/state). El tick determinista y la IA llegan en los
 proximos pasos de la Fase B (ver docs/DESIGN.md).
 """
 
+from .commands import Command, SetPlayerZone
 from .engine import DEFAULT_DT, MatchEngine
 from .entities import Ball, MatchPlayer, Side
 from .field import GridMap, Pitch
@@ -14,6 +15,7 @@ from .state import MatchPhase, MatchState, kickoff_state
 
 __all__ = [
     "Ball",
+    "Command",
     "DEFAULT_DT",
     "DEFAULT_FORMATIONS",
     "Formation",
@@ -25,6 +27,7 @@ __all__ = [
     "MatchState",
     "Pitch",
     "Rect",
+    "SetPlayerZone",
     "Side",
     "Vec2",
     "kickoff_state",

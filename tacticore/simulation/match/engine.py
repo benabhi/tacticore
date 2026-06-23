@@ -1,7 +1,9 @@
 """Motor del partido: avanza la simulacion en pasos de tiempo fijos.
 
 `step(dt)` ejecuta un tick determinista: todo el azar sale de un `random.Random`
-sembrado, asi misma seed (+ mismos comandos, mas adelante) -> mismo partido.
+sembrado, y las ordenes del manager entran por una cola de comandos sellados con
+su tick. Asi misma seed + mismos comandos -> mismo partido (replay). El motor no
+distingue si los comandos los puso la UI en vivo o un partido grabado.
 
 B3.2: hay posesion. El jugador que alcanza la pelota la "lleva" (la pelota va
 con el, un poco por delante). Mientras la tiene decide: patear al arco si esta
@@ -16,6 +18,7 @@ import math
 import random
 
 from . import ai
+from .commands import Command
 from .entities import Side
 from .geometry import Vec2
 from .state import MatchPhase, MatchState
@@ -41,13 +44,40 @@ _CLEAR_SPEED = 24.0       # velocidad del despeje del arquero (m/s)
 class MatchEngine:
     """Avanza un `MatchState` tick a tick de forma determinista."""
 
-    def __init__(self, state: MatchState, rng: random.Random | None = None) -> None:
+    def __init__(
+        self,
+        state: MatchState,
+        rng: random.Random | None = None,
+        commands: list[Command] | None = None,
+    ) -> None:
         self.state = state
         self._rng = rng or random.Random()
         self._kick_cooldown = 0.0
+        self._tick = 0
+        # Comandos pendientes agrupados por el tick en que se aplican.
+        self._pending: dict[int, list[Command]] = {}
+        # Registro de todo lo programado (para grabar/reproducir el partido).
+        self.command_log: list[Command] = []
+        for cmd in commands or ():
+            self._enqueue(cmd)
+
+    def schedule(self, command: Command) -> None:
+        """Programa un comando del manager (en vivo). No puede ser en el pasado."""
+        if command.tick < self._tick:
+            raise ValueError(
+                f"comando para el tick {command.tick} pero el partido va por {self._tick}"
+            )
+        self._enqueue(command)
+
+    def _enqueue(self, command: Command) -> None:
+        self._pending.setdefault(command.tick, []).append(command)
+        self.command_log.append(command)
 
     def step(self, dt: float = DEFAULT_DT) -> None:
         """Avanza la simulacion `dt` segundos."""
+        # Comandos del manager de este tick (mismo camino en vivo y en replay).
+        for command in self._pending.pop(self._tick, ()):
+            command.apply(self.state)
         if self.state.phase is MatchPhase.KICKOFF:
             self._kickoff()
         self._kick_cooldown = max(0.0, self._kick_cooldown - dt)
@@ -55,6 +85,7 @@ class MatchEngine:
         self._move_players(dt)  # la accion del que lleva puede soltar la pelota
         self._update_ball(dt)
         self.state.clock += dt
+        self._tick += 1
 
     def run(self, duration: float, dt: float = DEFAULT_DT) -> None:
         """Avanza `duration` segundos en pasos de `dt`."""

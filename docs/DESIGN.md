@@ -258,7 +258,12 @@ igual que las secciones de gestión):
 4. [hecho] `MatchState`/entidades, `MatchEngine.step(dt)`, RNG seed.
 5. IA v0: [hecho] B3.1 steering (ir a pelota) · [hecho] B3.2 posesion/pase/
    remate · [hecho] B3.3 goles + saque tras gol + arquero que ataja/despeja.
-6. [pendiente] B4: Replay (seed + cola de comandos) + tests de determinismo.
+6. [hecho] B4: Replay (seed + cola de comandos sellados por tick) + tests de
+   determinismo (vivo y grabado dan el mismo partido). Comando concreto:
+   `SetPlayerZone` (mover la zona de un jugador). Agregar una orden nueva =
+   una dataclass `Command` con su `apply`.
+   - [pendiente] **Sustitucion** como comando: necesita modelar el banco de
+     suplentes en `MatchState` (hoy solo estan los que estan en cancha).
 
 > **Tuning pendiente (no es B3.3):** la *tasa de goles* depende de constantes
 > (alcance del arquero, velocidad/puntería del remate, presion). Hoy esta
