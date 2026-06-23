@@ -326,9 +326,9 @@ por dependencias:
   tiene `vision`. El pase lleva error segun `passing` (mayor en los largos): un
   pase desviado se intercepta o sale (lateral) -> pelota a buscar. Resultado:
   los cambios de posesion saltaron de ~2 a ~31 en 5 min.
-  - [pendiente] **Desmarques (movimiento off-ball del ataque):** hoy los
-    atacantes sin pelota sostienen su base; deberian ofrecerse/abrir el juego
-    (de paso aparecen mas laterales/corners). Sub-paso aparte.
+  - [hecho] **Desmarques (movimiento off-ball del ataque):** los atacantes sin
+    pelota suben hacia el arco y buscan espacio (segun `work_rate`) mientras su
+    equipo tiene la pelota. Subio de ~5.7 a ~8.5 de 14 jugadores en movimiento.
 - **G4. Quite + faltas + tiros libres.** [hecho] Un defensor pegado al que lleva
   la pelota intenta el quite: exito (`tackling` vs `dribbling` +`strength`) gana
   la pelota ("Quite"); el fallo puede ser falta -> tiro libre del rival (reusa el
@@ -368,10 +368,8 @@ Resumen unico de lo que falta. **Principio transversal:** toda conducta del
 partido usa los **atributos** del jugador (no constantes uniformes).
 
 **Jugabilidad del motor (Fase G) — prioridad actual.** Hecho: G0 arbitro, G1
-reanudaciones, G2 marca zonal, G3 pases corto/largo, G4 quite/faltas/tiros
-libres. Falta:
-- [ ] **G3.x Desmarques:** atacantes sin pelota hacen movimientos para ofrecerse
-      / abrir el juego (hoy sostienen su base). De paso -> mas laterales/corners.
+reanudaciones, G2 marca zonal, G3 pases corto/largo, G3.x desmarques, G4
+quite/faltas/tiros libres. Falta:
 - [ ] **G5 Rebotes / pelotas sueltas raras:** remates al palo/tapados, despejes,
       controles que escupen la pelota. (Mucho emerge de G2/G3; aca se afina.)
 - [ ] **G6 Rarezas:** mano, offside, etc. (sabor, al final).

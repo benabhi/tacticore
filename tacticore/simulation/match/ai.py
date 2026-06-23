@@ -219,6 +219,39 @@ def referee_velocity(ref, state: MatchState) -> Vec2:
     return arrive(ref.position, target, _REF_MAX_SPEED)
 
 
+# --- Desmarques / movimiento off-ball del ataque (G3.x) ---
+# Cuanto sube el atacante sin pelota hacia el arco: de _RUN_MIN a _RUN_MAX segun work_rate.
+_RUN_MIN_ADVANCE = 4.0
+_RUN_MAX_ADVANCE = 14.0
+# Si un rival esta mas cerca que esto del punto de desmarque, se busca espacio.
+_RUN_SPACE_RADIUS = 4.0
+_RUN_SPACE_PUSH = 4.0
+
+
+def attacking_run_target(mp: MatchPlayer, state: MatchState) -> Vec2:
+    """Punto al que se desmarca un atacante sin pelota: adelantado y en espacio.
+
+    Sube desde su ancla hacia el arco rival (mas con mas `work_rate`) y, si tiene
+    un rival encima, se corre a un costado para ofrecerse libre.
+    """
+    goal = attacking_goal(state, mp.team)
+    base = mp.base_position
+    advance = _lerp(_RUN_MIN_ADVANCE, _RUN_MAX_ADVANCE, mp.player.work_rate / 100.0)
+    target = base + (goal - base).normalized() * advance
+    rivals = state.team(_other(mp.team))
+    if rivals:
+        nearest = min(rivals, key=lambda o: o.position.distance_to(target))
+        gap = nearest.position.distance_to(target)
+        if 1e-6 < gap < _RUN_SPACE_RADIUS:
+            target = target + (target - nearest.position).normalized() * _RUN_SPACE_PUSH
+    return target
+
+
+def attacking_run_velocity(mp: MatchPlayer, state: MatchState) -> Vec2:
+    """Velocidad de un atacante sin pelota mientras su equipo ataca (desmarque)."""
+    return arrive(mp.position, attacking_run_target(mp, state), max_speed(mp.player))
+
+
 # Hasta esta distancia (m) un pase se considera "corto"; mas alla es "largo".
 _SHORT_PASS_RANGE = 18.0
 

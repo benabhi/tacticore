@@ -274,8 +274,8 @@ class MatchEngine:
                 else:
                     mp.velocity = ai.marking_velocity(mp, state)
             else:
-                # Companero del que tiene la pelota: por ahora sostiene posicion.
-                mp.velocity = ai.decide_velocity(mp, state, is_chaser=False)
+                # Companero del que tiene la pelota: se desmarca (sube y busca espacio).
+                mp.velocity = ai.attacking_run_velocity(mp, state)
             mp.position = pitch.clamp(mp.position + mp.velocity * dt)
 
     def _owner_action(self, owner) -> Vec2:
