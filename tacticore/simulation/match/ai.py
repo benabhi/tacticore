@@ -132,6 +132,74 @@ def best_pass_target(
     return max(pool, key=openness)
 
 
+# --- Marca / defensa (G2) ---
+# Radio de la zona que cubre un defensor: de _ZONE_MIN a _ZONE_MAX segun work_rate.
+_ZONE_MIN_R = 8.0
+_ZONE_MAX_R = 18.0
+# Distancia a la que se planta del rival al marcar: de _MARK_LOOSE (flojo) a
+# _MARK_TIGHT (pegado) segun positioning/anticipation.
+_MARK_TIGHT = 1.2
+_MARK_LOOSE = 3.5
+
+
+def _lerp(a: float, b: float, t: float) -> float:
+    """Interpola entre a y b con t en [0, 1] (acotado)."""
+    t = min(max(t, 0.0), 1.0)
+    return a + (b - a) * t
+
+
+def own_goal(state: MatchState, side: Side) -> Vec2:
+    """Arco que defiende el equipo `side`."""
+    return state.pitch.home_goal if side is Side.HOME else state.pitch.away_goal
+
+
+def zone_radius(player: Player) -> float:
+    """Radio (m) de la zona que cubre el defensor; mas grande con mas work_rate."""
+    return _lerp(_ZONE_MIN_R, _ZONE_MAX_R, player.work_rate / 100.0)
+
+
+def _mark_distance(player: Player) -> float:
+    """Distancia (m) a la que marca: mas chica (pegado) con mejor lectura."""
+    quality = (player.positioning + player.anticipation) / 200.0
+    return _lerp(_MARK_LOOSE, _MARK_TIGHT, quality)
+
+
+def marking_assignment(defender: MatchPlayer, state: MatchState) -> MatchPlayer | None:
+    """A quien marca este defensor (o None = sostener la zona).
+
+    Este es el "seam" tactico: hoy devuelve el default automatico (zonal con
+    enganche) = el rival mas peligroso dentro de la zona del defensor. Mas
+    adelante, una orden del manager (`SetMarking`) puede fijar una marca manual
+    (hombre a hombre, doble marca) y se consultaria aca primero.
+    """
+    rivals = state.team(_other(defender.team))
+    radius = zone_radius(defender.player)
+    center = defender.base_position
+    in_zone = [o for o in rivals if o.position.distance_to(center) <= radius]
+    if not in_zone:
+        return None
+    goal = own_goal(state, defender.team)
+    # El mas peligroso = el rival en zona mas cerca del arco propio.
+    return min(in_zone, key=lambda o: o.position.distance_to(goal))
+
+
+def marking_point(defender: MatchPlayer, mark: MatchPlayer, state: MatchState) -> Vec2:
+    """Donde se para el defensor para marcar: del lado del arco (goal-side)."""
+    goal = own_goal(state, defender.team)
+    dist = _mark_distance(defender.player)
+    goal_side = (goal - mark.position).normalized() * dist
+    return mark.position + goal_side
+
+
+def marking_velocity(defender: MatchPlayer, state: MatchState) -> Vec2:
+    """Velocidad de un defensor que marca su zona/rival (no es el que presiona)."""
+    mark = marking_assignment(defender, state)
+    if mark is None:
+        return arrive(defender.position, defender.base_position, max_speed(defender.player))
+    target = marking_point(defender, mark, state)
+    return arrive(defender.position, target, max_speed(defender.player))
+
+
 # El arbitro sigue la jugada a esta distancia (m) y corre a esta velocidad (m/s).
 _REF_FOLLOW_DIST = 12.0
 _REF_MAX_SPEED = 6.5

@@ -310,6 +310,17 @@ por dependencias:
   posicion. Que los defensores marquen/cubran al rival cercano -> mas jugadores
   en juego, intercepciones y pelotas sueltas a disputar. *Es el paso que mas
   "vivo" pone al partido (y el mas dificil): empezar minimal.*
+  - **Modelo extensible (decidido):** la marca es una **asignacion por defensor**
+    = `ZONA` (cuida area, engancha al que entra) o `MARCAR(rival)` (hombre a
+    hombre). De ahi salen zonal / hombre / hibrido / doble-marca (varios al mismo
+    rival), sin rehacer. La IA consulta "asignacion de este defensor": hoy
+    siempre devuelve el **default automatico (zonal con enganche)**; mas adelante
+    el manager la fija por **comando** `SetMarking(jugador, ...)` (estilo
+    `SetPlayerZone`, replayable) desde la UI de tactica.
+  - **Atributos (siempre):** `speed`/`acceleration` = velocidad de cierre;
+    `positioning` = ubicacion goal-side; `anticipation` = reaccion/tightness;
+    `work_rate` = radio de zona / cuanto sale a cubrir. `strength`/`tackling` =
+    duelo y robo -> G4 (G2 solo posiciona y presiona, no roba).
 - **G3. Pases cortos vs largos + intercepcion.** Decidir corto (seguro) vs largo
   (cambio de juego, riesgoso) segun presion/espacio; un marcador puede cortar el
   pase; control fallido -> pelota suelta. Calidad segun atributos.

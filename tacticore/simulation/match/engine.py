@@ -159,19 +159,47 @@ class MatchEngine:
 
     def _move_players(self, dt: float) -> None:
         state = self.state
-        pitch = state.pitch
         owner = state.ball.owner
+        if owner is None:
+            self._move_loose_ball(dt)
+        else:
+            self._move_with_owner(dt, owner)
+
+    def _move_loose_ball(self, dt: float) -> None:
+        """Pelota suelta: cada equipo manda a su mas cercano; el resto sostiene."""
+        state = self.state
+        pitch = state.pitch
         chasers = {
             id(ai.team_ball_chaser(state, Side.HOME)),
             id(ai.team_ball_chaser(state, Side.AWAY)),
         }
         for mp in state.all_players():
+            if ai.is_goalkeeper(mp):
+                mp.velocity = ai.goalkeeper_velocity(mp, state)
+            else:
+                mp.velocity = ai.decide_velocity(mp, state, id(mp) in chasers)
+            mp.position = pitch.clamp(mp.position + mp.velocity * dt)
+
+    def _move_with_owner(self, dt: float, owner) -> None:
+        """Hay dueno: un equipo ataca; el otro presiona la pelota y marca."""
+        state = self.state
+        pitch = state.pitch
+        defending = _other(owner.team)
+        presser = ai.team_ball_chaser(state, defending)
+        for mp in state.all_players():
             if mp is owner:
                 mp.velocity = self._owner_action(mp)
             elif ai.is_goalkeeper(mp):
                 mp.velocity = ai.goalkeeper_velocity(mp, state)
+            elif mp.team is defending:
+                # Uno presiona la pelota; el resto marca su zona/rival.
+                if mp is presser:
+                    mp.velocity = ai.decide_velocity(mp, state, is_chaser=True)
+                else:
+                    mp.velocity = ai.marking_velocity(mp, state)
             else:
-                mp.velocity = ai.decide_velocity(mp, state, id(mp) in chasers)
+                # Companero del que tiene la pelota: por ahora sostiene posicion.
+                mp.velocity = ai.decide_velocity(mp, state, is_chaser=False)
             mp.position = pitch.clamp(mp.position + mp.velocity * dt)
 
     def _owner_action(self, owner) -> Vec2:
