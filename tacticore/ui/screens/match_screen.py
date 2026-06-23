@@ -12,6 +12,7 @@ from textual.widgets import Static
 from ...core.rng import new_rng
 from ...domain.club import Club
 from ...simulation.match import MatchEngine, MatchPhase, kickoff_state
+from ...simulation.match.narration import narrate
 from ..widgets.pitch import MatchPitch
 from .base_screen import BaseScreen
 
@@ -39,6 +40,11 @@ class MatchScreen(BaseScreen):
     MatchPitch {
         height: 1fr;
     }
+    #log {
+        height: 1;
+        background: black;
+        color: white;
+    }
     """
 
     def __init__(self, home: Club, away: Club, seed: int = 0, **kwargs) -> None:
@@ -48,10 +54,12 @@ class MatchScreen(BaseScreen):
         self._seed = seed
         self._paused = False
         self._timer = None
+        self._log_shown = 0  # cuantos eventos del relato ya mostramos
 
     def compose_viewport(self) -> ComposeResult:
         yield Static("", id="hud")
         yield MatchPitch(id="pitch")
+        yield Static("", id="log")
 
     def on_mount(self) -> None:
         state = kickoff_state(self._home, self._away)
@@ -74,6 +82,14 @@ class MatchScreen(BaseScreen):
             self._engine.step()
         self.query_one("#pitch", MatchPitch).refresh()
         self._update_hud()
+        self._update_commentary()
+
+    def _update_commentary(self) -> None:
+        """Muestra el relato del ultimo evento nuevo en la linea de abajo."""
+        log = self._engine.state.log
+        if len(log) > self._log_shown:
+            self.query_one("#log", Static).update(narrate(log[-1]))
+            self._log_shown = len(log)
 
     def _update_hud(self) -> None:
         state = self._engine.state

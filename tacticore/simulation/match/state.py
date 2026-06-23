@@ -10,6 +10,7 @@ from enum import Enum
 
 from ...domain.club import Club
 from .entities import Ball, MatchPlayer, Referee, Side
+from .events import MatchEvent
 from .field import Pitch
 from .formation import DEFAULT_FORMATIONS, Formation, pick_lineup, slot_to_meters
 from .geometry import Vec2
@@ -39,6 +40,7 @@ class MatchState:
     phase: MatchPhase = MatchPhase.KICKOFF
     last_touch: Side | None = None  # equipo que toco la pelota por ultima vez
     last_event: str | None = None   # ultimo evento (para el HUD): Gol, Lateral, ...
+    log: list[MatchEvent] = field(default_factory=list)  # relato estructurado
 
     def all_players(self) -> list[MatchPlayer]:
         """Todos los jugadores en cancha (local + visitante)."""

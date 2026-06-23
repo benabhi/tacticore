@@ -8,6 +8,7 @@ proximos pasos de la Fase B (ver docs/DESIGN.md).
 from .commands import Command, SetPlayerZone
 from .engine import DEFAULT_DT, MatchEngine
 from .entities import Ball, MatchPlayer, Referee, Side
+from .events import MatchEvent
 from .field import GridMap, Pitch
 from .formation import DEFAULT_FORMATIONS, Formation, FormationSlot
 from .geometry import Rect, Vec2
@@ -22,6 +23,7 @@ __all__ = [
     "FormationSlot",
     "GridMap",
     "MatchEngine",
+    "MatchEvent",
     "MatchPhase",
     "MatchPlayer",
     "MatchState",

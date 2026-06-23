@@ -20,6 +20,7 @@ import random
 from . import ai
 from .commands import Command
 from .entities import Side
+from .events import MatchEvent
 from .geometry import Vec2
 from .state import MatchPhase, MatchState
 
@@ -81,6 +82,7 @@ class MatchEngine:
         self._rng = rng or random.Random()
         self._kick_cooldown = 0.0
         self._tackle_cooldown = 0.0
+        self._last_kicker = None  # ultimo que pateo (para nombrar al autor del gol)
         self._tick = 0
         # Si hay un saque pendiente (lateral/corner/saque de arco/tiro libre),
         # solo este equipo puede tomar la pelota hasta que la ponga en juego.
@@ -125,6 +127,18 @@ class MatchEngine:
         """Avanza `duration` segundos en pasos de `dt`."""
         for _ in range(int(round(duration / dt))):
             self.step(dt)
+
+    def _log(self, kind: str, player=None, team: Side | None = None) -> None:
+        """Registra un evento estructurado del partido (para el relato)."""
+        self.state.log.append(
+            MatchEvent(
+                tick=self._tick,
+                clock=self.state.clock,
+                kind=kind,
+                team=team or (player.team if player is not None else None),
+                player=player.name if player is not None else None,
+            )
+        )
 
     # --- Internos ---
 
@@ -181,6 +195,7 @@ class MatchEngine:
             ball.velocity = Vec2(0.0, 0.0)
             self._restart_side = None
             self.state.last_event = "Atajada"
+            self._log("atajada", player=gk)
             return
         # Rebote: la despeja sin control, hacia afuera del arco y con angulo al azar.
         own = ai.own_goal(self.state, gk.team)
@@ -197,6 +212,7 @@ class MatchEngine:
         ball.owner = None
         self._kick_cooldown = _KICK_COOLDOWN  # que no la re-agarre al instante
         self.state.last_event = "Rebote"
+        self._log("rebote", player=gk)
 
     def _reach(self, mp) -> float:
         """Radio (m) al que un jugador domina la pelota; mayor para el arquero en su area."""
@@ -242,10 +258,12 @@ class MatchEngine:
             ball.velocity = Vec2(0.0, 0.0)
             self.state.last_touch = tackler.team
             self.state.last_event = "Quite"
+            self._log("quite", player=tackler)
             return
         # Fallo: chance de falta (mayor si lo superaron o el tackler es flojo).
         p_foul = _clamp(0.20 + (c.dribbling - t.tackling) / 350.0, 0.05, 0.5)
         if self._rng.random() < p_foul:
+            self._log("falta", player=tackler)
             self._award_free_kick(carrier)
 
     def _award_set_piece(self, spot: Vec2, attacking_side: Side, event: str) -> None:
@@ -271,6 +289,7 @@ class MatchEngine:
     def _award_handball(self, offender) -> None:
         """Mano: tiro libre (o penal) para el rival del que la toco con la mano."""
         self.state.last_touch = offender.team
+        self._log("mano", player=offender)
         self._award_set_piece(
             self.state.ball.position, _other(offender.team), "Mano"
         )
@@ -285,6 +304,7 @@ class MatchEngine:
         self._restart_side = defending
         self.state.last_touch = owner.team
         self.state.last_event = "Offside"
+        self._log("offside", player=receiver)
 
     def _move_referee(self, dt: float) -> None:
         """El arbitro trota siguiendo la jugada, sin tocar la pelota."""
@@ -349,6 +369,7 @@ class MatchEngine:
                 self._kick(owner, target.position, _CLEAR_SPEED)
             else:
                 self._kick(owner, goal, _CLEAR_SPEED)
+            self._log("despeje", player=owner)
             return Vec2(0.0, 0.0)
 
         # Cerca del arco -> remate apuntado a un palo.
@@ -393,6 +414,7 @@ class MatchEngine:
         accuracy = owner.player.shooting / 100.0
         target_y = goal.y + aim_side * half * (0.4 + 0.6 * accuracy)
         target_y += self._rng.uniform(-1.0, 1.0) * (1.0 - accuracy) * half * 1.5
+        self._log("remate", player=owner)
         self._kick(owner, Vec2(goal.x, target_y), _SHOOT_SPEED)
 
     def _pass(self, owner, mate, is_long: bool) -> None:
@@ -422,6 +444,7 @@ class MatchEngine:
         ball.velocity = (target - kicker.position).normalized() * speed
         ball.owner = None
         self.state.last_touch = kicker.team
+        self._last_kicker = kicker
         self._kick_cooldown = _KICK_COOLDOWN
 
     def _update_ball(self, dt: float) -> None:
@@ -496,6 +519,10 @@ class MatchEngine:
         ball.owner = None
         self._restart_side = restart_side
         state.last_event = event
+        self._log(
+            {"Lateral": "lateral", "Corner": "corner", "Saque de arco": "saque_arco"}[event],
+            team=restart_side,
+        )
 
     def _goal_scored(self, point: Vec2) -> Side | None:
         """Equipo que anota si `point` cruzo una linea de arco entre los palos."""
@@ -515,6 +542,7 @@ class MatchEngine:
         else:
             self.state.score_away += 1
         self.state.last_event = "Gol"
+        self._log("gol", player=self._last_kicker, team=side)
         self._reset_for_kickoff()
 
     def _reset_for_kickoff(self) -> None:

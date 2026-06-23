@@ -385,13 +385,15 @@ Falta:
       entorpecer. Verificado: a lo largo recorre toda la cancha, pero a lo ancho
       queda en la franja central porque la pelota no se abre (mismo motivo que
       los pocos laterales/corners).
-- [ ] **Log de eventos estructurado (reemplaza el `last_event` string):** lista
-      de eventos con tipo + jugador(es) + metadata (ej. `Gol(jugador, tipo)`,
-      `Quite(jugador, estilo, exito)`, `Pase(de, a, ok)`). Cimiento compartido de:
-      mensajes cortos de lo que hizo el jugador, linea de eventos clave, stats en
-      vivo, y triggers de **moral** (ej. boost por gol de chilena). Hacerlo
-      estructurado desde el dia uno. Hoy solo guardamos un string grueso y ni el
-      autor del gol.
+- [x] **Log de eventos estructurado (base):** `MatchState.log` acumula
+      `MatchEvent(tick, clock, kind, team, player)` en cada momento (gol, remate,
+      despeje, atajada, rebote, quite, falta, offside, mano, lateral, corner,
+      saque de arco). `narration.narrate(event)` arma la linea de relato (ES,
+      <=80) que se muestra en la fila de abajo del `watch_match`. Es el cimiento
+      de stats en vivo y de la moral.
+  - [ ] **Pendiente (relato rico):** variantes/aleatoriedad por evento, mas tipos
+        (tarjetas cuando existan), `kind` de accion (chilena/cabezazo con el eje z),
+        y metadata para stats (pases ok/err, remates al arco, etc.).
 - [ ] **Juego aereo (eje z / altura de la pelota):** prerequisito para distinguir
       cabezazo / chilena / volea / centros / duelos aereos. Hoy la pelota es 2D
       sin altura; `heading`/`jumping`/`aerial_reach` ya existen pero no se usan.
