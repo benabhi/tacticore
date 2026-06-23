@@ -329,9 +329,11 @@ por dependencias:
   - [pendiente] **Desmarques (movimiento off-ball del ataque):** hoy los
     atacantes sin pelota sostienen su base; deberian ofrecerse/abrir el juego
     (de paso aparecen mas laterales/corners). Sub-paso aparte.
-- **G4. Quite + faltas + tiros libres.** Un defensor cerca puede intentar quitar;
-  exito gana la pelota, fallo puede ser falta -> tiro libre (reusa el balon
-  parado de G1). Tarjetas mas adelante.
+- **G4. Quite + faltas + tiros libres.** [hecho] Un defensor pegado al que lleva
+  la pelota intenta el quite: exito (`tackling` vs `dribbling` +`strength`) gana
+  la pelota ("Quite"); el fallo puede ser falta -> tiro libre del rival (reusa el
+  balon parado de G1), o penal si la falta es dentro del area. Tarjetas mas
+  adelante.
 - **G5. Rebotes y pelotas sueltas "raras".** Remates tapados/al palo, despejes,
   controles que escupen la pelota -> queda viva y los jugadores van a buscarla.
   (Mucho emerge de G2/G3; aca se afina.)
@@ -366,12 +368,10 @@ Resumen unico de lo que falta. **Principio transversal:** toda conducta del
 partido usa los **atributos** del jugador (no constantes uniformes).
 
 **Jugabilidad del motor (Fase G) — prioridad actual.** Hecho: G0 arbitro, G1
-reanudaciones, G2 marca zonal, G3 pases corto/largo. Falta:
+reanudaciones, G2 marca zonal, G3 pases corto/largo, G4 quite/faltas/tiros
+libres. Falta:
 - [ ] **G3.x Desmarques:** atacantes sin pelota hacen movimientos para ofrecerse
       / abrir el juego (hoy sostienen su base). De paso -> mas laterales/corners.
-- [ ] **G4 Quite + faltas + tiros libres:** robo real con `tackling` vs
-      `dribbling` (+`strength` en el duelo); fallo puede ser falta -> tiro libre
-      (reusa el balon parado de G1). El arbitro (G0) cobra.
 - [ ] **G5 Rebotes / pelotas sueltas raras:** remates al palo/tapados, despejes,
       controles que escupen la pelota. (Mucho emerge de G2/G3; aca se afina.)
 - [ ] **G6 Rarezas:** mano, offside, etc. (sabor, al final).

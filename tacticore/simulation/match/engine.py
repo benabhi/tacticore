@@ -44,6 +44,9 @@ _GK_REACH = 1.7           # el arquero domina la pelota a este radio dentro del 
 _CLEAR_SPEED = 24.0       # velocidad del despeje del arquero (m/s)
 _GOAL_KICK_DEPTH = 5.5    # el saque de arco sale desde el borde del area chica (m)
 _RESTART_NUDGE = 0.4      # la pelota del saque queda esta distancia adentro del limite
+_TACKLE_RADIUS = 1.5      # un defensor a esta distancia del que lleva intenta el quite (m)
+_TACKLE_COOLDOWN = 0.6    # tras un intento de quite, espera este rato (s)
+_FOUL_RECOVER = 1.0       # tras una falta, no se vuelve a quitar por este rato (s)
 
 
 def _other(side: Side) -> Side:
@@ -54,6 +57,11 @@ def _other(side: Side) -> Side:
 def _nudge_inside(coord: float, maximum: float) -> float:
     """Lleva una coordenada del borde (0 o maximum) a un pelin adentro del campo."""
     return _RESTART_NUDGE if coord <= 0.0 else maximum - _RESTART_NUDGE
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    """Acota un valor al rango [low, high]."""
+    return min(max(value, low), high)
 
 
 class MatchEngine:
@@ -68,9 +76,10 @@ class MatchEngine:
         self.state = state
         self._rng = rng or random.Random()
         self._kick_cooldown = 0.0
+        self._tackle_cooldown = 0.0
         self._tick = 0
-        # Si hay un saque pendiente (lateral/corner/saque de arco), solo este
-        # equipo puede tomar la pelota hasta que la ponga en juego.
+        # Si hay un saque pendiente (lateral/corner/saque de arco/tiro libre),
+        # solo este equipo puede tomar la pelota hasta que la ponga en juego.
         self._restart_side: Side | None = None
         # Comandos pendientes agrupados por el tick en que se aplican.
         self._pending: dict[int, list[Command]] = {}
@@ -99,7 +108,9 @@ class MatchEngine:
         if self.state.phase is MatchPhase.KICKOFF:
             self._kickoff()
         self._kick_cooldown = max(0.0, self._kick_cooldown - dt)
+        self._tackle_cooldown = max(0.0, self._tackle_cooldown - dt)
         self._acquire_possession()
+        self._resolve_tackle()  # un defensor pegado puede intentar quitar
         self._move_players(dt)  # la accion del que lleva puede soltar la pelota
         self._update_ball(dt)
         self._move_referee(dt)
@@ -153,6 +164,68 @@ class MatchEngine:
             if own_area.contains(mp.position):
                 return _GK_REACH
         return _CONTROL_RADIUS
+
+    def _resolve_tackle(self) -> None:
+        """Si un defensor esta pegado al que lleva la pelota, intenta el quite."""
+        if self._tackle_cooldown > 0.0:
+            return
+        carrier = self.state.ball.owner
+        if carrier is None:
+            return
+        defenders = [
+            mp
+            for mp in self.state.team(_other(carrier.team))
+            if not ai.is_goalkeeper(mp)
+        ]
+        if not defenders:
+            return
+        tackler = min(defenders, key=lambda mp: mp.position.distance_to(carrier.position))
+        if tackler.position.distance_to(carrier.position) > _TACKLE_RADIUS:
+            return
+        self._tackle_cooldown = _TACKLE_COOLDOWN
+        self._attempt_tackle(tackler, carrier)
+
+    def _attempt_tackle(self, tackler, carrier) -> None:
+        """Resuelve el quite: `tackling` vs `dribbling` (+`strength`). Puede ser falta."""
+        t = tackler.player
+        c = carrier.player
+        p_win = _clamp(
+            0.45 + (t.tackling - c.dribbling) / 220.0 + (t.strength - c.strength) / 600.0,
+            0.08,
+            0.85,
+        )
+        if self._rng.random() < p_win:
+            # Quite limpio: el defensor se queda con la pelota.
+            ball = self.state.ball
+            ball.owner = tackler
+            ball.velocity = Vec2(0.0, 0.0)
+            self.state.last_touch = tackler.team
+            self.state.last_event = "Quite"
+            return
+        # Fallo: chance de falta (mayor si lo superaron o el tackler es flojo).
+        p_foul = _clamp(0.20 + (c.dribbling - t.tackling) / 350.0, 0.05, 0.5)
+        if self._rng.random() < p_foul:
+            self._award_free_kick(carrier)
+
+    def _award_free_kick(self, victim) -> None:
+        """Falta: la pelota se planta para el equipo que recibio la infraccion."""
+        state = self.state
+        pitch = state.pitch
+        attacking = victim.team
+        defending = _other(attacking)
+        spot = pitch.clamp(victim.position)
+        if pitch.penalty_area(defending is Side.HOME).contains(spot):
+            spot = pitch.penalty_spot(defending is Side.HOME)
+            event = "Penal"
+        else:
+            event = "Tiro libre"
+        ball = state.ball
+        ball.owner = None
+        ball.position = spot
+        ball.velocity = Vec2(0.0, 0.0)
+        self._restart_side = attacking
+        self._tackle_cooldown = _FOUL_RECOVER
+        state.last_event = event
 
     def _move_referee(self, dt: float) -> None:
         """El arbitro trota siguiendo la jugada, sin tocar la pelota."""
@@ -393,5 +466,6 @@ class MatchEngine:
         ball.position = state.pitch.center
         ball.velocity = Vec2(0.0, 0.0)
         self._kick_cooldown = 0.0
+        self._tackle_cooldown = 0.0
         self._restart_side = None
         state.phase = MatchPhase.KICKOFF
