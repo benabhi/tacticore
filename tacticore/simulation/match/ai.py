@@ -219,6 +219,46 @@ def referee_velocity(ref, state: MatchState) -> Vec2:
     return arrive(ref.position, target, _REF_MAX_SPEED)
 
 
+# Hasta esta distancia (m) un pase se considera "corto"; mas alla es "largo".
+_SHORT_PASS_RANGE = 18.0
+
+
+def pick_pass(
+    owner: MatchPlayer, state: MatchState, max_dist: float
+) -> tuple[MatchPlayer, bool] | None:
+    """Elige a quien pasarle y si es pase corto o largo (sin aplicar el error).
+
+    Premia al companero mas desmarcado y mas adelantado. El pase largo es
+    atractivo solo si el `owner` tiene `vision` para encontrarlo (si no, juega
+    seguro y corto). Devuelve (companero, es_largo) o None si no hay opcion.
+    """
+    rivals = state.team(_other(owner.team))
+    goal = attacking_goal(state, owner.team)
+    owner_to_goal = owner.position.distance_to(goal)
+    mates = [m for m in state.team(owner.team) if m is not owner]
+    in_range = [m for m in mates if m.position.distance_to(owner.position) <= max_dist]
+    if not in_range:
+        return None
+
+    def openness(m: MatchPlayer) -> float:
+        return min((o.position.distance_to(m.position) for o in rivals), default=999.0)
+
+    def score(m: MatchPlayer) -> float:
+        s = openness(m)
+        if m.position.distance_to(owner.position) > _SHORT_PASS_RANGE:
+            # Pase largo: mas riesgoso, solo si el owner lo "ve" (vision).
+            s *= 0.5 + 0.5 * (owner.player.vision / 100.0)
+        return s
+
+    # Se prioriza progresar: companeros mas cerca del arco rival que el que tiene
+    # la pelota; si no hay, se elige entre todos. Entre el pool, el mas desmarcado.
+    ahead = [m for m in in_range if m.position.distance_to(goal) < owner_to_goal - 1.0]
+    pool = ahead or in_range
+    best = max(pool, key=score)
+    is_long = best.position.distance_to(owner.position) > _SHORT_PASS_RANGE
+    return best, is_long
+
+
 def decide_velocity(mp: MatchPlayer, state: MatchState, is_chaser: bool) -> Vec2:
     """Velocidad deseada de un jugador en este tick.
 

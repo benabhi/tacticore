@@ -33,7 +33,10 @@ _KICK_COOLDOWN = 0.4      # tras patear, nadie puede dominarla un ratito (s)
 _SHOOT_RANGE = 25.0       # distancia al arco para intentar el remate (m)
 _PRESSURE_RADIUS = 1.6    # si un rival esta mas cerca, el que lleva la suelta (m)
 _MAX_PASS_DIST = 35.0     # alcance maximo de un pase (m)
-_PASS_SPEED = 14.0        # velocidad de un pase (m/s)
+_PASS_SPEED = 14.0        # velocidad de un pase corto (m/s)
+_LONG_PASS_SPEED = 19.0   # velocidad de un pase largo (m/s)
+_SHORT_PASS_ERROR = 3.0   # desvio maximo de un pase corto con passing=0 (m)
+_LONG_PASS_ERROR = 8.0    # desvio maximo de un pase largo con passing=0 (m)
 _SHOOT_SPEED = 25.0       # velocidad de un remate (m/s)
 _DRIBBLE_FACTOR = 0.85    # se gambetea un poco mas lento que corriendo libre
 _DRIBBLE_OFFSET = 0.5     # la pelota va esta distancia por delante del que lleva
@@ -221,12 +224,13 @@ class MatchEngine:
             self._shoot(owner, goal)
             return Vec2(0.0, 0.0)
 
-        # Presionado -> pase al mejor companero (o remate si no hay).
+        # Presionado -> pase (corto o largo) al mejor companero, o remate si no hay.
         rival = ai.nearest_opponent(owner, state)
         if rival.position.distance_to(owner.position) < _PRESSURE_RADIUS:
-            target = ai.best_pass_target(owner, state, _MAX_PASS_DIST)
-            if target is not None:
-                self._kick(owner, target.position, _PASS_SPEED)
+            pick = ai.pick_pass(owner, state, _MAX_PASS_DIST)
+            if pick is not None:
+                mate, is_long = pick
+                self._pass(owner, mate, is_long)
             else:
                 self._kick(owner, goal, _SHOOT_SPEED)
             return Vec2(0.0, 0.0)
@@ -255,6 +259,27 @@ class MatchEngine:
         target_y = goal.y + aim_side * half * (0.4 + 0.6 * accuracy)
         target_y += self._rng.uniform(-1.0, 1.0) * (1.0 - accuracy) * half * 1.5
         self._kick(owner, Vec2(goal.x, target_y), _SHOOT_SPEED)
+
+    def _pass(self, owner, mate, is_long: bool) -> None:
+        """Pasa la pelota a un companero, con error segun `passing` del que pasa.
+
+        El pase largo va mas rapido y se desvia mas. Un pase desviado puede
+        terminar en un rival (intercepcion) o salir del campo (lateral): la
+        pelota queda en lugares que hay que ir a buscar.
+        """
+        speed = _LONG_PASS_SPEED if is_long else _PASS_SPEED
+        target = mate.position + self._pass_error(owner.player, is_long)
+        self._kick(owner, target, speed)
+
+    def _pass_error(self, player, is_long: bool) -> Vec2:
+        """Desvio del pase: inversamente proporcional a `passing`, mayor si es largo."""
+        inaccuracy = 1.0 - player.passing / 100.0
+        max_off = (_LONG_PASS_ERROR if is_long else _SHORT_PASS_ERROR) * inaccuracy
+        if max_off <= 0.0:
+            return Vec2(0.0, 0.0)
+        angle = self._rng.uniform(0.0, 2.0 * math.pi)
+        radius = self._rng.uniform(0.0, max_off)
+        return Vec2(math.cos(angle) * radius, math.sin(angle) * radius)
 
     def _kick(self, kicker, target: Vec2, speed: float) -> None:
         """Patea la pelota desde `kicker` hacia `target` y la suelta."""

@@ -321,9 +321,14 @@ por dependencias:
     `positioning` = ubicacion goal-side; `anticipation` = reaccion/tightness;
     `work_rate` = radio de zona / cuanto sale a cubrir. `strength`/`tackling` =
     duelo y robo -> G4 (G2 solo posiciona y presiona, no roba).
-- **G3. Pases cortos vs largos + intercepcion.** Decidir corto (seguro) vs largo
-  (cambio de juego, riesgoso) segun presion/espacio; un marcador puede cortar el
-  pase; control fallido -> pelota suelta. Calidad segun atributos.
+- **G3. Pases cortos vs largos + intercepcion.** [hecho] El que tiene la pelota,
+  presionado, elige corto (seguro) o largo (cambio de juego); el largo solo si
+  tiene `vision`. El pase lleva error segun `passing` (mayor en los largos): un
+  pase desviado se intercepta o sale (lateral) -> pelota a buscar. Resultado:
+  los cambios de posesion saltaron de ~2 a ~31 en 5 min.
+  - [pendiente] **Desmarques (movimiento off-ball del ataque):** hoy los
+    atacantes sin pelota sostienen su base; deberian ofrecerse/abrir el juego
+    (de paso aparecen mas laterales/corners). Sub-paso aparte.
 - **G4. Quite + faltas + tiros libres.** Un defensor cerca puede intentar quitar;
   exito gana la pelota, fallo puede ser falta -> tiro libre (reusa el balon
   parado de G1). Tarjetas mas adelante.

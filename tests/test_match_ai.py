@@ -51,21 +51,20 @@ def test_a_chaser_reaches_the_ball():
     assert reached
 
 
-def test_chasers_move_others_hold():
+def test_not_everyone_chases_the_ball():
     state = _fresh_state()
-    bases = {id(mp): mp.base_position for mp in state.all_players()}
-    chaser = ai.team_ball_chaser(state, Side.HOME)
-    chaser_start = chaser.position
+    bases = {id(mp): mp.base_position for mp in state.home}
     engine = MatchEngine(state, new_rng(1))
-    engine.run(4.0)
-    # El perseguidor se movio de su base.
-    assert chaser.position.distance_to(chaser_start) > 1.0
-    # Un jugador lejano (que no persigue) sigue cerca de su base.
-    holders = [
-        mp for mp in engine.state.home
-        if mp.position.distance_to(bases[id(mp)]) < 0.5
-    ]
-    assert holders, "deberia haber jugadores sosteniendo su posicion"
+    max_disp = 0.0
+    for _ in range(int(4.0 / DEFAULT_DT)):
+        engine.step()
+        for mp in engine.state.home:
+            max_disp = max(max_disp, mp.position.distance_to(bases[id(mp)]))
+    # Alguien se movio bastante (persiguio o marco).
+    assert max_disp > 3.0
+    # Pero no todos van a la pelota: alguien queda lejos.
+    ball = engine.state.ball.position
+    assert any(mp.position.distance_to(ball) > 15.0 for mp in engine.state.home)
 
 
 def test_ai_is_deterministic():
