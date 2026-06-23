@@ -12,6 +12,11 @@ combinan mezclando first + last (no se reproducen personas reales).
 Es tooling de desarrollo: se corre una vez (o cuando se agregan paises).
 
     python scripts/build_name_pools.py
+
+El dataset grande NO esta versionado. Para regenerar los JSON hay que bajarlo
+y dejar los CSV por pais en datasets/names/data/ (ver README, seccion "Nombres
+por nacionalidad"). Descarga:
+https://drive.google.com/file/d/1QDbtPWGQypYxiS4pC_hHBBtbRHk9gEtr/view?usp=sharing
 """
 
 import csv
