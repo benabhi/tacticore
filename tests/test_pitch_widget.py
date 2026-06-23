@@ -41,16 +41,26 @@ def test_loose_ball_is_drawn():
     assert found
 
 
-def test_carrier_is_highlighted_and_loose_ball_hidden():
+def test_carrier_shows_ball_in_team_color():
     st = _state()
     # Forzamos que un jugador local tenga la pelota.
     st.ball.owner = st.home[3]
     st.ball.position = st.home[3].position
     chars, fg, w, h = compose_match_cells(st, 78, 24)
-    colors = {fg[r][c] for r in range(h) for c in range(w) if fg[r][c]}
-    # El que lleva la pelota va encendido y no se dibuja la pelota suelta.
-    assert HOME_OWNER_COLOR in colors
-    assert all(chars[r][c] != BALL_GLYPH for r in range(h) for c in range(w))
+    # El que la lleva se ve como 'o' en el color encendido del equipo.
+    carrier = [
+        (r, c)
+        for r in range(h)
+        for c in range(w)
+        if chars[r][c] == BALL_GLYPH and fg[r][c] == HOME_OWNER_COLOR
+    ]
+    assert carrier
+    # No hay pelota suelta amarilla mientras alguien la lleva.
+    assert all(
+        not (chars[r][c] == BALL_GLYPH and fg[r][c] == BALL_COLOR)
+        for r in range(h)
+        for c in range(w)
+    )
 
 
 def test_both_teams_appear():

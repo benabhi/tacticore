@@ -22,13 +22,14 @@ from .field import (
 )
 
 # Colores de cada equipo (ANSI estandar). Por defecto el equipo va en el tono
-# normal; el jugador que tiene la pelota se "enciende" con la variante brillante
-# para denotar la posesion (asi la pelota no titila pegada al que dribbla).
+# normal; el que lleva la pelota se "enciende" con la variante brillante.
 HOME_COLOR = "cyan"
 HOME_OWNER_COLOR = "bright_cyan"
 AWAY_COLOR = "red"
 AWAY_OWNER_COLOR = "bright_red"
-# La pelota suelta (viajando) se dibuja aparte; si alguien la lleva no se dibuja.
+# La pelota siempre se ve como 'o': amarilla si esta suelta (viajando), o en el
+# color encendido del equipo cuando un jugador la lleva (ese jugador se dibuja
+# como la 'o' en su misma celda, asi se ve la pelota y no titila al dribblar).
 BALL_COLOR = "bright_yellow"
 BALL_GLYPH = "o"  # redonda y centrada en la celda (lo mas parecido a un '.' centrado en ASCII)
 
@@ -72,16 +73,20 @@ def compose_match_cells(
 
         def place(mp, color: str, owner_color: str) -> None:
             col, row = grid.to_cell(mp.position)
-            chars[row][col] = PLAYER_GLYPH
-            fg[row][col] = owner_color if mp is owner else color
+            if mp is owner:
+                # El que lleva la pelota ES la 'o' (encendida), clavada en su
+                # celda: se ve la pelota y no titila al dribblar.
+                chars[row][col] = BALL_GLYPH
+                fg[row][col] = owner_color
+            else:
+                chars[row][col] = PLAYER_GLYPH
+                fg[row][col] = color
 
         for mp in state.home:
             place(mp, HOME_COLOR, HOME_OWNER_COLOR)
         for mp in state.away:
             place(mp, AWAY_COLOR, AWAY_OWNER_COLOR)
-        # La pelota solo se dibuja cuando esta suelta (viajando). Si alguien la
-        # lleva, la posesion se denota con el color encendido del jugador; asi se
-        # evita el titileo de la 'o' saltando entre celdas pegada al que dribbla.
+        # Pelota suelta (nadie la domina): se dibuja viajando, en amarillo.
         if owner is None:
             bc, br = grid.to_cell(state.ball.position)
             chars[br][bc] = BALL_GLYPH
