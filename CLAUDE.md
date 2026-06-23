@@ -27,16 +27,19 @@ generadores o el motor de partido.
    únicamente ASCII imprimible (`0x20`–`0x7E`). Nada de box-drawing Unicode,
    símbolos ni emojis. Objetivo: que el juego corra en **cualquier** terminal,
    al estilo de los roguelikes viejos (de ahí también el 80×25).
-3. **Solo colores ANSI estándar.** Usar únicamente los 16 colores ANSI que trae
-   toda terminal (`black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`,
-   `white` y sus variantes `bright_*`). Nada de RGB / truecolor (`#rrggbb`),
-   porque depende del soporte de la terminal.
-   - **Excepción temporal (desarrollo):** las franjas de césped de la cancha
-     usan dos verdes RGB provisionales porque en muchas terminales el `green` y
-     el `bright_green` se ven casi iguales. Está detrás del flag
-     `DEV_TRUECOLOR_GRASS` en
-     [ui/widgets/field.py](tacticore/ui/widgets/field.py); **antes de
-     cerrar el proyecto hay que ponerlo en `False`** para cumplir la directiva.
+3. **Colores: paleta central, truecolor por defecto con fallback ANSI 16.**
+   Todos los colores se definen por su ROL en un único lugar:
+   [ui/palette.py](tacticore/ui/palette.py). Hay dos modos:
+   - **TRUECOLOR (por defecto):** valores RGB. Se eligió porque muchos ANSI
+     `bright_*` vs normales se ven casi iguales en terminales modernas (nos pasó
+     con las franjas de césped y con el resaltado del que lleva la pelota), y
+     pelear con eso color por color era un parche eterno.
+   - **ANSI 16 (`TRUECOLOR=False`):** fallback para correr en cualquier terminal
+     vieja (la idea original). Usa colores de **hue distinto** (no pares
+     `bright`/normal) para que igual se entiendan.
+   - Regla práctica: **nunca** distinguir dos cosas solo por `bright_x` vs `x`;
+     agregar/editar colores **siempre** en `palette.py`, nunca hardcodeados en
+     los widgets. El código de pantalla referencia los nombres de la paleta.
 4. **Código en inglés.** Identificadores (variables, funciones, clases,
    módulos) siempre en inglés. **Esto incluye los nombres de archivo**:
    `players_screen.py`, no `jugadores_screen.py`. En cambio, el **texto que ve

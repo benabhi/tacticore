@@ -15,6 +15,8 @@ import math
 from rich.text import Text
 from textual.widget import Widget
 
+from ..palette import GRASS_DARK, GRASS_LIGHT, LINE as LINE_COLOR
+
 # --- Caracteres de la cancha (ASCII puro) ---
 CH_HLINE = "-"      # lineas horizontales
 CH_VLINE = "|"      # lineas verticales
@@ -28,21 +30,8 @@ CH_KICKOFF = "O"    # punto central (saque)
 # respecto a la columna central.
 STRIPE_WIDTH = 9             # ancho de cada franja, en columnas
 
-# EXCEPCION TEMPORAL A LA DIRECTIVA 3 (ver CLAUDE.md): la directiva pide solo
-# colores ANSI, pero en muchas terminales el verde normal y el brillante se ven
-# casi iguales y las franjas no se distinguen. Mientras desarrollamos usamos dos
-# verdes RGB para poder verlas. Antes de cerrar el proyecto hay que volver a los
-# ANSI: poner DEV_TRUECOLOR_GRASS = False.
-DEV_TRUECOLOR_GRASS = True
-
-if DEV_TRUECOLOR_GRASS:
-    GRASS_LIGHT = "#3c9a3c"   # provisional (no ANSI)
-    GRASS_DARK = "#2b7a2b"    # provisional (no ANSI)
-else:
-    GRASS_LIGHT = "bright_green"
-    GRASS_DARK = "green"
-LINE_COLOR = "bright_white"
-
+# GRASS_LIGHT / GRASS_DARK / LINE_COLOR salen de la paleta central
+# (ver ui/palette.py): un solo lugar define cada color por su rol.
 GRASS_LIGHT_STYLE = f"on {GRASS_LIGHT}"
 GRASS_DARK_STYLE = f"on {GRASS_DARK}"
 LINE_LIGHT_STYLE = f"{LINE_COLOR} on {GRASS_LIGHT}"

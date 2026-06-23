@@ -13,6 +13,7 @@ from rich.text import Text
 from textual.widget import Widget
 
 from ...simulation.match import GridMap, MatchState
+from ..palette import AWAY, AWAY_BALL, BALL, HOME, HOME_BALL
 from .field import (
     GRASS_DARK,
     GRASS_LIGHT,
@@ -21,16 +22,16 @@ from .field import (
     build_field,
 )
 
-# Colores de cada equipo (ANSI estandar). Por defecto el equipo va en el tono
-# normal; el que lleva la pelota se "enciende" con la variante brillante.
-HOME_COLOR = "cyan"
-HOME_OWNER_COLOR = "bright_cyan"
-AWAY_COLOR = "red"
-AWAY_OWNER_COLOR = "bright_red"
-# La pelota siempre se ve como 'o': amarilla si esta suelta (viajando), o en el
-# color encendido del equipo cuando un jugador la lleva (ese jugador se dibuja
-# como la 'o' en su misma celda, asi se ve la pelota y no titila al dribblar).
-BALL_COLOR = "bright_yellow"
+# Colores de cada equipo (desde la paleta central, ver ui/palette.py). Por
+# defecto el equipo va en su tono base; el que lleva la pelota se "enciende"
+# (tono mas claro) para denotar la posesion.
+HOME_COLOR = HOME
+HOME_OWNER_COLOR = HOME_BALL
+AWAY_COLOR = AWAY
+AWAY_OWNER_COLOR = AWAY_BALL
+# Pelota suelta (cuando nadie la domina): se dibuja viajando. Mientras un
+# jugador la lleva no se dibuja (el jugador queda visible como '@' encendido).
+BALL_COLOR = BALL
 BALL_GLYPH = "o"  # redonda y centrada en la celda (lo mas parecido a un '.' centrado en ASCII)
 
 # Por ahora todos los jugadores se dibujan con un unico glifo; el equipo lo
@@ -73,20 +74,16 @@ def compose_match_cells(
 
         def place(mp, color: str, owner_color: str) -> None:
             col, row = grid.to_cell(mp.position)
-            if mp is owner:
-                # El que lleva la pelota ES la 'o' (encendida), clavada en su
-                # celda: se ve la pelota y no titila al dribblar.
-                chars[row][col] = BALL_GLYPH
-                fg[row][col] = owner_color
-            else:
-                chars[row][col] = PLAYER_GLYPH
-                fg[row][col] = color
+            chars[row][col] = PLAYER_GLYPH
+            # El que lleva la pelota se "enciende" (tono mas claro del equipo).
+            fg[row][col] = owner_color if mp is owner else color
 
         for mp in state.home:
             place(mp, HOME_COLOR, HOME_OWNER_COLOR)
         for mp in state.away:
             place(mp, AWAY_COLOR, AWAY_OWNER_COLOR)
-        # Pelota suelta (nadie la domina): se dibuja viajando, en amarillo.
+        # Pelota suelta (nadie la domina): se dibuja viajando. Si alguien la
+        # lleva no se dibuja; lo denota el color encendido de ese jugador.
         if owner is None:
             bc, br = grid.to_cell(state.ball.position)
             chars[br][bc] = BALL_GLYPH
