@@ -20,7 +20,7 @@ CH_HLINE = "-"      # lineas horizontales
 CH_VLINE = "|"      # lineas verticales
 CH_JUNCTION = "+"   # esquinas y cruces
 CH_CIRCLE = "."     # circulo central (punteado)
-CH_PENALTY = "o"    # puntos de penal
+CH_PENALTY = "."    # puntos de penal (la 'o' queda libre para la pelota)
 CH_KICKOFF = "O"    # punto central (saque)
 
 # --- Colores del cesped ---

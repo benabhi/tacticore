@@ -25,7 +25,7 @@ from .field import (
 HOME_COLOR = "bright_cyan"
 AWAY_COLOR = "bright_red"
 BALL_COLOR = "bright_yellow"
-BALL_GLYPH = "O"
+BALL_GLYPH = "o"  # redonda y centrada en la celda (lo mas parecido a un '.' centrado en ASCII)
 
 
 def player_glyph(number: int | None) -> str:
