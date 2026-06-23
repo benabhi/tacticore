@@ -2,13 +2,18 @@
 
 Uso (con el venv activado):
 
-    python scripts/watch_match.py [seed]
+    python scripts/watch_match.py            # partido NUEVO al azar cada vez
+    python scripts/watch_match.py 12345      # repite exactamente la semilla 12345
 
-Genera dos clubes de fantasia y abre la pantalla de partido corriendo el motor.
+Sin argumento, cada corrida genera un cruce distinto (nacionalidades, clubes y
+desarrollo) y al salir te imprime la semilla para que puedas repetirlo. Con una
+semilla, el partido es identico (es la base del replay determinista).
+
 ESPACIO pausa, Q sale. Es una herramienta de desarrollo, no parte del flujo del
 juego (eso se integra en la Fase C).
 """
 
+import random
 import sys
 from pathlib import Path
 
@@ -22,6 +27,21 @@ from tacticore.domain.enums import LeagueTier
 from tacticore.generators import ClubGenerator
 from tacticore.ui.screens.match_screen import MatchScreen
 
+# Paises con pool de nombres disponible (ver generators/data/names/).
+_COUNTRIES = ["AR", "BE", "BR", "CL", "CO", "DE", "ES", "FR",
+              "GB", "IT", "JP", "MX", "NL", "PT", "US", "UY"]
+
+
+def _build_match(seed: int):
+    """Arma dos clubes y el contexto del partido de forma reproducible por seed."""
+    setup = new_rng(seed)
+    home_cc, away_cc = setup.sample(_COUNTRIES, 2)
+    tier = setup.choice(list(LeagueTier))
+    gen = ClubGenerator(setup)
+    home = gen.generate(squad_size=16, country_code=home_cc, tier=tier)
+    away = gen.generate(squad_size=16, country_code=away_cc, tier=tier)
+    return home, away, home_cc, away_cc, tier
+
 
 class _WatchApp(App):
     """App minima que abre directamente un partido de prueba."""
@@ -33,12 +53,23 @@ class _WatchApp(App):
         self._seed = seed
 
     def on_mount(self) -> None:
-        gen = ClubGenerator(new_rng(42))
-        home = gen.generate(squad_size=16, country_code="AR", tier=LeagueTier.C)
-        away = gen.generate(squad_size=16, country_code="BR", tier=LeagueTier.C)
+        home, away, *_ = _build_match(self._seed)
+        # El partido en si usa su propia corriente determinista por la misma seed.
         self.push_screen(MatchScreen(home, away, seed=self._seed))
 
 
 if __name__ == "__main__":
-    seed = int(sys.argv[1]) if len(sys.argv) > 1 else 7
+    if len(sys.argv) > 1:
+        seed = int(sys.argv[1])
+    else:
+        seed = random.randint(1, 9_999_999)
+
+    home, away, home_cc, away_cc, tier = _build_match(seed)
+    print(f"Partido: {home.short_name} ({home_cc}) vs {away.short_name} ({away_cc})"
+          f"  -  liga {tier.value}")
+    print(f"Semilla: {seed}   (repetilo con: python scripts/watch_match.py {seed})")
+
     _WatchApp(seed).run()
+
+    # Al salir, recordamos la semilla por si queres volver a verlo.
+    print(f"\nSemilla de ese partido: {seed}")
