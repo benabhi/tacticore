@@ -37,6 +37,8 @@ class MatchState:
     score_away: int = 0
     clock: float = 0.0  # segundos de tiempo de juego transcurridos
     phase: MatchPhase = MatchPhase.KICKOFF
+    last_touch: Side | None = None  # equipo que toco la pelota por ultima vez
+    last_event: str | None = None   # ultimo evento (para el HUD): Gol, Lateral, ...
 
     def all_players(self) -> list[MatchPlayer]:
         """Todos los jugadores en cancha (local + visitante)."""

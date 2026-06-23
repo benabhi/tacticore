@@ -39,6 +39,18 @@ _DRIBBLE_FACTOR = 0.85    # se gambetea un poco mas lento que corriendo libre
 _DRIBBLE_OFFSET = 0.5     # la pelota va esta distancia por delante del que lleva
 _GK_REACH = 1.7           # el arquero domina la pelota a este radio dentro del area (m)
 _CLEAR_SPEED = 24.0       # velocidad del despeje del arquero (m/s)
+_GOAL_KICK_DEPTH = 5.5    # el saque de arco sale desde el borde del area chica (m)
+_RESTART_NUDGE = 0.4      # la pelota del saque queda esta distancia adentro del limite
+
+
+def _other(side: Side) -> Side:
+    """El equipo contrario."""
+    return Side.HOME if side is Side.AWAY else Side.AWAY
+
+
+def _nudge_inside(coord: float, maximum: float) -> float:
+    """Lleva una coordenada del borde (0 o maximum) a un pelin adentro del campo."""
+    return _RESTART_NUDGE if coord <= 0.0 else maximum - _RESTART_NUDGE
 
 
 class MatchEngine:
@@ -54,6 +66,9 @@ class MatchEngine:
         self._rng = rng or random.Random()
         self._kick_cooldown = 0.0
         self._tick = 0
+        # Si hay un saque pendiente (lateral/corner/saque de arco), solo este
+        # equipo puede tomar la pelota hasta que la ponga en juego.
+        self._restart_side: Side | None = None
         # Comandos pendientes agrupados por el tick en que se aplican.
         self._pending: dict[int, list[Command]] = {}
         # Registro de todo lo programado (para grabar/reproducir el partido).
@@ -112,16 +127,21 @@ class MatchEngine:
         ball = self.state.ball
         if ball.owner is not None or self._kick_cooldown > 0.0:
             return
+        # Con un saque pendiente, solo el equipo que saca puede tomarla.
+        candidates = self.state.all_players()
+        if self._restart_side is not None:
+            candidates = [mp for mp in candidates if mp.team is self._restart_side]
         on_ball = [
             mp
-            for mp in self.state.all_players()
+            for mp in candidates
             if mp.position.distance_to(ball.position) <= self._reach(mp)
         ]
         if on_ball:
-            ball.owner = min(
-                on_ball, key=lambda mp: mp.position.distance_to(ball.position)
-            )
+            owner = min(on_ball, key=lambda mp: mp.position.distance_to(ball.position))
+            ball.owner = owner
             ball.velocity = Vec2(0.0, 0.0)
+            self.state.last_touch = owner.team
+            self._restart_side = None  # pelota en juego de nuevo
 
     def _reach(self, mp) -> float:
         """Radio (m) al que un jugador domina la pelota; mayor para el arquero en su area."""
@@ -213,6 +233,7 @@ class MatchEngine:
         ball = self.state.ball
         ball.velocity = (target - kicker.position).normalized() * speed
         ball.owner = None
+        self.state.last_touch = kicker.team
         self._kick_cooldown = _KICK_COOLDOWN
 
     def _update_ball(self, dt: float) -> None:
@@ -243,10 +264,50 @@ class MatchEngine:
 
         clamped = state.pitch.clamp(new_pos)
         if clamped != new_pos:
-            ball.position = clamped
-            ball.velocity = Vec2(0.0, 0.0)
+            # Salio del campo: lateral, corner o saque de arco.
+            self._restart_out_of_play(new_pos)
         else:
             ball.position = new_pos
+
+    def _restart_out_of_play(self, out_pos: Vec2) -> None:
+        """La pelota salio: decide el saque (lateral/corner/saque de arco)."""
+        state = self.state
+        pitch = state.pitch
+        last = state.last_touch
+
+        if out_pos.x < 0.0 or out_pos.x > pitch.length:
+            # Salio por la linea de fondo: corner o saque de arco.
+            end_x = 0.0 if out_pos.x < 0.0 else pitch.length
+            defending = Side.HOME if end_x == 0.0 else Side.AWAY
+            if last is defending:
+                # La toco por ultimo el que defiende -> corner del atacante.
+                corner_y = 0.0 if out_pos.y < pitch.width / 2 else pitch.width
+                spot = Vec2(
+                    _nudge_inside(end_x, pitch.length),
+                    _nudge_inside(corner_y, pitch.width),
+                )
+                restart_side = _other(defending)
+                event = "Corner"
+            else:
+                # La toco el atacante -> saque de arco del que defiende.
+                gx = _GOAL_KICK_DEPTH if end_x == 0.0 else pitch.length - _GOAL_KICK_DEPTH
+                spot = Vec2(gx, pitch.width / 2)
+                restart_side = defending
+                event = "Saque de arco"
+        else:
+            # Salio por la linea de banda: lateral del rival del ultimo toque.
+            side_y = 0.0 if out_pos.y < pitch.width / 2 else pitch.width
+            x = min(max(out_pos.x, 0.0), pitch.length)
+            spot = Vec2(x, _nudge_inside(side_y, pitch.width))
+            restart_side = _other(last) if last is not None else Side.HOME
+            event = "Lateral"
+
+        ball = state.ball
+        ball.position = spot
+        ball.velocity = Vec2(0.0, 0.0)
+        ball.owner = None
+        self._restart_side = restart_side
+        state.last_event = event
 
     def _goal_scored(self, point: Vec2) -> Side | None:
         """Equipo que anota si `point` cruzo una linea de arco entre los palos."""
@@ -265,6 +326,7 @@ class MatchEngine:
             self.state.score_home += 1
         else:
             self.state.score_away += 1
+        self.state.last_event = "Gol"
         self._reset_for_kickoff()
 
     def _reset_for_kickoff(self) -> None:
@@ -278,4 +340,5 @@ class MatchEngine:
         ball.position = state.pitch.center
         ball.velocity = Vec2(0.0, 0.0)
         self._kick_cooldown = 0.0
+        self._restart_side = None
         state.phase = MatchPhase.KICKOFF

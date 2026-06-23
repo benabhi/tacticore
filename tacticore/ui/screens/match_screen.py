@@ -85,10 +85,11 @@ class MatchScreen(BaseScreen):
             tag = "  PAUSA"
         else:
             tag = ""
+        event = f"  {state.last_event}" if state.last_event else ""
         hud = (
             f" {self._home.short_name} {state.score_home} - "
             f"{state.score_away} {self._away.short_name}"
-            f"    {mm:02d}:{ss:02d}{tag}"
+            f"    {mm:02d}:{ss:02d}{tag}{event}"
             f"    [ESPACIO] pausa  [Q] salir"
         )
         self.query_one("#hud", Static).update(hud)
