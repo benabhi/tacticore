@@ -46,3 +46,11 @@ class Ball:
     position: Vec2
     velocity: Vec2 = _ZERO
     owner: MatchPlayer | None = None  # quien la tiene (None si esta suelta)
+
+
+@dataclass
+class Referee:
+    """El arbitro: sigue la jugada a distancia. No es jugador ni toca la pelota."""
+
+    position: Vec2
+    velocity: Vec2 = _ZERO

@@ -5,13 +5,14 @@ ambos equipos, pelota, marcador, reloj y fase. `kickoff_state` arma el estado
 inicial a partir de dos clubes y una formacion.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from ...domain.club import Club
-from .entities import Ball, MatchPlayer, Side
+from .entities import Ball, MatchPlayer, Referee, Side
 from .field import Pitch
 from .formation import DEFAULT_FORMATIONS, Formation, pick_lineup, slot_to_meters
+from .geometry import Vec2
 
 
 class MatchPhase(Enum):
@@ -31,6 +32,7 @@ class MatchState:
     home: list[MatchPlayer]
     away: list[MatchPlayer]
     ball: Ball
+    referee: Referee = field(default_factory=lambda: Referee(Vec2(0.0, 0.0)))
     score_home: int = 0
     score_away: int = 0
     clock: float = 0.0  # segundos de tiempo de juego transcurridos
@@ -70,4 +72,5 @@ def kickoff_state(
     home = _place_team(home_club, Side.HOME, formation, pitch)
     away = _place_team(away_club, Side.AWAY, formation, pitch)
     ball = Ball(position=pitch.center)
-    return MatchState(pitch=pitch, home=home, away=away, ball=ball)
+    referee = Referee(position=pitch.center)
+    return MatchState(pitch=pitch, home=home, away=away, ball=ball, referee=referee)

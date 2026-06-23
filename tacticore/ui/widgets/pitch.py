@@ -13,7 +13,7 @@ from rich.text import Text
 from textual.widget import Widget
 
 from ...simulation.match import GridMap, MatchState
-from ..palette import AWAY, AWAY_BALL, BALL, HOME, HOME_BALL
+from ..palette import AWAY, AWAY_BALL, BALL, HOME, HOME_BALL, REF
 from .field import (
     GRASS_DARK,
     GRASS_LIGHT,
@@ -33,6 +33,10 @@ AWAY_OWNER_COLOR = AWAY_BALL
 # jugador la lleva no se dibuja (el jugador queda visible como '@' encendido).
 BALL_COLOR = BALL
 BALL_GLYPH = "o"  # redonda y centrada en la celda (lo mas parecido a un '.' centrado en ASCII)
+
+# Arbitro: '@' amarillo dorado que sigue la jugada a distancia.
+REF_COLOR = REF
+REF_GLYPH = "@"
 
 # Por ahora todos los jugadores se dibujan con un unico glifo; el equipo lo
 # distingue el color. La numeracion (dorsales de 2 digitos) se resolvera mas
@@ -82,6 +86,10 @@ def compose_match_cells(
             place(mp, HOME_COLOR, HOME_OWNER_COLOR)
         for mp in state.away:
             place(mp, AWAY_COLOR, AWAY_OWNER_COLOR)
+        # El arbitro va por encima de los jugadores pero por debajo de la pelota.
+        rc, rr = grid.to_cell(state.referee.position)
+        chars[rr][rc] = REF_GLYPH
+        fg[rr][rc] = REF_COLOR
         # Pelota suelta (nadie la domina): se dibuja viajando. Si alguien la
         # lleva no se dibuja; lo denota el color encendido de ese jugador.
         if owner is None:

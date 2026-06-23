@@ -132,6 +132,25 @@ def best_pass_target(
     return max(pool, key=openness)
 
 
+# El arbitro sigue la jugada a esta distancia (m) y corre a esta velocidad (m/s).
+_REF_FOLLOW_DIST = 12.0
+_REF_MAX_SPEED = 6.5
+
+
+def referee_velocity(ref, state: MatchState) -> Vec2:
+    """Velocidad del arbitro: trota hacia la pelota pero la sigue a distancia.
+
+    Si ya esta dentro de la distancia de seguimiento, se queda; si la pelota se
+    aleja, se acerca hasta esa distancia (no la alcanza ni la disputa).
+    """
+    to_ball = state.ball.position - ref.position
+    dist = to_ball.length()
+    if dist <= _REF_FOLLOW_DIST:
+        return Vec2(0.0, 0.0)
+    target = state.ball.position - to_ball.normalized() * _REF_FOLLOW_DIST
+    return arrive(ref.position, target, _REF_MAX_SPEED)
+
+
 def decide_velocity(mp: MatchPlayer, state: MatchState, is_chaser: bool) -> Vec2:
     """Velocidad deseada de un jugador en este tick.
 

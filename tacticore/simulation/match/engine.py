@@ -84,6 +84,7 @@ class MatchEngine:
         self._acquire_possession()
         self._move_players(dt)  # la accion del que lleva puede soltar la pelota
         self._update_ball(dt)
+        self._move_referee(dt)
         self.state.clock += dt
         self._tick += 1
 
@@ -129,6 +130,12 @@ class MatchEngine:
             if own_area.contains(mp.position):
                 return _GK_REACH
         return _CONTROL_RADIUS
+
+    def _move_referee(self, dt: float) -> None:
+        """El arbitro trota siguiendo la jugada, sin tocar la pelota."""
+        ref = self.state.referee
+        ref.velocity = ai.referee_velocity(ref, self.state)
+        ref.position = self.state.pitch.clamp(ref.position + ref.velocity * dt)
 
     def _move_players(self, dt: float) -> None:
         state = self.state

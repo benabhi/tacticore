@@ -10,6 +10,8 @@ from tacticore.ui.widgets.pitch import (
     BALL_GLYPH,
     HOME_COLOR,
     HOME_OWNER_COLOR,
+    REF_COLOR,
+    REF_GLYPH,
     compose_match_cells,
     paint_match,
     player_glyph,
@@ -51,6 +53,19 @@ def test_carrier_is_highlighted_and_loose_ball_hidden():
     # El que la lleva queda como jugador encendido y la pelota suelta no se dibuja.
     assert HOME_OWNER_COLOR in colors
     assert all(chars[r][c] != BALL_GLYPH for r in range(h) for c in range(w))
+
+
+def test_referee_is_drawn():
+    st = _state()
+    # Alejamos la pelota del centro para que no tape al arbitro.
+    st.ball.position = st.pitch.penalty_spot(home=True)
+    chars, fg, w, h = compose_match_cells(st, 78, 24)
+    found = any(
+        chars[r][c] == REF_GLYPH and fg[r][c] == REF_COLOR
+        for r in range(h)
+        for c in range(w)
+    )
+    assert found
 
 
 def test_both_teams_appear():

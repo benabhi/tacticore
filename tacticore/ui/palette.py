@@ -34,6 +34,8 @@ if TRUECOLOR:
     AWAY_BALL = "#ffb0a4"
     # Pelota suelta (en disputa / viajando).
     BALL = "#ffe14d"
+    # Arbitro: amarillo mas dorado/apagado para no confundirse con la pelota.
+    REF = "#caa63a"
 else:
     # Fallback ANSI 16: HUE distinto para cada rol, evitando depender del
     # contraste brillante/normal (que algunas terminales no muestran).
@@ -45,3 +47,4 @@ else:
     AWAY = "red"
     AWAY_BALL = "bright_magenta"
     BALL = "yellow"
+    REF = "yellow"
