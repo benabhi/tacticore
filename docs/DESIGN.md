@@ -375,6 +375,18 @@ libres. Falta:
 - [ ] **G5 Rebotes / pelotas sueltas raras:** remates al palo/tapados, despejes,
       controles que escupen la pelota. (Mucho emerge de G2/G3; aca se afina.)
 - [ ] **G6 Rarezas:** mano, offside, etc. (sabor, al final).
+- [ ] **Log de eventos estructurado (reemplaza el `last_event` string):** lista
+      de eventos con tipo + jugador(es) + metadata (ej. `Gol(jugador, tipo)`,
+      `Quite(jugador, estilo, exito)`, `Pase(de, a, ok)`). Cimiento compartido de:
+      mensajes cortos de lo que hizo el jugador, linea de eventos clave, stats en
+      vivo, y triggers de **moral** (ej. boost por gol de chilena). Hacerlo
+      estructurado desde el dia uno. Hoy solo guardamos un string grueso y ni el
+      autor del gol.
+- [ ] **Juego aereo (eje z / altura de la pelota):** prerequisito para distinguir
+      cabezazo / chilena / volea / centros / duelos aereos. Hoy la pelota es 2D
+      sin altura; `heading`/`jumping`/`aerial_reach` ya existen pero no se usan.
+      Las acciones a ras del piso (barrida vs quite de pie, remate colocado vs
+      potente) se etiquetan barato con el log de eventos, sin necesidad del z.
 - [ ] **Tarjetas y lesiones** (Fase D 10).
 - [ ] **Cansancio en partido:** `fitness` baja al correr y modula `max_speed` y
       precision de pase/remate (hoy fijo en 100). (Fase D 12).
