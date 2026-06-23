@@ -6,6 +6,7 @@ Atributos pensados para el partido en tiempo real (ver docs/DESIGN.md, seccion
 """
 
 from dataclasses import dataclass, field
+from datetime import date
 
 from .enums import Foot, Morale, Position, Specialty
 from .injury import Injury
@@ -46,9 +47,10 @@ class Player:
     # --- Identidad ---
     first_name: str
     last_name: str
+    nationality: str          # codigo de pais ISO alpha2 (ej. "AR")
     position: Position
     foot: Foot
-    age: int
+    birth_date: date          # la edad se calcula contra la fecha del juego
     height_cm: int
     weight_kg: int
 
@@ -95,6 +97,17 @@ class Player:
     potential: float = 1.0          # techo de habilidad (1-100)
     injury_proneness: float = 50.0  # propension a lesionarse (1-100)
     injury_history: list[Injury] = field(default_factory=list)
+
+    def age_on(self, today: date) -> int:
+        """Edad en anios cumplidos a la fecha `today` (la del juego).
+
+        Como guardamos la fecha de nacimiento (no la edad), el jugador envejece
+        solo al avanzar el calendario.
+        """
+        years = today.year - self.birth_date.year
+        if (today.month, today.day) < (self.birth_date.month, self.birth_date.day):
+            years -= 1
+        return years
 
     @property
     def full_name(self) -> str:

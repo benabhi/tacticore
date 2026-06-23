@@ -397,6 +397,12 @@ quite/faltas/tiros libres, G5 rebotes/atajadas del arquero. Falta:
 - [ ] **Tarjetas y lesiones** (Fase D 10).
 - [ ] **Cansancio en partido:** `fitness` baja al correr y modula `max_speed` y
       precision de pase/remate (hoy fijo en 100). (Fase D 12).
+- [x] **Edad real (envejecimiento):** `Player` guarda `birth_date` + `nationality`;
+      la edad se calcula contra la fecha del juego (`age_on(today)`), asi envejece
+      solo al avanzar el calendario. Ver `scripts/show_squad.py`.
+  - [ ] **Efectos de la edad (pendiente):** la edad modula la **velocidad de
+        entreno** (jovenes suben mas rapido, cerca del `potential`) y el **declive**
+        de atributos en veteranos (de a poco bajan). Mecanica indispensable.
 - [ ] **Tuning de tasa de goles:** calibrar cuando exista quite real (G4) y el
       arquero escale por atributos. Hoy a ojo (ver nota en Fase B).
 

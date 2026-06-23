@@ -5,7 +5,12 @@ futuro hace falta otra constante global (rutas, version del formato de
 guardado, etc.) tambien vive aca.
 """
 
+from datetime import date
 from pathlib import Path
+
+# Fecha en la que arranca una partida nueva (las edades se calculan contra la
+# fecha del juego, que avanza con el calendario; ver core/calendar.py).
+SEASON_START_DATE = date(2025, 7, 1)
 
 # --- Resolucion objetivo de la terminal ---
 # El juego completo se disena para este tamano exacto.

@@ -1,5 +1,7 @@
 """Tests del modelo de jugador y su generador."""
 
+from datetime import date
+
 from tacticore.core.rng import new_rng
 from tacticore.domain.enums import LeagueTier, Position
 from tacticore.domain.player import ALL_ATTRS
@@ -33,6 +35,20 @@ def test_goalkeeper_profile():
     gk = PlayerGenerator(new_rng(5)).generate(Position.GOALKEEPER, LeagueTier.A)
     assert gk.reflexes > gk.shooting
     assert gk.reflexes >= 70  # en liga A, reflejos de elite
+
+
+def test_age_is_derived_from_birth_date_and_ages_over_time():
+    today = date(2025, 7, 1)
+    player = PlayerGenerator(new_rng(1)).generate(today=today)
+    age = player.age_on(today)
+    assert 15 <= age <= 37  # rango razonable de un plantel
+    # Un anio despues del juego, el jugador es un anio mas viejo (envejece solo).
+    assert player.age_on(date(2026, 7, 1)) == age + 1
+
+
+def test_nationality_comes_from_country_code():
+    player = PlayerGenerator(new_rng(1)).generate(country_code="AR")
+    assert player.nationality == "AR"
 
 
 def test_display_name_prefers_nickname():

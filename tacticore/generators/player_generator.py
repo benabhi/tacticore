@@ -11,7 +11,9 @@ suben en las ligas mejores, y hay cracks (talento alto) en cualquier liga.
 """
 
 import random
+from datetime import date
 
+from .. import config
 from ..domain.enums import Foot, LeagueTier, Morale, Position, Specialty
 from ..domain.player import ALL_ATTRS, GK_ATTRS, Player
 from .name_generator import NameGenerator
@@ -85,13 +87,17 @@ class PlayerGenerator:
         position: Position | None = None,
         tier: LeagueTier = LeagueTier.C,
         country_code: str | None = None,
+        today: date | None = None,
     ) -> Player:
         """Genera un jugador de la liga `tier`.
 
         Si no se da `position`, se elige al azar. El `tier` define la calidad
         general (la liga A es la mejor, la E la mas floja). `country_code` define
-        la nacionalidad de los nombres (si hay pool para ese pais).
+        la nacionalidad (nombres y campo `nationality`). `today` es la fecha del
+        juego, contra la que se ancla la fecha de nacimiento (default: inicio de
+        temporada).
         """
+        today = today or config.SEASON_START_DATE
         rng = self._rng
         pos = position or rng.choice(list(Position))
         base = _TIER_BASE[tier]
@@ -109,7 +115,10 @@ class PlayerGenerator:
                 offset = offsets.get(attr, 0.0)
             attrs[attr] = _clamp(base + offset + talent + rng.uniform(-_NOISE, _NOISE))
 
-        age = rng.randint(16, 36)
+        # Fecha de nacimiento: se elige una edad objetivo y se ancla a `today`
+        # con mes/dia al azar (asi los cumpleanios quedan repartidos en el anio).
+        target_age = rng.randint(16, 36)
+        birth_date = date(today.year - target_age, rng.randint(1, 12), rng.randint(1, 28))
         # Arqueros y defensores suelen ser mas altos.
         if pos in (Position.GOALKEEPER, Position.DEFENDER):
             height = rng.randint(180, 200)
@@ -128,10 +137,11 @@ class PlayerGenerator:
         player = Player(
             first_name=first,
             last_name=last,
+            nationality=country_code or "FAN",
             position=pos,
             # El pie derecho es el mas comun; ambos, el mas raro.
             foot=rng.choices(list(Foot), weights=[3, 6, 1])[0],
-            age=age,
+            birth_date=birth_date,
             height_cm=height,
             weight_kg=weight,
             **attrs,
@@ -145,6 +155,7 @@ class PlayerGenerator:
 
         # El potencial es un techo por encima del nivel actual; los jovenes
         # tienen mas margen de crecimiento.
+        age = player.age_on(today)
         growth_room = max(0.0, (24 - age)) * 1.2 + rng.uniform(0, 5)
         player.potential = _clamp(player.overall + growth_room)
         return player

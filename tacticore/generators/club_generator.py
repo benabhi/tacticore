@@ -1,6 +1,7 @@
 """Generador de clubes de fantasia (con su plantilla y estadio)."""
 
 import random
+from datetime import date
 
 from ..domain.club import Club
 from ..domain.enums import LeagueTier, Position
@@ -43,10 +44,12 @@ class ClubGenerator:
         squad_size: int = 16,
         country_code: str = "FAN",
         tier: LeagueTier = LeagueTier.E,
+        today: date | None = None,
     ) -> Club:
         """Genera un club de la liga `tier` en el pais `country_code`.
 
         Garantiza al menos 2 arqueros; el resto de las posiciones son al azar.
+        `today` (fecha del juego) ancla las edades de la plantilla.
         """
         name = self._names.club_name()
         # Nombre corto: las dos palabras reducidas a sus iniciales/nucleo.
@@ -54,11 +57,11 @@ class ClubGenerator:
         stadium = self._stadiums.generate(tier, name)
 
         players = [
-            self._players.generate(Position.GOALKEEPER, tier, country_code)
+            self._players.generate(Position.GOALKEEPER, tier, country_code, today)
             for _ in range(2)
         ]
         players += [
-            self._players.generate(tier=tier, country_code=country_code)
+            self._players.generate(tier=tier, country_code=country_code, today=today)
             for _ in range(squad_size - 2)
         ]
 

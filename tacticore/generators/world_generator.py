@@ -6,6 +6,7 @@ para alimentar la pantalla de carga estilo Caves of Qud. Determinista por seed.
 
 import random
 from collections.abc import Callable
+from datetime import date
 
 from .. import config
 from ..domain.country import Country
@@ -27,12 +28,18 @@ class WorldGenerator:
         self._names = NameGenerator(self._rng)
         self._clubs = ClubGenerator(self._rng, self._names)
 
-    def generate(self, progress: ProgressCallback | None = None) -> list[Country]:
+    def generate(
+        self,
+        progress: ProgressCallback | None = None,
+        today: date | None = None,
+    ) -> list[Country]:
         """Genera y devuelve la lista de paises con todo su contenido.
 
         Si se pasa `progress`, se lo llama tras cada club generado con un texto
         descriptivo, la cantidad hecha y el total (para la barra de carga).
+        `today` (fecha de inicio de la partida) ancla las edades de los planteles.
         """
+        today = today or config.SEASON_START_DATE
         selected = country_data.COUNTRIES[: config.WORLD_COUNTRY_COUNT]
         clubs_per_league = config.CLUBS_PER_LEAGUE
         total_clubs = len(selected) * len(LeagueTier) * clubs_per_league
@@ -52,6 +59,7 @@ class WorldGenerator:
                         squad_size=config.SQUAD_SIZE,
                         country_code=country_code,
                         tier=tier,
+                        today=today,
                     )
                     league.clubs.append(club)
                     done += 1
