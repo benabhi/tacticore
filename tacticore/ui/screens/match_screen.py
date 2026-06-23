@@ -6,13 +6,15 @@ Por ahora: pausa (ESPACIO) y salir (Q). Faltan velocidad x2/x4 y los controles
 del manager (cambios, zonas, eventos), que llegan en el resto de la Fase C.
 """
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.widgets import Static
 
 from ...core.rng import new_rng
 from ...domain.club import Club
-from ...simulation.match import MatchEngine, MatchPhase, kickoff_state
-from ...simulation.match.narration import narrate
+from ...simulation.match import MatchEngine, MatchPhase, Side, kickoff_state
+from ...simulation.match.narration import narrate_segments
+from ..palette import AWAY, HOME, MUTED
 from ..widgets.pitch import MatchPitch
 from .base_screen import BaseScreen
 
@@ -88,8 +90,18 @@ class MatchScreen(BaseScreen):
         """Muestra el relato del ultimo evento nuevo en la linea de abajo."""
         log = self._engine.state.log
         if len(log) > self._log_shown:
-            self.query_one("#log", Static).update(narrate(log[-1]))
+            self.query_one("#log", Static).update(self._commentary(log[-1]))
             self._log_shown = len(log)
+
+    def _commentary(self, event) -> Text:
+        """Arma la linea: reloj en gris + frase con los nombres en color de equipo."""
+        mm, ss = int(event.clock // 60), int(event.clock % 60)
+        color = None if event.team is None else (HOME if event.team is Side.HOME else AWAY)
+        text = Text(no_wrap=True, overflow="ellipsis")
+        text.append(f"{mm:02d}:{ss:02d} ", style=MUTED)
+        for chunk, is_name in narrate_segments(event):
+            text.append(chunk, style=f"bold {color}" if (is_name and color) else "")
+        return text
 
     def _update_hud(self) -> None:
         state = self._engine.state

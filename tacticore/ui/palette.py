@@ -36,6 +36,8 @@ if TRUECOLOR:
     BALL = "#ffe14d"
     # Arbitro: amarillo mas dorado/apagado para no confundirse con la pelota.
     REF = "#caa63a"
+    # Texto secundario (ej. el reloj del relato): gris tenue.
+    MUTED = "#8a8a8a"
 else:
     # Fallback ANSI 16: HUE distinto para cada rol, evitando depender del
     # contraste brillante/normal (que algunas terminales no muestran).
@@ -48,3 +50,4 @@ else:
     AWAY_BALL = "bright_magenta"
     BALL = "yellow"
     REF = "yellow"
+    MUTED = "bright_black"

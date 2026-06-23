@@ -128,7 +128,8 @@ class MatchEngine:
         for _ in range(int(round(duration / dt))):
             self.step(dt)
 
-    def _log(self, kind: str, player=None, team: Side | None = None) -> None:
+    def _log(self, kind: str, player=None, team: Side | None = None,
+             target=None, detail: str | None = None) -> None:
         """Registra un evento estructurado del partido (para el relato)."""
         self.state.log.append(
             MatchEvent(
@@ -137,6 +138,8 @@ class MatchEngine:
                 kind=kind,
                 team=team or (player.team if player is not None else None),
                 player=player.name if player is not None else None,
+                target=target.name if target is not None else None,
+                detail=detail,
             )
         )
 
@@ -425,8 +428,10 @@ class MatchEngine:
         pelota queda en lugares que hay que ir a buscar.
         """
         speed = _LONG_PASS_SPEED if is_long else _PASS_SPEED
-        target = mate.position + self._pass_error(owner.player, is_long)
-        self._kick(owner, target, speed)
+        aim = mate.position + self._pass_error(owner.player, is_long)
+        self._log("pase", player=owner, target=mate,
+                  detail="largo" if is_long else "corto")
+        self._kick(owner, aim, speed)
 
     def _pass_error(self, player, is_long: bool) -> Vec2:
         """Desvio del pase: inversamente proporcional a `passing`, mayor si es largo."""

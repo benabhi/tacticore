@@ -1,33 +1,61 @@
-"""Relato del partido: convierte un `MatchEvent` en una linea de texto (ES).
+"""Relato del partido: convierte un `MatchEvent` en texto (ES).
 
 Version basica: una plantilla por tipo de evento. Mas adelante esto crece a un
 sistema con variantes/aleatoriedad por evento (ver docs/DESIGN.md). El texto va
-en espanol y ASCII (directivas 2 y 4) y nunca pasa de 80 caracteres.
+en espanol y ASCII (directivas 2 y 4).
+
+`narrate_segments` devuelve la frase partida en tramos marcando cuales son
+NOMBRES de jugador, para que la UI los resalte con el color del equipo (la
+narracion no conoce colores: separa logica de presentacion).
 """
+
+import re
 
 from .events import MatchEvent
 
-# Limite duro de ancho (la terminal es de 80 columnas).
-MAX_WIDTH = 80
+# Limite del texto del relato (deja lugar para el reloj que antepone la UI).
+MAX_WIDTH = 72
 
+# {who} = protagonista, {target} = segundo jugador, {detail} = matiz.
 _TEMPLATES: dict[str, str] = {
-    "gol": "GOOOL! Lo grita {who}!",
-    "remate": "{who} remata al arco!",
-    "despeje": "{who} despeja la pelota",
-    "atajada": "Gran atajada de {who}!",
-    "rebote": "{who} no la retiene, la pelota queda viva!",
-    "quite": "{who} mete el pie y recupera",
-    "falta": "Falta de {who}",
-    "offside": "Posicion adelantada de {who}",
-    "mano": "Mano de {who}!",
-    "lateral": "La pelota sale: lateral",
-    "corner": "Sale al corner, tiro de esquina",
-    "saque_arco": "Saque de arco",
+    "gol": "GOOOL! La clava {who} y hace estallar el estadio!",
+    "remate": "{who} se anima y saca un remate al arco!",
+    "pase": "{who} prueba un pase {detail} para {target}",
+    "despeje": "{who} llega justo y manda la pelota bien lejos",
+    "atajada": "Gran atajada de {who}, le tapa el remate!",
+    "rebote": "{who} no la pudo retener, queda viva en el area!",
+    "quite": "{who} mete el pie firme y se lleva la pelota",
+    "falta": "Falta de {who}, el arbitro detiene el juego",
+    "offside": "{who} salio adelantado, el juez marca offside",
+    "mano": "Mano de {who}! El arbitro la vio clarita",
+    "lateral": "La pelota se fue por la linea, hay saque lateral",
+    "corner": "Rechazo al corner, viene el tiro de esquina",
+    "saque_arco": "Se fue al fondo, sera saque de arco",
 }
+
+_TOKENS = re.compile(r"(\{who\}|\{target\}|\{detail\})")
+
+
+def narrate_segments(event: MatchEvent) -> list[tuple[str, bool]]:
+    """Parte la frase en tramos `(texto, es_nombre)` para que la UI los coloree."""
+    tpl = _TEMPLATES.get(event.kind, event.kind)
+    fills = {
+        "{who}": (event.player or "el equipo", True),
+        "{target}": (event.target or "un companero", True),
+        "{detail}": (event.detail or "", False),
+    }
+    segments: list[tuple[str, bool]] = []
+    for part in _TOKENS.split(tpl):
+        if part in fills:
+            text, is_name = fills[part]
+            if text:
+                segments.append((text, is_name))
+        elif part:
+            segments.append((part, False))
+    return segments
 
 
 def narrate(event: MatchEvent) -> str:
-    """Devuelve la linea de relato para un evento (<= 80 chars, ASCII/ES)."""
-    who = event.player or "el equipo"
-    text = _TEMPLATES.get(event.kind, event.kind).format(who=who)
-    return text[:MAX_WIDTH]
+    """Linea de relato en texto plano (<= MAX_WIDTH, ASCII/ES)."""
+    line = "".join(text for text, _ in narrate_segments(event))
+    return line[:MAX_WIDTH]

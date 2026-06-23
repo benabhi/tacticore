@@ -18,6 +18,8 @@ class MatchEvent:
 
     tick: int
     clock: float
-    kind: str               # "gol", "remate", "quite", "atajada", ...
+    kind: str               # "gol", "remate", "pase", "quite", ...
     team: Side | None = None
-    player: str | None = None  # nombre para mostrar del protagonista (si aplica)
+    player: str | None = None  # protagonista (nombre para mostrar)
+    target: str | None = None  # segundo jugador (ej. receptor de un pase)
+    detail: str | None = None  # matiz del evento (ej. "corto" / "largo")
