@@ -359,3 +359,55 @@ infraestructura del estadio que recauda; etc.
 - Velocidades de simulación a ofrecer (x1/x2/x4) y FPS de render objetivo.
 - ¿Cuántos jugadores por equipo en cancha al inicio (11 reales vs reducido para
   v0)?
+
+## 17. Pendientes — checklist vivo (no perder)
+
+Resumen unico de lo que falta. **Principio transversal:** toda conducta del
+partido usa los **atributos** del jugador (no constantes uniformes).
+
+**Jugabilidad del motor (Fase G) — prioridad actual.** Hecho: G0 arbitro, G1
+reanudaciones, G2 marca zonal, G3 pases corto/largo. Falta:
+- [ ] **G3.x Desmarques:** atacantes sin pelota hacen movimientos para ofrecerse
+      / abrir el juego (hoy sostienen su base). De paso -> mas laterales/corners.
+- [ ] **G4 Quite + faltas + tiros libres:** robo real con `tackling` vs
+      `dribbling` (+`strength` en el duelo); fallo puede ser falta -> tiro libre
+      (reusa el balon parado de G1). El arbitro (G0) cobra.
+- [ ] **G5 Rebotes / pelotas sueltas raras:** remates al palo/tapados, despejes,
+      controles que escupen la pelota. (Mucho emerge de G2/G3; aca se afina.)
+- [ ] **G6 Rarezas:** mano, offside, etc. (sabor, al final).
+- [ ] **Tarjetas y lesiones** (Fase D 10).
+- [ ] **Cansancio en partido:** `fitness` baja al correr y modula `max_speed` y
+      precision de pase/remate (hoy fijo en 100). (Fase D 12).
+- [ ] **Tuning de tasa de goles:** calibrar cuando exista quite real (G4) y el
+      arquero escale por atributos. Hoy a ojo (ver nota en Fase B).
+
+**UI del partido (Fase C) — diferido a pedido (retomar despues del motor).**
+- [ ] **Velocidad ajustable** en vivo (x0.5 / x1 / x2) en `MatchScreen`.
+- [ ] **Seleccion de jugador** (titila) que muestra su **dorsal/nombre real** en
+      el HUD -> resuelve mostrar dorsales de 2 digitos sin pelear con la celda
+      (hoy todos los jugadores son un solo glifo `@`; `player_glyph` quedo listo).
+- [ ] **Resaltar al que tiene la pelota** mas alla del color (ej. fondo/marca).
+- [ ] **View modes:** numero -> cara de animo -> color por stamina.
+- [ ] **Controles del manager en vivo:** zonas custom, cambios, eventos clave,
+      pantalla de stats en vivo -> todos emiten **comandos** del motor (B4).
+- [ ] **Integrar `MatchScreen` al flujo del juego** (hoy es pantalla suelta que
+      abre `scripts/watch_match.py`).
+
+**Tactica / comandos (cuelgan de B4, replayable).**
+- [ ] **`SetMarking(jugador, ZONA | MARCAR(rival))`:** marca manual hombre a
+      hombre / hibrida / doble-marca (el "seam" `marking_assignment` ya existe).
+- [ ] **Sustitucion como comando:** necesita modelar el **banco de suplentes** en
+      `MatchState` (hoy solo viven los 7 en cancha).
+
+**Infra / pendientes tecnicos.**
+- [ ] **Persistencia SQLite (+ encriptacion):** interfaz primero, cifrado despues.
+- [ ] **Determinismo de floats cross-plataforma** para replays portables entre
+      PCs: fixed-point o guardar checksum y caer a "ver resultado" si no matchea.
+      (Hoy el replay es exacto en la misma maquina.)
+- [ ] **Directiva 3 / paleta:** modo `TRUECOLOR=False` (fallback ANSI 16) para
+      terminales viejas; default truecolor (ver `ui/palette.py`).
+
+**Backlog de gestion / mundo (Fase D 11 y §15).** Calendario/eventos, entrenos;
+afinidad entre jugadores, moral, clima, sponsors, mercado de pases, valor de
+mercado, hinchada, infraestructura del estadio. Nacionalidad selectable en la
+pantalla de nuevo juego (meter al equipo en la liga del pais).
