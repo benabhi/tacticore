@@ -44,6 +44,8 @@ _GK_REACH = 1.7           # el arquero domina la pelota a este radio dentro del 
 _CLEAR_SPEED = 24.0       # velocidad del despeje del arquero (m/s)
 _GOAL_KICK_DEPTH = 5.5    # el saque de arco sale desde el borde del area chica (m)
 _RESTART_NUDGE = 0.4      # la pelota del saque queda esta distancia adentro del limite
+_SHOT_SAVE_SPEED = 16.0   # a mas velocidad que esto, la pelota que llega al arquero es "remate"
+_PARRY_SPEED = 10.0       # velocidad del rebote cuando el arquero no la retiene (m/s)
 _TACKLE_RADIUS = 1.5      # un defensor a esta distancia del que lleva intenta el quite (m)
 _TACKLE_COOLDOWN = 0.6    # tras un intento de quite, espera este rato (s)
 _FOUL_RECOVER = 1.0       # tras una falta, no se vuelve a quitar por este rato (s)
@@ -151,11 +153,43 @@ class MatchEngine:
             if mp.position.distance_to(ball.position) <= self._reach(mp)
         ]
         if on_ball:
-            owner = min(on_ball, key=lambda mp: mp.position.distance_to(ball.position))
-            ball.owner = owner
+            taker = min(on_ball, key=lambda mp: mp.position.distance_to(ball.position))
+            # Arquero ante un remate: puede atajar limpio o dar rebote (handling).
+            if ai.is_goalkeeper(taker) and ball.velocity.length() > _SHOT_SAVE_SPEED:
+                self._goalkeeper_save(taker)
+                return
+            ball.owner = taker
             ball.velocity = Vec2(0.0, 0.0)
-            self.state.last_touch = owner.team
+            self.state.last_touch = taker.team
             self._restart_side = None  # pelota en juego de nuevo
+
+    def _goalkeeper_save(self, gk) -> None:
+        """El arquero ataja un remate: lo retiene (handling) o da rebote (pelota viva)."""
+        ball = self.state.ball
+        self.state.last_touch = gk.team
+        p_hold = _clamp(0.35 + gk.player.handling / 150.0, 0.2, 0.95)
+        if self._rng.random() < p_hold:
+            # Atajada limpia: la retiene.
+            ball.owner = gk
+            ball.velocity = Vec2(0.0, 0.0)
+            self._restart_side = None
+            self.state.last_event = "Atajada"
+            return
+        # Rebote: la despeja sin control, hacia afuera del arco y con angulo al azar.
+        own = ai.own_goal(self.state, gk.team)
+        outward = ball.position - own
+        if outward.length() < 1e-6:
+            outward = Vec2(1.0, 0.0) if gk.team is Side.HOME else Vec2(-1.0, 0.0)
+        outward = outward.normalized()
+        angle = self._rng.uniform(-0.6, 0.6)
+        cos, sin = math.cos(angle), math.sin(angle)
+        direction = Vec2(
+            outward.x * cos - outward.y * sin, outward.x * sin + outward.y * cos
+        )
+        ball.velocity = direction * _PARRY_SPEED
+        ball.owner = None
+        self._kick_cooldown = _KICK_COOLDOWN  # que no la re-agarre al instante
+        self.state.last_event = "Rebote"
 
     def _reach(self, mp) -> float:
         """Radio (m) al que un jugador domina la pelota; mayor para el arquero en su area."""

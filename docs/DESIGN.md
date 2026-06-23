@@ -334,9 +334,13 @@ por dependencias:
   la pelota ("Quite"); el fallo puede ser falta -> tiro libre del rival (reusa el
   balon parado de G1), o penal si la falta es dentro del area. Tarjetas mas
   adelante.
-- **G5. Rebotes y pelotas sueltas "raras".** Remates tapados/al palo, despejes,
-  controles que escupen la pelota -> queda viva y los jugadores van a buscarla.
-  (Mucho emerge de G2/G3; aca se afina.)
+- **G5. Rebotes y pelotas sueltas "raras".** [hecho] El arquero ante un remate
+  puede **atajar limpio** o dar **rebote** segun `handling`: la pelota queda viva
+  y los atacantes (que suben con G3.x) la pelean -> segundas jugadas y goles de
+  rebote. Eventos "Atajada"/"Rebote".
+  - [pendiente, pulido] tiros que pegan en el palo (necesita geometria de palos),
+    remates tapados por un defensor en la trayectoria, control fallido del que
+    recibe. (Sabor extra; el grueso ya emerge.)
 - **G6. Rarezas.** Mano, offside, etc. Sabor, al final.
 
 **Fase D — Profundidad (resto)**
@@ -369,10 +373,15 @@ partido usa los **atributos** del jugador (no constantes uniformes).
 
 **Jugabilidad del motor (Fase G) — prioridad actual.** Hecho: G0 arbitro, G1
 reanudaciones, G2 marca zonal, G3 pases corto/largo, G3.x desmarques, G4
-quite/faltas/tiros libres. Falta:
-- [ ] **G5 Rebotes / pelotas sueltas raras:** remates al palo/tapados, despejes,
-      controles que escupen la pelota. (Mucho emerge de G2/G3; aca se afina.)
+quite/faltas/tiros libres, G5 rebotes/atajadas del arquero. Falta:
+- [ ] **G5 pulido:** tiros al palo (geometria de palos), remates tapados por un
+      defensor, control fallido del que recibe.
 - [ ] **G6 Rarezas:** mano, offside, etc. (sabor, al final).
+- [ ] **Arbitro en diagonal (pulido):** hoy sigue la pelota de frente a ~12m;
+      los arbitros reales corren en diagonal y se mantienen a un costado para no
+      entorpecer. Verificado: a lo largo recorre toda la cancha, pero a lo ancho
+      queda en la franja central porque la pelota no se abre (mismo motivo que
+      los pocos laterales/corners).
 - [ ] **Log de eventos estructurado (reemplaza el `last_event` string):** lista
       de eventos con tipo + jugador(es) + metadata (ej. `Gol(jugador, tipo)`,
       `Quite(jugador, estilo, exito)`, `Pase(de, a, ok)`). Cimiento compartido de:
