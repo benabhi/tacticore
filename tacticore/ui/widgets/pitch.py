@@ -27,6 +27,11 @@ AWAY_COLOR = "bright_red"
 BALL_COLOR = "bright_yellow"
 BALL_GLYPH = "o"  # redonda y centrada en la celda (lo mas parecido a un '.' centrado en ASCII)
 
+# Por ahora todos los jugadores se dibujan con un unico glifo; el equipo lo
+# distingue el color. La numeracion (dorsales de 2 digitos) se resolvera mas
+# adelante (ver player_glyph, que queda listo para cuando definamos como).
+PLAYER_GLYPH = "@"
+
 
 def player_glyph(number: int | None) -> str:
     """Un solo caracter para el dorsal: 1-9, luego a-z, y '#' si se pasa."""
@@ -60,7 +65,7 @@ def compose_match_cells(
 
         def place(mp, color: str) -> None:
             col, row = grid.to_cell(mp.position)
-            chars[row][col] = player_glyph(mp.number)
+            chars[row][col] = PLAYER_GLYPH
             fg[row][col] = color
 
         for mp in state.home:
