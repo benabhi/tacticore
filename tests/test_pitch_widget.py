@@ -3,12 +3,13 @@
 from tacticore.core.rng import new_rng
 from tacticore.domain.enums import LeagueTier
 from tacticore.generators import ClubGenerator
-from tacticore.simulation.match import MatchEngine, kickoff_state
+from tacticore.simulation.match import kickoff_state
 from tacticore.ui.widgets.pitch import (
     AWAY_COLOR,
     BALL_COLOR,
     BALL_GLYPH,
     HOME_COLOR,
+    HOME_OWNER_COLOR,
     compose_match_cells,
     paint_match,
     player_glyph,
@@ -29,9 +30,8 @@ def test_player_glyph():
     assert player_glyph(None) == "?"
 
 
-def test_ball_is_drawn_on_top():
-    st = _state()
-    MatchEngine(st, new_rng(1)).run(2.0)  # saca la pelota del centro
+def test_loose_ball_is_drawn():
+    st = _state()  # al saque la pelota esta suelta en el centro
     chars, fg, w, h = compose_match_cells(st, 78, 24)
     found = any(
         chars[r][c] == BALL_GLYPH and fg[r][c] == BALL_COLOR
@@ -39,6 +39,18 @@ def test_ball_is_drawn_on_top():
         for c in range(w)
     )
     assert found
+
+
+def test_carrier_is_highlighted_and_loose_ball_hidden():
+    st = _state()
+    # Forzamos que un jugador local tenga la pelota.
+    st.ball.owner = st.home[3]
+    st.ball.position = st.home[3].position
+    chars, fg, w, h = compose_match_cells(st, 78, 24)
+    colors = {fg[r][c] for r in range(h) for c in range(w) if fg[r][c]}
+    # El que lleva la pelota va encendido y no se dibuja la pelota suelta.
+    assert HOME_OWNER_COLOR in colors
+    assert all(chars[r][c] != BALL_GLYPH for r in range(h) for c in range(w))
 
 
 def test_both_teams_appear():

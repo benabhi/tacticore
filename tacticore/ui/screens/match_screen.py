@@ -17,7 +17,7 @@ from .base_screen import BaseScreen
 
 # Ritmo de juego del demo.
 _FRAME_INTERVAL = 0.05   # segundos reales por frame (20 fps)
-_STEPS_PER_FRAME = 3     # ticks de simulacion por frame (1.5x tiempo real)
+_STEPS_PER_FRAME = 1     # ticks de simulacion por frame (~0.67x tiempo real)
 _FULL_TIME = 600.0       # duracion del partido en segundos simulados
 
 

@@ -21,9 +21,14 @@ from .field import (
     build_field,
 )
 
-# Colores de cada equipo y de la pelota (ANSI estandar).
-HOME_COLOR = "bright_cyan"
-AWAY_COLOR = "bright_red"
+# Colores de cada equipo (ANSI estandar). Por defecto el equipo va en el tono
+# normal; el jugador que tiene la pelota se "enciende" con la variante brillante
+# para denotar la posesion (asi la pelota no titila pegada al que dribbla).
+HOME_COLOR = "cyan"
+HOME_OWNER_COLOR = "bright_cyan"
+AWAY_COLOR = "red"
+AWAY_OWNER_COLOR = "bright_red"
+# La pelota suelta (viajando) se dibuja aparte; si alguien la lleva no se dibuja.
 BALL_COLOR = "bright_yellow"
 BALL_GLYPH = "o"  # redonda y centrada en la celda (lo mas parecido a un '.' centrado en ASCII)
 
@@ -63,19 +68,24 @@ def compose_match_cells(
     if state is not None and eff_w and eff_h:
         grid = GridMap(cols=eff_w, rows=eff_h, pitch=state.pitch)
 
-        def place(mp, color: str) -> None:
+        owner = state.ball.owner
+
+        def place(mp, color: str, owner_color: str) -> None:
             col, row = grid.to_cell(mp.position)
             chars[row][col] = PLAYER_GLYPH
-            fg[row][col] = color
+            fg[row][col] = owner_color if mp is owner else color
 
         for mp in state.home:
-            place(mp, HOME_COLOR)
+            place(mp, HOME_COLOR, HOME_OWNER_COLOR)
         for mp in state.away:
-            place(mp, AWAY_COLOR)
-        # La pelota se dibuja al final: siempre queda encima.
-        bc, br = grid.to_cell(state.ball.position)
-        chars[br][bc] = BALL_GLYPH
-        fg[br][bc] = BALL_COLOR
+            place(mp, AWAY_COLOR, AWAY_OWNER_COLOR)
+        # La pelota solo se dibuja cuando esta suelta (viajando). Si alguien la
+        # lleva, la posesion se denota con el color encendido del jugador; asi se
+        # evita el titileo de la 'o' saltando entre celdas pegada al que dribbla.
+        if owner is None:
+            bc, br = grid.to_cell(state.ball.position)
+            chars[br][bc] = BALL_GLYPH
+            fg[br][bc] = BALL_COLOR
 
     return chars, fg, eff_w, eff_h
 
