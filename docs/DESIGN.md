@@ -275,13 +275,54 @@ igual que las secciones de gestión):
    encima sobre la cancha; funciones puras + tests headless. Faltan view modes
    (cara de animo / color de stamina) y, si hace falta, pasar a Line API.
 8. [en progreso] `MatchScreen`: loop con `set_interval`, HUD marcador/reloj,
-   pausa (ESPACIO) y salir (Q). Demo: `scripts/watch_match.py`. Falta
-   velocidad x2/x4 e integrarla al flujo del juego (hoy es una pantalla suelta).
+   pausa (ESPACIO) y salir (Q). Demo: `scripts/watch_match.py`.
 9. [pendiente] Controles del manager (seleccionar/titilar, zonas custom, cambios,
    eventos clave, stats en vivo) -> emiten comandos del motor (B4).
 
-**Fase D — Profundidad**
-10. Tarjetas, faltas, pelota parada, lesiones, fuera de juego.
+> **Diferido a pedido (NO olvidar):** se prioriza la jugabilidad del motor
+> (abajo) antes de la UI de manager. Pendientes anotados para retomar:
+> - **Velocidad ajustable** del partido (x0.5 / x1 / x2) en `MatchScreen`.
+> - **Seleccion de jugador** (titila) que muestra su **dorsal/nombre real** en el
+>   HUD (resuelve mostrar dorsales de 2 digitos sin pelear con la celda).
+> - **Resaltar al que tiene la pelota** (mas alla del color, ej. fondo o marca).
+> - Integrar `MatchScreen` al flujo del juego (hoy es una pantalla suelta).
+
+**Fase G — Jugabilidad del partido (motor, PRIORIDAD ACTUAL)**
+
+Se adelanta lo "jugable" del partido (parte de lo que estaba en Fase D) y se hace
+**de a poco**, con pocos jugadores (7v7 actual, o menos) para iterar rapido. Cada
+paso es determinista y testeable headless, y se mira con `watch_match.py`. Orden
+por dependencias:
+
+- **G0. Arbitro (presencia).** Una entidad mas en `MatchState` que **sigue la
+  jugada a distancia**: se mueve hacia un punto offset de la pelota manteniendo
+  una separacion (nunca la toca ni la disputa). Se dibuja como un **`@` amarillo**
+  (color `REF` en la paleta). Determinista (deriva de la pelota), no afecta la
+  simulacion. Primer paso chico y visible; arma el molde de "entidad no jugador"
+  que despues usa la logica de faltas/offside (G4/G6).
+- **G1. Salidas del campo + reanudaciones.** Hoy la pelota se frena al borde.
+  Trackear el "ultimo toque" (que equipo). Lateral por la banda -> saque de banda
+  del rival; por la linea de fondo -> corner (ultimo toque defensa) o saque de
+  arco (ultimo toque ataque). Estado de "balon parado" + quien lo ejecuta.
+  *Self-contained, no necesita la IA dura; arma el andamiaje de balon parado que
+  reusan faltas y tiros libres.*
+- **G2. Marca / defensa.** Hoy solo persigue 1 por equipo; el resto sostiene
+  posicion. Que los defensores marquen/cubran al rival cercano -> mas jugadores
+  en juego, intercepciones y pelotas sueltas a disputar. *Es el paso que mas
+  "vivo" pone al partido (y el mas dificil): empezar minimal.*
+- **G3. Pases cortos vs largos + intercepcion.** Decidir corto (seguro) vs largo
+  (cambio de juego, riesgoso) segun presion/espacio; un marcador puede cortar el
+  pase; control fallido -> pelota suelta. Calidad segun atributos.
+- **G4. Quite + faltas + tiros libres.** Un defensor cerca puede intentar quitar;
+  exito gana la pelota, fallo puede ser falta -> tiro libre (reusa el balon
+  parado de G1). Tarjetas mas adelante.
+- **G5. Rebotes y pelotas sueltas "raras".** Remates tapados/al palo, despejes,
+  controles que escupen la pelota -> queda viva y los jugadores van a buscarla.
+  (Mucho emerge de G2/G3; aca se afina.)
+- **G6. Rarezas.** Mano, offside, etc. Sabor, al final.
+
+**Fase D — Profundidad (resto)**
+10. Tarjetas, lesiones (las faltas/pelota parada/offside se adelantan a Fase G).
 11. Gestión: calendario/eventos, entrenos (usan la granularidad `float`).
 12. **Cansancio en partido:** el `fitness` baja al correr/esprintar durante el
     partido y modula `max_speed` y la precisión de pase/remate (se nota el
