@@ -271,10 +271,14 @@ igual que las secciones de gestión):
 > existan marca/defensa de verdad y el arquero escale por atributos (Fase C/D).
 
 **Fase C — UI del partido**
-7. `PitchWidget` (Line API + view modes + pelota arriba).
-8. `MatchScreen` (loop async, reloj/marcador, pausa/velocidad).
-9. Controles del manager (seleccionar/titilar, zonas custom, cambios, eventos
-   clave, stats en vivo).
+7. [hecho] `MatchPitch` (widget): dibuja jugadores (numeros por equipo) + pelota
+   encima sobre la cancha; funciones puras + tests headless. Faltan view modes
+   (cara de animo / color de stamina) y, si hace falta, pasar a Line API.
+8. [en progreso] `MatchScreen`: loop con `set_interval`, HUD marcador/reloj,
+   pausa (ESPACIO) y salir (Q). Demo: `scripts/watch_match.py`. Falta
+   velocidad x2/x4 e integrarla al flujo del juego (hoy es una pantalla suelta).
+9. [pendiente] Controles del manager (seleccionar/titilar, zonas custom, cambios,
+   eventos clave, stats en vivo) -> emiten comandos del motor (B4).
 
 **Fase D — Profundidad**
 10. Tarjetas, faltas, pelota parada, lesiones, fuera de juego.
