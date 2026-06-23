@@ -8,6 +8,7 @@ Las funciones son puras: leen el estado y devuelven la velocidad deseada; no
 mutan nada (el motor integra).
 """
 
+from ...domain.enums import Position
 from ...domain.player import Player
 from .entities import MatchPlayer, Side
 from .geometry import Vec2
@@ -18,6 +19,10 @@ _MIN_SPEED = 3.0
 _SPEED_RANGE = 6.0
 # Radio (m) dentro del cual el jugador desacelera al acercarse al objetivo.
 _SLOW_RADIUS = 2.0
+# El arquero se planta esta distancia (m) por delante de su arco.
+_GK_GUARD_DEPTH = 3.0
+# Margen (m) a cada lado de la boca del arco que el arquero llega a cubrir.
+_GK_COVER_MARGIN = 1.0
 
 
 def max_speed(player: Player) -> float:
@@ -43,10 +48,47 @@ def arrive(origin: Vec2, target: Vec2, top_speed: float, slow_radius: float = _S
     return offset.normalized() * speed
 
 
+def is_goalkeeper(mp: MatchPlayer) -> bool:
+    """Si el jugador es arquero."""
+    return mp.player.position is Position.GOALKEEPER
+
+
 def team_ball_chaser(state: MatchState, side: Side) -> MatchPlayer:
-    """El jugador del equipo `side` mas cercano a la pelota."""
+    """El jugador de campo del equipo `side` mas cercano a la pelota.
+
+    Se excluye al arquero: el que persigue por todo el campo es un jugador de
+    campo. Si por algun motivo el equipo no tiene jugadores de campo, se usa al
+    arquero como ultimo recurso.
+    """
     ball = state.ball.position
-    return min(state.team(side), key=lambda mp: mp.position.distance_to(ball))
+    outfield = [mp for mp in state.team(side) if not is_goalkeeper(mp)]
+    pool = outfield or state.team(side)
+    return min(pool, key=lambda mp: mp.position.distance_to(ball))
+
+
+def team_goalkeeper(state: MatchState, side: Side) -> MatchPlayer | None:
+    """El arquero del equipo `side`, o None si la formacion no puso uno."""
+    for mp in state.team(side):
+        if is_goalkeeper(mp):
+            return mp
+    return None
+
+
+def goalkeeper_velocity(mp: MatchPlayer, state: MatchState) -> Vec2:
+    """Velocidad del arquero: se planta delante del arco y sigue la y de la pelota.
+
+    No persigue por todo el campo; se mueve sobre una linea corta delante de su
+    arco, cubriendo el alto de la boca (mas un margen) segun donde este la pelota.
+    """
+    pitch = state.pitch
+    is_home = mp.team is Side.HOME
+    own_goal = pitch.home_goal if is_home else pitch.away_goal
+    guard_x = own_goal.x + (_GK_GUARD_DEPTH if is_home else -_GK_GUARD_DEPTH)
+    center_y = pitch.width / 2
+    half = pitch.goal_width / 2 + _GK_COVER_MARGIN
+    ball_y = state.ball.position.y
+    y = min(max(ball_y, center_y - half), center_y + half)
+    return arrive(mp.position, Vec2(guard_x, y), max_speed(mp.player))
 
 
 def _other(side: Side) -> Side:

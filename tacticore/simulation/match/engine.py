@@ -6,7 +6,10 @@ sembrado, asi misma seed (+ mismos comandos, mas adelante) -> mismo partido.
 B3.2: hay posesion. El jugador que alcanza la pelota la "lleva" (la pelota va
 con el, un poco por delante). Mientras la tiene decide: patear al arco si esta
 cerca, pasar al companero mas libre si lo presionan, o gambetear hacia el arco.
-Los goles y el arquero llegan en B3.3.
+
+B3.3: hay goles. Si la pelota cruza la linea de arco entre los palos se anota,
+se suma al marcador y se vuelve a sacar del medio. El arquero ataja dentro de su
+area (mas alcance) y, cuando domina, despeja en vez de gambetear.
 """
 
 import math
@@ -25,12 +28,14 @@ _KICKOFF_SPEED = 8.0      # velocidad del saque inicial (m/s)
 _CONTROL_RADIUS = 0.8     # a esta distancia un jugador domina la pelota (m)
 _KICK_COOLDOWN = 0.4      # tras patear, nadie puede dominarla un ratito (s)
 _SHOOT_RANGE = 25.0       # distancia al arco para intentar el remate (m)
-_PRESSURE_RADIUS = 2.5    # si un rival esta mas cerca, el que lleva la suelta (m)
+_PRESSURE_RADIUS = 1.6    # si un rival esta mas cerca, el que lleva la suelta (m)
 _MAX_PASS_DIST = 35.0     # alcance maximo de un pase (m)
 _PASS_SPEED = 14.0        # velocidad de un pase (m/s)
-_SHOOT_SPEED = 22.0       # velocidad de un remate (m/s)
+_SHOOT_SPEED = 25.0       # velocidad de un remate (m/s)
 _DRIBBLE_FACTOR = 0.85    # se gambetea un poco mas lento que corriendo libre
 _DRIBBLE_OFFSET = 0.5     # la pelota va esta distancia por delante del que lleva
+_GK_REACH = 1.7           # el arquero domina la pelota a este radio dentro del area (m)
+_CLEAR_SPEED = 24.0       # velocidad del despeje del arquero (m/s)
 
 
 class MatchEngine:
@@ -67,20 +72,32 @@ class MatchEngine:
         self.state.phase = MatchPhase.PLAYING
 
     def _acquire_possession(self) -> None:
-        """Si la pelota esta suelta, la domina el jugador mas cercano que la pise."""
+        """Si la pelota esta suelta, la domina el jugador mas cercano que la alcance.
+
+        Cada jugador tiene su radio de control; el arquero llega mas lejos
+        (atajada) cuando esta dentro de su area.
+        """
         ball = self.state.ball
         if ball.owner is not None or self._kick_cooldown > 0.0:
             return
         on_ball = [
             mp
             for mp in self.state.all_players()
-            if mp.position.distance_to(ball.position) <= _CONTROL_RADIUS
+            if mp.position.distance_to(ball.position) <= self._reach(mp)
         ]
         if on_ball:
             ball.owner = min(
                 on_ball, key=lambda mp: mp.position.distance_to(ball.position)
             )
             ball.velocity = Vec2(0.0, 0.0)
+
+    def _reach(self, mp) -> float:
+        """Radio (m) al que un jugador domina la pelota; mayor para el arquero en su area."""
+        if ai.is_goalkeeper(mp):
+            own_area = self.state.pitch.penalty_area(mp.team is Side.HOME)
+            if own_area.contains(mp.position):
+                return _GK_REACH
+        return _CONTROL_RADIUS
 
     def _move_players(self, dt: float) -> None:
         state = self.state
@@ -93,6 +110,8 @@ class MatchEngine:
         for mp in state.all_players():
             if mp is owner:
                 mp.velocity = self._owner_action(mp)
+            elif ai.is_goalkeeper(mp):
+                mp.velocity = ai.goalkeeper_velocity(mp, state)
             else:
                 mp.velocity = ai.decide_velocity(mp, state, id(mp) in chasers)
             mp.position = pitch.clamp(mp.position + mp.velocity * dt)
@@ -102,9 +121,18 @@ class MatchEngine:
         state = self.state
         goal = ai.attacking_goal(state, owner.team)
 
-        # Cerca del arco -> remate.
+        # Arquero -> despeja: busca un companero adelante o revienta hacia el arco.
+        if ai.is_goalkeeper(owner):
+            target = ai.best_pass_target(owner, state, _MAX_PASS_DIST * 2.0)
+            if target is not None:
+                self._kick(owner, target.position, _CLEAR_SPEED)
+            else:
+                self._kick(owner, goal, _CLEAR_SPEED)
+            return Vec2(0.0, 0.0)
+
+        # Cerca del arco -> remate apuntado a un palo.
         if owner.position.distance_to(goal) <= _SHOOT_RANGE:
-            self._kick(owner, goal, _SHOOT_SPEED)
+            self._shoot(owner, goal)
             return Vec2(0.0, 0.0)
 
         # Presionado -> pase al mejor companero (o remate si no hay).
@@ -121,6 +149,26 @@ class MatchEngine:
         return ai.arrive(
             owner.position, goal, ai.max_speed(owner.player) * _DRIBBLE_FACTOR
         )
+
+    def _shoot(self, owner, goal: Vec2) -> None:
+        """Remata al arco apuntando al palo mas lejos del arquero, con error.
+
+        Mejor `shooting` -> apunta mas al palo y con menos dispersion (mas dificil
+        de atajar). El error puede mandarla afuera: es un remate desviado.
+        """
+        pitch = self.state.pitch
+        half = pitch.goal_width / 2
+        rival_side = Side.AWAY if owner.team is Side.HOME else Side.HOME
+        keeper = ai.team_goalkeeper(self.state, rival_side)
+        # Apunta al palo contrario al lado donde esta parado el arquero.
+        if keeper is not None and keeper.position.y >= goal.y:
+            aim_side = -1.0
+        else:
+            aim_side = 1.0
+        accuracy = owner.player.shooting / 100.0
+        target_y = goal.y + aim_side * half * (0.4 + 0.6 * accuracy)
+        target_y += self._rng.uniform(-1.0, 1.0) * (1.0 - accuracy) * half * 1.5
+        self._kick(owner, Vec2(goal.x, target_y), _SHOOT_SPEED)
 
     def _kick(self, kicker, target: Vec2, speed: float) -> None:
         """Patea la pelota desde `kicker` hacia `target` y la suelta."""
@@ -147,8 +195,49 @@ class MatchEngine:
         if speed > 0.0:
             new_speed = max(0.0, speed - _BALL_FRICTION * dt)
             ball.velocity = ball.velocity.normalized() * new_speed
-        ball.position = ball.position + ball.velocity * dt
-        clamped = state.pitch.clamp(ball.position)
-        if clamped != ball.position:
+        new_pos = ball.position + ball.velocity * dt
+
+        # Gol? cruzo la linea de arco entre los palos (antes de acotar a la cancha).
+        scorer = self._goal_scored(new_pos)
+        if scorer is not None:
+            self._score(scorer)
+            return
+
+        clamped = state.pitch.clamp(new_pos)
+        if clamped != new_pos:
             ball.position = clamped
             ball.velocity = Vec2(0.0, 0.0)
+        else:
+            ball.position = new_pos
+
+    def _goal_scored(self, point: Vec2) -> Side | None:
+        """Equipo que anota si `point` cruzo una linea de arco entre los palos."""
+        pitch = self.state.pitch
+        if not pitch.is_in_goal_mouth(point.y):
+            return None
+        if point.x <= 0.0:
+            return Side.AWAY  # el visitante ataca el arco home (x = 0)
+        if point.x >= pitch.length:
+            return Side.HOME  # el local ataca el arco away (x = length)
+        return None
+
+    def _score(self, side: Side) -> None:
+        """Suma el gol al marcador y prepara el saque del medio."""
+        if side is Side.HOME:
+            self.state.score_home += 1
+        else:
+            self.state.score_away += 1
+        self._reset_for_kickoff()
+
+    def _reset_for_kickoff(self) -> None:
+        """Vuelve a todos a su formacion y la pelota al centro, listo para sacar."""
+        state = self.state
+        for mp in state.all_players():
+            mp.position = mp.base_position
+            mp.velocity = Vec2(0.0, 0.0)
+        ball = state.ball
+        ball.owner = None
+        ball.position = state.pitch.center
+        ball.velocity = Vec2(0.0, 0.0)
+        self._kick_cooldown = 0.0
+        state.phase = MatchPhase.KICKOFF

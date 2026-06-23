@@ -21,6 +21,7 @@ _GOAL_AREA_DEPTH = 5.5
 _GOAL_AREA_WIDTH = 18.32
 _CENTER_CIRCLE_RADIUS = 9.15
 _PENALTY_SPOT_DIST = 11.0
+_GOAL_WIDTH = 7.32  # ancho de la boca del arco (entre palos)
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,15 @@ class Pitch:
     @property
     def center_circle_radius(self) -> float:
         return _CENTER_CIRCLE_RADIUS
+
+    @property
+    def goal_width(self) -> float:
+        """Ancho de la boca del arco (entre palos)."""
+        return _GOAL_WIDTH
+
+    def is_in_goal_mouth(self, y: float) -> bool:
+        """Si una coordenada y (a lo ancho) cae entre los palos del arco."""
+        return abs(y - self.width / 2) <= _GOAL_WIDTH / 2
 
     @property
     def home_goal(self) -> Vec2:

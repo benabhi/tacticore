@@ -255,9 +255,15 @@ igual que las secciones de gestión):
 3. Módulo de cancha/coordenadas (`field.py`): metros ↔ celdas, regiones/zonas.
 
 **Fase B — Motor de partido (headless, determinista)**
-4. `MatchState`/entidades, `MatchEngine.step(dt)`, RNG seed, cola de comandos.
-5. Movimiento (steering) + IA v0 (ir a pelota / pase / remate) + goles + saques.
-6. Replay (seed + comandos) + tests de determinismo.
+4. [hecho] `MatchState`/entidades, `MatchEngine.step(dt)`, RNG seed.
+5. IA v0: [hecho] B3.1 steering (ir a pelota) · [hecho] B3.2 posesion/pase/
+   remate · [hecho] B3.3 goles + saque tras gol + arquero que ataja/despeja.
+6. [pendiente] B4: Replay (seed + cola de comandos) + tests de determinismo.
+
+> **Tuning pendiente (no es B3.3):** la *tasa de goles* depende de constantes
+> (alcance del arquero, velocidad/puntería del remate, presion). Hoy esta
+> calibrada a ojo para que haya goles con variedad; el balance fino llega cuando
+> existan marca/defensa de verdad y el arquero escale por atributos (Fase C/D).
 
 **Fase C — UI del partido**
 7. `PitchWidget` (Line API + view modes + pelota arriba).
