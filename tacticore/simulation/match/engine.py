@@ -49,6 +49,8 @@ _PARRY_SPEED = 10.0       # velocidad del rebote cuando el arquero no la retiene
 _TACKLE_RADIUS = 1.5      # un defensor a esta distancia del que lleva intenta el quite (m)
 _TACKLE_COOLDOWN = 0.6    # tras un intento de quite, espera este rato (s)
 _FOUL_RECOVER = 1.0       # tras una falta, no se vuelve a quitar por este rato (s)
+_HANDBALL_SPEED = 8.0      # solo una pelota mas rapida que esto puede ser "mano"
+_HANDBALL_CHANCE = 0.0005  # mano: extremadamente rara (rareza, ~1 cada muchos partidos)
 
 
 def _other(side: Side) -> Side:
@@ -154,9 +156,14 @@ class MatchEngine:
         ]
         if on_ball:
             taker = min(on_ball, key=lambda mp: mp.position.distance_to(ball.position))
+            speed = ball.velocity.length()
             # Arquero ante un remate: puede atajar limpio o dar rebote (handling).
-            if ai.is_goalkeeper(taker) and ball.velocity.length() > _SHOT_SAVE_SPEED:
+            if ai.is_goalkeeper(taker) and speed > _SHOT_SAVE_SPEED:
                 self._goalkeeper_save(taker)
+                return
+            # Mano (rareza): controlar una pelota rapida con la mano, muy de vez en cuando.
+            if speed > _HANDBALL_SPEED and self._rng.random() < _HANDBALL_CHANCE:
+                self._award_handball(taker)
                 return
             ball.owner = taker
             ball.velocity = Vec2(0.0, 0.0)
@@ -241,25 +248,43 @@ class MatchEngine:
         if self._rng.random() < p_foul:
             self._award_free_kick(carrier)
 
-    def _award_free_kick(self, victim) -> None:
-        """Falta: la pelota se planta para el equipo que recibio la infraccion."""
-        state = self.state
-        pitch = state.pitch
-        attacking = victim.team
-        defending = _other(attacking)
-        spot = pitch.clamp(victim.position)
+    def _award_set_piece(self, spot: Vec2, attacking_side: Side, event: str) -> None:
+        """Planta la pelota para `attacking_side`; si es dentro del area, es penal."""
+        pitch = self.state.pitch
+        defending = _other(attacking_side)
+        spot = pitch.clamp(spot)
         if pitch.penalty_area(defending is Side.HOME).contains(spot):
             spot = pitch.penalty_spot(defending is Side.HOME)
             event = "Penal"
-        else:
-            event = "Tiro libre"
-        ball = state.ball
+        ball = self.state.ball
         ball.owner = None
         ball.position = spot
         ball.velocity = Vec2(0.0, 0.0)
-        self._restart_side = attacking
+        self._restart_side = attacking_side
         self._tackle_cooldown = _FOUL_RECOVER
-        state.last_event = event
+        self.state.last_event = event
+
+    def _award_free_kick(self, victim) -> None:
+        """Falta: la pelota se planta para el equipo que recibio la infraccion."""
+        self._award_set_piece(victim.position, victim.team, "Tiro libre")
+
+    def _award_handball(self, offender) -> None:
+        """Mano: tiro libre (o penal) para el rival del que la toco con la mano."""
+        self.state.last_touch = offender.team
+        self._award_set_piece(
+            self.state.ball.position, _other(offender.team), "Mano"
+        )
+
+    def _award_offside(self, owner, receiver) -> None:
+        """Offside: tiro libre indirecto para la defensa desde donde estaba el adelantado."""
+        defending = _other(owner.team)
+        ball = self.state.ball
+        ball.owner = None
+        ball.position = self.state.pitch.clamp(receiver.position)
+        ball.velocity = Vec2(0.0, 0.0)
+        self._restart_side = defending
+        self.state.last_touch = owner.team
+        self.state.last_event = "Offside"
 
     def _move_referee(self, dt: float) -> None:
         """El arbitro trota siguiendo la jugada, sin tocar la pelota."""
@@ -337,7 +362,10 @@ class MatchEngine:
             pick = ai.pick_pass(owner, state, _MAX_PASS_DIST)
             if pick is not None:
                 mate, is_long = pick
-                self._pass(owner, mate, is_long)
+                if ai.is_offside(mate, owner, state):
+                    self._award_offside(owner, mate)
+                else:
+                    self._pass(owner, mate, is_long)
             else:
                 self._kick(owner, goal, _SHOOT_SPEED)
             return Vec2(0.0, 0.0)

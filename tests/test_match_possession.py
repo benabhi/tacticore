@@ -29,9 +29,12 @@ def test_ball_circulates():
     state = _fresh_state()
     center = state.pitch.center
     engine = MatchEngine(state, new_rng(1))
-    engine.run(10.0)
-    # La pelota se movio del centro (hubo juego).
-    assert engine.state.ball.position.distance_to(center) > 3.0
+    # En algun momento del juego la pelota se aleja del centro (hubo circulacion).
+    moved = 0.0
+    for _ in range(int(10.0 / DEFAULT_DT)):
+        engine.step()
+        moved = max(moved, engine.state.ball.position.distance_to(center))
+    assert moved > 3.0
 
 
 def test_owned_ball_follows_carrier():

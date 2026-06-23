@@ -292,6 +292,28 @@ def pick_pass(
     return best, is_long
 
 
+def is_offside(receiver: MatchPlayer, owner: MatchPlayer, state: MatchState) -> bool:
+    """Si `receiver` esta en posicion adelantada al recibir un pase de `owner`.
+
+    Regla simplificada: en campo rival, por delante de la pelota y del
+    anteultimo defensor (la "linea de offside"). No considera el momento exacto
+    del toque ni pasivos; alcanza para que los desmarques tengan riesgo.
+    """
+    if receiver is owner:
+        return False
+    defenders = state.team(_other(owner.team))
+    if len(defenders) < 2:
+        return False
+    mid = state.pitch.length / 2
+    rx = receiver.position.x
+    ball_x = state.ball.position.x
+    if owner.team is Side.HOME:  # ataca hacia +x
+        line = sorted((d.position.x for d in defenders), reverse=True)[1]
+        return rx > mid and rx > ball_x and rx > line
+    line = sorted(d.position.x for d in defenders)[1]  # ataca hacia -x
+    return rx < mid and rx < ball_x and rx < line
+
+
 def decide_velocity(mp: MatchPlayer, state: MatchState, is_chaser: bool) -> Vec2:
     """Velocidad deseada de un jugador en este tick.
 

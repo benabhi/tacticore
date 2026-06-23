@@ -341,7 +341,10 @@ por dependencias:
   - [pendiente, pulido] tiros que pegan en el palo (necesita geometria de palos),
     remates tapados por un defensor en la trayectoria, control fallido del que
     recibe. (Sabor extra; el grueso ya emerge.)
-- **G6. Rarezas.** Mano, offside, etc. Sabor, al final.
+- **G6. Rarezas.** [hecho] **Offside** (al pasar a un companero adelantado al
+  anteultimo defensor -> tiro libre indirecto de la defensa) y **mano**
+  (extremadamente rara al controlar una pelota rapida -> tiro libre o penal del
+  rival). Eventos "Offside"/"Mano".
 
 **Fase D — Profundidad (resto)**
 10. Tarjetas, lesiones (las faltas/pelota parada/offside se adelantan a Fase G).
@@ -373,10 +376,10 @@ partido usa los **atributos** del jugador (no constantes uniformes).
 
 **Jugabilidad del motor (Fase G) — prioridad actual.** Hecho: G0 arbitro, G1
 reanudaciones, G2 marca zonal, G3 pases corto/largo, G3.x desmarques, G4
-quite/faltas/tiros libres, G5 rebotes/atajadas del arquero. Falta:
+quite/faltas/tiros libres, G5 rebotes/atajadas del arquero, G6 offside/mano.
+Falta:
 - [ ] **G5 pulido:** tiros al palo (geometria de palos), remates tapados por un
       defensor, control fallido del que recibe.
-- [ ] **G6 Rarezas:** mano, offside, etc. (sabor, al final).
 - [ ] **Arbitro en diagonal (pulido):** hoy sigue la pelota de frente a ~12m;
       los arbitros reales corren en diagonal y se mantienen a un costado para no
       entorpecer. Verificado: a lo largo recorre toda la cancha, pero a lo ancho
@@ -423,6 +426,11 @@ quite/faltas/tiros libres, G5 rebotes/atajadas del arquero. Falta:
       hombre / hibrida / doble-marca (el "seam" `marking_assignment` ya existe).
 - [ ] **Sustitucion como comando:** necesita modelar el **banco de suplentes** en
       `MatchState` (hoy solo viven los 7 en cancha).
+- [ ] **Pateador de penales:** hoy el penal es **basico** (la pelota se planta en
+      el punto y el atacante mas cercano remata; el arquero puede atajar). Falta:
+      (a) **pateador por defecto** del equipo elegido en la tactica; (b) override
+      **en vivo** para que el manager elija quien patea segun su criterio; (c)
+      secuencia de penal de verdad (pateador vs arquero, resto fuera del area).
 
 **Infra / pendientes tecnicos.**
 - [ ] **Persistencia SQLite (+ encriptacion):** interfaz primero, cifrado despues.
