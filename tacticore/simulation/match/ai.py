@@ -360,6 +360,13 @@ def attacking_run_target(mp: MatchPlayer, state: MatchState) -> Vec2:
         factor = _RUN_LINE_FACTOR[mp.role]
         advance = _lerp(_RUN_MIN_ADVANCE, _RUN_MAX_ADVANCE, mp.player.work_rate / 100.0) * factor
         target = Vec2(onside(base.x + toward * advance), base.y)
+    elif mp.role is Role.CENTER_BACK:
+        # El central se DESCARGA por su franja: sube a apoyar la salida en x SIN
+        # cerrarse al centro (mantiene su y para abrir angulos de pase, en vez de
+        # amontonarse en el eje). Asi ofrece salida sin abandonar la ultima linea.
+        factor = _RUN_LINE_FACTOR[mp.role]
+        advance = _lerp(_RUN_MIN_ADVANCE, _RUN_MAX_ADVANCE, mp.player.work_rate / 100.0) * factor
+        target = Vec2(onside(base.x + toward * advance), base.y)
     else:
         # Volantes y centrales: avanzan hacia el arco (en diagonal a su zona).
         factor = _RUN_LINE_FACTOR.get(mp.role, 1.0)
