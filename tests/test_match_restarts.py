@@ -4,6 +4,7 @@ from tacticore.core.rng import new_rng
 from tacticore.domain.enums import LeagueTier
 from tacticore.generators import ClubGenerator
 from tacticore.simulation.match import (
+    DEFAULT_DT,
     MatchEngine,
     MatchPhase,
     Side,
@@ -84,6 +85,27 @@ def test_only_restart_team_can_take_the_ball():
     st.away[5].position = st.ball.position
     engine.run(0.3)
     assert engine._restart_side is None       # saque ejecutado: pelota en juego
+
+
+def test_throw_in_is_played_inward_not_out():
+    st = _playing_state()
+    st.last_touch = Side.HOME
+    st.ball.owner = None
+    st.ball.position = Vec2(50.0, 0.3)
+    st.ball.velocity = Vec2(0.0, -10.0)  # sale por la banda de abajo
+    engine = MatchEngine(st, new_rng(1))
+    engine.step()
+    assert st.last_event == "Lateral"
+    before = sum(1 for e in st.log if e.kind == "lateral")
+    out_frames = 0
+    for _ in range(int(6.0 / DEFAULT_DT)):
+        engine.step()
+        if not st.pitch.contains(st.ball.position):
+            out_frames += 1
+    after = sum(1 for e in st.log if e.kind == "lateral")
+    assert after - before == 0          # no rebota afuera (no se repite el lateral)
+    assert out_frames == 0              # la pelota nunca queda fuera de la cancha
+    assert any(e.kind == "pase" for e in st.log)  # se ve que la jugo (no auto-pase)
 
 
 def test_restarts_keep_the_ball_inside():

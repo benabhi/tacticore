@@ -104,7 +104,7 @@ def test_goal_kick_is_taken_by_the_keeper():
     engine = MatchEngine(st, new_rng(1))
     engine.step()  # genera el saque de arco
     assert st.last_event == "Saque de arco"
-    assert engine._restart_is_goal_kick is True
+    assert engine._restart_kind == "saque_arco"
     gk_away = ai.team_goalkeeper(st, Side.AWAY)
     took_it = False
     for _ in range(int(5.0 / DEFAULT_DT)):
