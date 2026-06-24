@@ -42,7 +42,7 @@ _DRIBBLE_FACTOR = 0.85    # se gambetea un poco mas lento que corriendo libre
 _DRIBBLE_OFFSET = 0.5     # la pelota va esta distancia por delante del que lleva
 _GK_REACH = 1.7           # el arquero domina la pelota a este radio dentro del area (m)
 _CLEAR_SPEED = 24.0       # velocidad del despeje del arquero (m/s)
-_GK_PRESSURE = 5.0        # si un rival esta mas cerca, el arquero no saca corto (m)
+_GK_SHORT_SAFE = 24.0     # solo saca corto si el rival mas cercano esta a mas que esto (m)
 _GOAL_KICK_DEPTH = 5.5    # el saque de arco sale desde el borde del area chica (m)
 _RESTART_NUDGE = 0.4      # la pelota del saque queda esta distancia adentro del limite
 _SHOT_SAVE_SPEED = 16.0   # a mas velocidad que esto, la pelota que llega al arquero es "remate"
@@ -523,11 +523,13 @@ class MatchEngine:
         """
         state = self.state
         rival = ai.nearest_opponent(gk, state)
-        pressured = rival.position.distance_to(gk.position) < _GK_PRESSURE
+        # Solo sale jugando corto si NO hay presion cerca; bajo presion la revienta
+        # larga (si no, un delantero camped recupera y se arma un loop irreal).
+        safe = rival.position.distance_to(gk.position) > _GK_SHORT_SAFE
         short = ai.goalkeeper_short_option(gk, state)
         p = gk.player
         plays_short = (
-            not pressured
+            safe
             and short is not None
             and self._rng.random() < _clamp(0.2 + (p.passing + p.composure) / 400.0, 0.1, 0.85)
         )
