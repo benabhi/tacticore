@@ -8,9 +8,8 @@ Las funciones son puras: leen el estado y devuelven la velocidad deseada; no
 mutan nada (el motor integra).
 """
 
-from ...domain.enums import Position
 from ...domain.player import Player
-from .entities import MatchPlayer, Side
+from .entities import MatchPlayer, Role, Side
 from .geometry import Vec2
 from .state import MatchState
 
@@ -51,8 +50,8 @@ def arrive(origin: Vec2, target: Vec2, top_speed: float, slow_radius: float = _S
 
 
 def is_goalkeeper(mp: MatchPlayer) -> bool:
-    """Si el jugador es arquero."""
-    return mp.player.position is Position.GOALKEEPER
+    """Si el jugador juega de arquero (por su rol en la formacion)."""
+    return mp.role is Role.GOALKEEPER
 
 
 def team_ball_chaser(state: MatchState, side: Side) -> MatchPlayer:
@@ -243,36 +242,39 @@ def marking_point(defender: MatchPlayer, mark: MatchPlayer, state: MatchState) -
     return mark.position + goal_side
 
 
-# La linea defensiva retrocede hasta esto (m) cuando la pelota esta pegada al
-# arco propio (asi el bloque baja al area y hay jugadas adentro).
-_LINE_DROP_MAX = 12.0
+def defensive_line_x(state: MatchState, side: Side) -> float:
+    """Coordenada x de la linea defensiva de `side`: ACOMPANA al atacante mas
+    adelantado (se para un pelin goal-side para mantenerlo en juego). Asi la
+    ultima linea sube y baja con el ataque -> los delanteros quedan habilitados y
+    se juega en el area; el offside queda para cuando los pasan/contras.
 
-
-def line_drop(state: MatchState, side: Side) -> float:
-    """Cuanto retrocede la linea de `side` hacia su arco segun la cercania del balon."""
+    Acotada: ni dentro del arco chico ni pasada de mitad de cancha.
+    """
     pitch = state.pitch
-    dist = state.ball.position.distance_to(own_goal(state, side))
-    frac = max(0.0, 1.0 - dist / (pitch.length * 0.45))  # 1 si pegada, 0 si lejos
-    return frac * _LINE_DROP_MAX
+    attackers = state.team(_other(side))
+    if side is Side.HOME:  # defiende x = 0
+        deepest = min((a.position.x for a in attackers), default=pitch.length)
+        return min(max(deepest - 2.0, 14.0), pitch.length * 0.55)
+    deepest = max((a.position.x for a in attackers), default=0.0)  # defiende x = length
+    return max(min(deepest + 2.0, pitch.length - 14.0), pitch.length * 0.45)
 
 
 def marking_velocity(defender: MatchPlayer, state: MatchState) -> Vec2:
-    """Velocidad de un defensor que marca su zona/rival (no es el que presiona).
+    """Velocidad de un defensor que marca (no es el que presiona).
 
-    Ademas, la linea **retrocede** hacia el arco propio cuando la pelota se acerca
-    (el bloque baja al area), arrastrando la linea de offside para que haya
-    jugadas adentro del area.
+    La **ultima linea** (centrales y laterales) sostiene una **linea compacta**
+    que acompana al atacante mas adelantado (`defensive_line_x`), cubriendo cada
+    uno su franja; el resto marca a su rival goal-side.
     """
     mark = marking_assignment(defender, state)
-    target = defender.base_position if mark is None else marking_point(defender, mark, state)
-    drop = line_drop(state, defender.team)
-    if drop > 0.0:
-        own_x = own_goal(state, defender.team).x
-        toward = -1.0 if defender.team is Side.HOME else 1.0  # hacia el arco propio
-        new_x = target.x + toward * drop
-        # no retroceder mas alla del propio arco.
-        new_x = max(own_x + 2.0, new_x) if defender.team is Side.HOME else min(own_x - 2.0, new_x)
-        target = Vec2(new_x, target.y)
+    if defender.role in (Role.CENTER_BACK, Role.FULLBACK):
+        line_x = defensive_line_x(state, defender.team)
+        y = mark.position.y if mark is not None else defender.base_position.y
+        target = Vec2(line_x, y)
+    elif mark is None:
+        target = defender.base_position
+    else:
+        target = marking_point(defender, mark, state)
     return arrive(defender.position, target, max_speed(defender.player))
 
 
@@ -299,13 +301,15 @@ def referee_velocity(ref, state: MatchState) -> Vec2:
 # Cuanto sube el atacante sin pelota hacia el arco: de _RUN_MIN a _RUN_MAX segun work_rate.
 _RUN_MIN_ADVANCE = 4.0
 _RUN_MAX_ADVANCE = 14.0
-# Cuanto sube cada linea: el delantero se mete al area, el defensor apoya sin
-# desarmar la defensa. Asi hay jugadas en las dos areas (no solo el 9 de frente).
+# Cuanto sube cada ROL en ataque. Extremos y laterales suben POR LA BANDA
+# (mantienen el ancho); volantes y centrales avanzan hacia el arco. El punta se
+# maneja aparte (aguanta la linea de offside / crashea el area).
 _RUN_LINE_FACTOR = {
-    Position.FORWARD: 1.7,
-    Position.MIDFIELDER: 1.1,
-    Position.DEFENDER: 0.6,
-    Position.GOALKEEPER: 0.0,
+    Role.WINGER: 1.5,
+    Role.FULLBACK: 1.0,
+    Role.MIDFIELDER: 1.1,
+    Role.CENTER_BACK: 0.6,
+    Role.GOALKEEPER: 0.0,
 }
 # Si un rival esta mas cerca que esto del punto de desmarque, se busca espacio.
 _RUN_SPACE_RADIUS = 4.0
@@ -333,21 +337,31 @@ def attacking_run_target(mp: MatchPlayer, state: MatchState) -> Vec2:
     """
     goal = attacking_goal(state, mp.team)
     base = mp.base_position
+    pitch = state.pitch
+    toward = 1.0 if mp.team is Side.HOME else -1.0  # signo hacia el arco rival (en x)
     line = offside_line_x(state, mp.team)
-    if mp.player.position is Position.FORWARD and line is not None:
-        pitch = state.pitch
-        if state.ball.position.distance_to(goal) < 26.0:
-            # Ataque profundo: se mete al area (crashea), repartido hacia el centro.
-            depth = 9.0
-            tx = goal.x - depth if mp.team is Side.HOME else goal.x + depth
-            target = Vec2(tx, _lerp(base.y, pitch.width / 2, 0.5))
-        elif mp.team is Side.HOME:
-            # Si no, aguanta la linea de offside (1m detras del anteultimo defensor).
-            target = Vec2(max(base.x, line - 1.0), base.y)
-        else:
-            target = Vec2(min(base.x, line + 1.0), base.y)
+
+    def onside(tx: float) -> float:
+        # No pasar la linea de offside (queda 0.8m detras) ni quedar atras de su zona.
+        if line is not None:
+            tx = min(tx, line - 0.8) if toward > 0 else max(tx, line + 0.8)
+        return max(tx, base.x) if toward > 0 else min(tx, base.x)
+
+    if mp.role is Role.STRIKER:
+        # Empuja al area cuando el equipo ataca (pelota en campo rival); si no,
+        # mantiene su zona alta. La linea rival lo acompana -> queda habilitado.
+        ball_x = state.ball.position.x
+        attacking = ball_x > pitch.length / 2 if toward > 0 else ball_x < pitch.length / 2
+        tx = goal.x - toward * 12.0 if attacking else base.x
+        target = Vec2(onside(tx), _lerp(base.y, pitch.width / 2, 0.5))
+    elif mp.role in (Role.WINGER, Role.FULLBACK):
+        # Sube POR LA BANDA manteniendo el ancho (la y de su zona), siempre onside.
+        factor = _RUN_LINE_FACTOR[mp.role]
+        advance = _lerp(_RUN_MIN_ADVANCE, _RUN_MAX_ADVANCE, mp.player.work_rate / 100.0) * factor
+        target = Vec2(onside(base.x + toward * advance), base.y)
     else:
-        factor = _RUN_LINE_FACTOR.get(mp.player.position, 1.0)
+        # Volantes y centrales: avanzan hacia el arco (en diagonal a su zona).
+        factor = _RUN_LINE_FACTOR.get(mp.role, 1.0)
         advance = _lerp(_RUN_MIN_ADVANCE, _RUN_MAX_ADVANCE, mp.player.work_rate / 100.0) * factor
         target = base + (goal - base).normalized() * advance
     rivals = state.team(_other(mp.team))

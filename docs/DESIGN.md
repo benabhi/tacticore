@@ -515,20 +515,30 @@ que sube/marca. El que lleva gambetea al centro y pasa al companero adelantado
 mas abierto (casi siempre central) => **embudo central**.
 
 ### Plan (orden por dependencias)
-- **H1. Roles en la formacion.** Cada slot tiene un ROL (arquero, central,
-  lateral, volante, extremo, delantero) con comportamiento propio; refactor del
-  posicionamiento a roles. **Cimiento de todo lo demas** (bandas, tacticas).
+- **H1. Roles en la formacion.** [hecho] Cada slot tiene un `Role` (arquero,
+  central, lateral, volante, extremo, punta); `MatchPlayer.role` lo lleva. El
+  posicionamiento es por rol: extremos/laterales **suben por la banda** (mantienen
+  el ancho), el punta empuja al area, volantes/centrales avanzan. La **linea
+  defensiva acompana** al atacante mas adelantado (`defensive_line_x`) -> queda
+  habilitado, sin offsides constantes. `is_goalkeeper` y el color del arquero por
+  rol. Falta el **pago visible**: que el balon vaya a la banda y haya centros (H2).
 - **H2. Juego por las bandas + area.** Extremos/laterales usan el **ancho**:
   desbordan y **tiran centros** desde el lateral al area; los delanteros atacan
   el centro y la rematan. Asi hay circulacion y jugadas de area.
 - **H3. Apoyos y paredes.** Pase-y-sigo (te paso, corro, me la devolves),
   ayuda/sobre-marca en defensa, desdoblamiento del lateral.
 - **H4. Marca configurable + tacticas.** Marca **zonal/personal** por jugador
-  (seam `marking_assignment` ya existe) via comando `SetMarking`. **Tacticas
-  rapidas** predefinidas (jugar por bandas, contraataque, presion, atacar por el
-  medio, defensivo) = sesgos de roles/posicion/agresividad. **Formaciones como
-  datos** con **familiaridad/nivel** (sube jugando con esa formacion). El manager
-  puede **romper la zona** de un jugador (`SetPlayerZone` ya existe).
+  (seam `marking_assignment` ya existe) via comando `SetMarking`. **Mentalidad**
+  del equipo: **ofensiva / neutra / defensiva** -> sesga cuanto suben las lineas,
+  el uso de los delanteros y la intensidad de presion/repliegue (ofensiva = mas
+  arriba y mas delanteros; defensiva = bloque mas atras, defender con mas
+  intensidad). **Tacticas rapidas** predefinidas (jugar por bandas, contraataque,
+  presion, atacar por el medio, defensivo) = sesgos de roles/posicion/mentalidad.
+  **Formaciones como datos** con **familiaridad/nivel** (sube jugando con esa
+  formacion). Se setea **antes** del partido y se puede **cambiar en vivo** (la
+  mentalidad/tactica rapida tambien entra como intervencion del manager, ej.
+  pasar a defensiva para replegarse). El manager puede **romper la zona** de un
+  jugador (`SetPlayerZone` ya existe).
 - **H5. Peso de atributos faltantes.** `acceleration` (arranque/cierre);
   `stamina` -> `fitness` que baja en partido y afecta velocidad/precision;
   `temperament` -> faltas. Juego **aereo** (jumping/heading/aerial_reach) en su

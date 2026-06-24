@@ -12,8 +12,7 @@ temporal de [field.py](field.py).
 from rich.text import Text
 from textual.widget import Widget
 
-from ...domain.enums import Position
-from ...simulation.match import GridMap, MatchState
+from ...simulation.match import GridMap, MatchState, Role
 from ..palette import AWAY, AWAY_BALL, BALL, GK, GK_BALL, HOME, HOME_BALL, REF
 from .field import (
     GRASS_DARK,
@@ -84,7 +83,7 @@ def compose_match_cells(
             col, row = grid.to_cell(mp.position)
             chars[row][col] = PLAYER_GLYPH
             # El arquero va en magenta (su propio color), el resto en el del equipo.
-            if mp.player.position is Position.GOALKEEPER:
+            if mp.role is Role.GOALKEEPER:
                 base, lit = GK_COLOR, GK_OWNER_COLOR
             else:
                 base, lit = color, owner_color

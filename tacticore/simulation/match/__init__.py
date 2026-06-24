@@ -7,7 +7,7 @@ proximos pasos de la Fase B (ver docs/DESIGN.md).
 
 from .commands import Command, SetPlayerZone
 from .engine import DEFAULT_DT, MatchEngine
-from .entities import Ball, MatchPlayer, Referee, Side
+from .entities import Ball, MatchPlayer, Referee, Role, Side
 from .events import MatchEvent
 from .field import GridMap, Pitch
 from .formation import DEFAULT_FORMATIONS, Formation, FormationSlot
@@ -30,6 +30,7 @@ __all__ = [
     "Pitch",
     "Rect",
     "Referee",
+    "Role",
     "SetPlayerZone",
     "Side",
     "Vec2",

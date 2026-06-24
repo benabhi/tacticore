@@ -20,6 +20,23 @@ class Side(Enum):
     AWAY = "away"
 
 
+class Role(Enum):
+    """Rol del jugador en la formacion: define su comportamiento en cancha.
+
+    Mas granular que `Position` (que es la posicion natural del jugador): un
+    DEFENDER puede jugar de central (`CENTER_BACK`) o de lateral (`FULLBACK`),
+    un FORWARD de extremo (`WINGER`) o de punta (`STRIKER`). El rol decide como
+    se mueve (ancho, subir, aguantar la linea), no quien es el jugador.
+    """
+
+    GOALKEEPER = "GK"
+    CENTER_BACK = "CB"
+    FULLBACK = "FB"
+    MIDFIELDER = "MID"
+    WINGER = "WG"
+    STRIKER = "ST"
+
+
 @dataclass
 class MatchPlayer:
     """Un jugador dentro del partido (posicion/velocidad en metros)."""
@@ -28,6 +45,7 @@ class MatchPlayer:
     team: Side
     position: Vec2
     base_position: Vec2          # ancla de la formacion (para volver a su zona)
+    role: Role = Role.MIDFIELDER  # rol en la formacion (comportamiento)
     velocity: Vec2 = _ZERO
 
     @property

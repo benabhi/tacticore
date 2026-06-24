@@ -13,18 +13,23 @@ from dataclasses import dataclass
 from ...domain.club import Club
 from ...domain.enums import Position
 from ...domain.player import Player
-from .entities import Side
+from .entities import Role, Side
 from .field import Pitch
 from .geometry import Vec2
 
 
 @dataclass(frozen=True)
 class FormationSlot:
-    """Un puesto de la formacion: posicion natural + ubicacion relativa."""
+    """Un puesto de la formacion: posicion natural + ubicacion + rol.
+
+    `position` decide que jugador del plantel lo ocupa (al armar el 11);
+    `role` decide como se comporta en la cancha (ancho, subir, marcar, etc.).
+    """
 
     position: Position
     rel_x: float  # 0 = arco propio, 1 = arco rival
     rel_y: float  # 0..1 a lo ancho
+    role: Role
 
 
 @dataclass(frozen=True)
@@ -39,38 +44,39 @@ class Formation:
         return len(self.slots)
 
 
-def _slot(position: Position, rel_x: float, rel_y: float) -> FormationSlot:
-    return FormationSlot(position, rel_x, rel_y)
+def _slot(position: Position, rel_x: float, rel_y: float, role: Role) -> FormationSlot:
+    return FormationSlot(position, rel_x, rel_y, role)
 
 # Formacion 7v7 (1-2-3-1): config de prueba inicial del motor.
 FORMATION_7 = Formation(
     "1-2-3-1",
     (
-        _slot(Position.GOALKEEPER, 0.05, 0.50),
-        _slot(Position.DEFENDER, 0.22, 0.30),
-        _slot(Position.DEFENDER, 0.22, 0.70),
-        _slot(Position.MIDFIELDER, 0.45, 0.25),
-        _slot(Position.MIDFIELDER, 0.45, 0.50),
-        _slot(Position.MIDFIELDER, 0.45, 0.75),
-        _slot(Position.FORWARD, 0.68, 0.50),
+        _slot(Position.GOALKEEPER, 0.05, 0.50, Role.GOALKEEPER),
+        _slot(Position.DEFENDER, 0.22, 0.30, Role.CENTER_BACK),
+        _slot(Position.DEFENDER, 0.22, 0.70, Role.CENTER_BACK),
+        _slot(Position.MIDFIELDER, 0.45, 0.25, Role.WINGER),
+        _slot(Position.MIDFIELDER, 0.45, 0.50, Role.MIDFIELDER),
+        _slot(Position.MIDFIELDER, 0.45, 0.75, Role.WINGER),
+        _slot(Position.FORWARD, 0.68, 0.50, Role.STRIKER),
     ),
 )
 
 # Formacion 11v11 (4-3-3): la estandar del juego.
+# Defensa: 2 laterales (anchos) + 2 centrales. Ataque: 2 extremos + 1 punta.
 FORMATION_11 = Formation(
     "4-3-3",
     (
-        _slot(Position.GOALKEEPER, 0.05, 0.50),
-        _slot(Position.DEFENDER, 0.20, 0.15),
-        _slot(Position.DEFENDER, 0.18, 0.38),
-        _slot(Position.DEFENDER, 0.18, 0.62),
-        _slot(Position.DEFENDER, 0.20, 0.85),
-        _slot(Position.MIDFIELDER, 0.45, 0.30),
-        _slot(Position.MIDFIELDER, 0.42, 0.50),
-        _slot(Position.MIDFIELDER, 0.45, 0.70),
-        _slot(Position.FORWARD, 0.72, 0.22),
-        _slot(Position.FORWARD, 0.70, 0.50),
-        _slot(Position.FORWARD, 0.72, 0.78),
+        _slot(Position.GOALKEEPER, 0.05, 0.50, Role.GOALKEEPER),
+        _slot(Position.DEFENDER, 0.20, 0.15, Role.FULLBACK),
+        _slot(Position.DEFENDER, 0.18, 0.38, Role.CENTER_BACK),
+        _slot(Position.DEFENDER, 0.18, 0.62, Role.CENTER_BACK),
+        _slot(Position.DEFENDER, 0.20, 0.85, Role.FULLBACK),
+        _slot(Position.MIDFIELDER, 0.45, 0.30, Role.MIDFIELDER),
+        _slot(Position.MIDFIELDER, 0.42, 0.50, Role.MIDFIELDER),
+        _slot(Position.MIDFIELDER, 0.45, 0.70, Role.MIDFIELDER),
+        _slot(Position.FORWARD, 0.72, 0.18, Role.WINGER),
+        _slot(Position.FORWARD, 0.70, 0.50, Role.STRIKER),
+        _slot(Position.FORWARD, 0.72, 0.82, Role.WINGER),
     ),
 )
 

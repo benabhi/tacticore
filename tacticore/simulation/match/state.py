@@ -57,7 +57,11 @@ def _place_team(club: Club, side: Side, formation: Formation, pitch: Pitch) -> l
     placed = []
     for slot, player in zip(formation.slots, players):
         pos = slot_to_meters(slot, side, pitch)
-        placed.append(MatchPlayer(player=player, team=side, position=pos, base_position=pos))
+        placed.append(
+            MatchPlayer(
+                player=player, team=side, position=pos, base_position=pos, role=slot.role
+            )
+        )
     return placed
 
 
