@@ -108,6 +108,36 @@ def test_tackles_happen_in_a_real_match():
     assert "Quite" in seen  # hubo recuperaciones por quite
 
 
+def test_dispossessed_player_is_frozen():
+    engine = MatchEngine(_state(), new_rng(1))
+    engine._rng = _FakeRng([0.0])  # el quite gana
+    st = engine.state
+    carrier = st.home[6]
+    st.ball.owner = carrier
+    st.ball.position = carrier.position
+    engine._attempt_tackle(st.away[1], carrier)
+    assert engine._is_frozen(carrier)  # el que perdio la pelota queda frenado
+
+
+def test_beaten_defender_is_frozen():
+    engine = MatchEngine(_state(), new_rng(1))
+    engine._rng = _FakeRng([0.99, 0.99])  # falla el quite y NO es falta
+    st = engine.state
+    carrier = st.home[6]
+    carrier.position = Vec2(50.0, 34.0)
+    st.ball.owner = carrier
+    st.ball.position = carrier.position
+    defender = st.away[1]
+    engine._attempt_tackle(defender, carrier)
+    assert engine._is_frozen(defender)  # lo gambetearon: queda frenado
+
+
+def test_recovery_freeze_scales_with_attributes():
+    from tacticore.simulation.match.engine import _recovery_freeze
+
+    assert _recovery_freeze(90.0, 90.0) < _recovery_freeze(20.0, 20.0)
+
+
 def test_interception_is_logged_when_rival_wins_a_loose_ball():
     st = _state()
     st.last_touch = Side.HOME            # la toco por ultimo el local...

@@ -80,6 +80,13 @@ def _clamp(value: float, low: float, high: float) -> float:
     return min(max(value, low), high)
 
 
+def _recovery_freeze(attr_a: float, attr_b: float) -> float:
+    """Tiempo (s) que un jugador queda frenado tras perder un duelo (gambeteado o
+    despojado). Mejor agilidad/reaccion -> se recupera mas rapido."""
+    recovery = (attr_a + attr_b) / 2.0
+    return _clamp(1.2 - recovery / 110.0, 0.4, 1.2)
+
+
 class MatchEngine:
     """Avanza un `MatchState` tick a tick de forma determinista."""
 
@@ -97,8 +104,9 @@ class MatchEngine:
         self._gk_carry_timer = 0.0  # el arquero camina el area antes de distribuir (s)
         self._restart_kind: str | None = None  # tipo de saque pendiente (lateral, corner, ...)
         self._restart_taker = None  # quien va a ejecutar el saque (hasta que la juega)
-        self._taker_freeze_id: int | None = None  # ejecutante quieto un instante tras sacar
-        self._taker_freeze_timer = 0.0
+        # Jugadores "congelados" un instante (ejecuto un saque, lo gambetearon, o
+        # le quitaron la pelota): id -> tiempo restante (s). No se mueven.
+        self._frozen: dict[int, float] = {}
         self._last_kicker = None  # ultimo que pateo (para nombrar al autor del gol)
         self._tick = 0
         # Si hay un saque pendiente (lateral/corner/saque de arco/tiro libre),
@@ -140,7 +148,7 @@ class MatchEngine:
         self._kick_cooldown = max(0.0, self._kick_cooldown - dt)
         self._tackle_cooldown = max(0.0, self._tackle_cooldown - dt)
         self._gk_carry_timer = max(0.0, self._gk_carry_timer - dt)
-        self._taker_freeze_timer = max(0.0, self._taker_freeze_timer - dt)
+        self._frozen = {i: t - dt for i, t in self._frozen.items() if t - dt > 0.0}
         self._acquire_possession()
         self._resolve_tackle()  # un defensor pegado puede intentar quitar
         self._move_players(dt)  # la accion del que lleva puede soltar la pelota
@@ -306,19 +314,24 @@ class MatchEngine:
             0.85,
         )
         if self._rng.random() < p_win:
-            # Quite limpio: el defensor se queda con la pelota.
+            # Quite limpio: el defensor se queda con la pelota; el otro queda
+            # frenado un instante (perdio la pelota).
             ball = self.state.ball
             ball.owner = tackler
             ball.velocity = Vec2(0.0, 0.0)
             self.state.last_touch = tackler.team
             self.state.last_event = "Quite"
             self._log("quite", player=tackler)
+            self._freeze(carrier, _recovery_freeze(c.agility, c.composure))
             return
         # Fallo: chance de falta (mayor si lo superaron o el tackler es flojo).
         p_foul = _clamp(0.20 + (c.dribbling - t.tackling) / 350.0, 0.05, 0.5)
         if self._rng.random() < p_foul:
             self._log("falta", player=tackler)
             self._award_free_kick(carrier)
+        else:
+            # Lo gambetearon / erro el quite: el defensor queda frenado un instante.
+            self._freeze(tackler, _recovery_freeze(t.agility, t.anticipation))
 
     def _award_set_piece(self, spot: Vec2, attacking_side: Side, event: str) -> None:
         """Planta la pelota para `attacking_side`; si es dentro del area, es penal."""
@@ -401,8 +414,12 @@ class MatchEngine:
             mp.position = pitch.clamp(mp.position + mp.velocity * dt)
 
     def _is_frozen(self, mp) -> bool:
-        """Si este jugador acaba de ejecutar un saque y queda quieto un instante."""
-        return self._taker_freeze_timer > 0.0 and id(mp) == self._taker_freeze_id
+        """Si este jugador esta congelado un instante (saque, gambeteado, despojado)."""
+        return self._frozen.get(id(mp), 0.0) > 0.0
+
+    def _freeze(self, player, duration: float) -> None:
+        """Deja a un jugador quieto `duration` segundos (no pisa uno mas largo)."""
+        self._frozen[id(player)] = max(self._frozen.get(id(player), 0.0), duration)
 
     def _move_with_owner(self, dt: float, owner) -> None:
         """Hay dueno: un equipo ataca; el otro presiona la pelota y marca."""
@@ -572,7 +589,18 @@ class MatchEngine:
                 self._kick(owner, goal, _SHOOT_SPEED)
             return Vec2(0.0, 0.0)
 
-        # Libre -> gambetea hacia el arco (se va acercando para definir mejor).
+        # Libre -> de vez en cuando cambia el juego a un companero muy solo en otra
+        # zona (lateral / diagonal), para que el balon se mueva por la cancha.
+        outlet = ai.open_outlet(owner, state, _MAX_PASS_DIST)
+        if (
+            outlet is not None
+            and not ai.is_offside(outlet, owner, state)
+            and self._rng.random() < _clamp(0.008 + owner.player.vision / 3000.0, 0.008, 0.04)
+        ):
+            self._pass(owner, outlet, ai.is_long_pass(owner, outlet))
+            return Vec2(0.0, 0.0)
+
+        # Si no, gambetea hacia el arco (se va acercando para definir mejor).
         return ai.arrive(
             owner.position, goal, ai.max_speed(owner.player) * _DRIBBLE_FACTOR
         )
@@ -713,8 +741,7 @@ class MatchEngine:
         # El ejecutante de un saque queda quieto un instante tras jugarla (no se
         # mueve a la vez que pasa, que parece que se la lleva).
         if kicker is self._restart_taker:
-            self._taker_freeze_id = id(kicker)
-            self._taker_freeze_timer = _TAKER_FREEZE
+            self._freeze(kicker, _TAKER_FREEZE)
             self._restart_taker = None
 
     def _update_ball(self, dt: float) -> None:

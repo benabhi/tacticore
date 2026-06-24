@@ -271,6 +271,14 @@ def referee_velocity(ref, state: MatchState) -> Vec2:
 # Cuanto sube el atacante sin pelota hacia el arco: de _RUN_MIN a _RUN_MAX segun work_rate.
 _RUN_MIN_ADVANCE = 4.0
 _RUN_MAX_ADVANCE = 14.0
+# Cuanto sube cada linea: el delantero se mete al area, el defensor apoya sin
+# desarmar la defensa. Asi hay jugadas en las dos areas (no solo el 9 de frente).
+_RUN_LINE_FACTOR = {
+    Position.FORWARD: 1.7,
+    Position.MIDFIELDER: 1.1,
+    Position.DEFENDER: 0.6,
+    Position.GOALKEEPER: 0.0,
+}
 # Si un rival esta mas cerca que esto del punto de desmarque, se busca espacio.
 _RUN_SPACE_RADIUS = 4.0
 _RUN_SPACE_PUSH = 4.0
@@ -284,7 +292,8 @@ def attacking_run_target(mp: MatchPlayer, state: MatchState) -> Vec2:
     """
     goal = attacking_goal(state, mp.team)
     base = mp.base_position
-    advance = _lerp(_RUN_MIN_ADVANCE, _RUN_MAX_ADVANCE, mp.player.work_rate / 100.0)
+    factor = _RUN_LINE_FACTOR.get(mp.player.position, 1.0)
+    advance = _lerp(_RUN_MIN_ADVANCE, _RUN_MAX_ADVANCE, mp.player.work_rate / 100.0) * factor
     target = base + (goal - base).normalized() * advance
     rivals = state.team(_other(mp.team))
     if rivals:
@@ -385,6 +394,35 @@ def better_finisher(
         if openness > best_open:
             best, best_open = mate, openness
     return best
+
+
+def open_outlet(owner: MatchPlayer, state: MatchState, max_dist: float) -> MatchPlayer | None:
+    """Companero bien desmarcado para CAMBIAR el juego (lateral o en diagonal).
+
+    Sirve para mover el balon a otra zona cuando alguien quedo muy solo, sin
+    perder el hilo de ataque: solo considera companeros que NO esten mas atras
+    que el que tiene la pelota (evita el toque para atras eterno). None si no hay
+    una opcion claramente libre y a una distancia que valga el cambio.
+    """
+    goal = attacking_goal(state, owner.team)
+    owner_to_goal = owner.position.distance_to(goal)
+    rivals = state.team(_other(owner.team))
+    mates = [
+        m
+        for m in state.team(owner.team)
+        if m is not owner
+        and m.position.distance_to(owner.position) <= max_dist
+        and m.position.distance_to(goal) <= owner_to_goal + 4.0  # no mas atras
+        and m.position.distance_to(owner.position) > 12.0        # a otra zona
+    ]
+    if not mates:
+        return None
+
+    def openness(m: MatchPlayer) -> float:
+        return min((o.position.distance_to(m.position) for o in rivals), default=999.0)
+
+    best = max(mates, key=openness)
+    return best if openness(best) > 10.0 else None  # bien solo (no marcado)
 
 
 def is_offside(receiver: MatchPlayer, owner: MatchPlayer, state: MatchState) -> bool:

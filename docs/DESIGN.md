@@ -378,6 +378,16 @@ partido usa los **atributos** del jugador (no constantes uniformes).
 reanudaciones, G2 marca zonal, G3 pases corto/largo, G3.x desmarques, G4
 quite/faltas/tiros libres, G5 rebotes/atajadas del arquero, G6 offside/mano,
 pausa de pelota muerta + reposicionamiento. Falta:
+- [x] **Freeze tras perder un duelo:** al que lo gambetean (erro el quite) o al
+      que le sacan la pelota (quite) queda **frenado un instante**; la duracion
+      sale de sus atributos (`agility`/`anticipation`/`composure`: mejor
+      recuperacion -> menos freeze). Da realismo al "lo dejo en el camino".
+- [x] **Mas dinamica:** cada linea sube distinto en ataque (el delantero se mete
+      al area, el defensor apoya sin desarmar; `_RUN_LINE_FACTOR`) y el que la
+      lleva libre **cambia el juego** de vez en cuando a un companero muy solo en
+      otra zona (lateral/diagonal, nunca para atras: `open_outlet`).
+  - [ ] **Pendiente:** mas presencia en las dos areas (delanteros aguantando la
+        linea de offside en vez de un tope fijo) y juego por las bandas/centros.
 - [x] **Pelota muerta (pausa + reposicionamiento):** todos los balones parados
       (lateral, corner, saque de arco, falta, tiro libre, saque del medio tras
       gol, atajada del arquero) tienen una pausa (`_restart_timer`) durante la
