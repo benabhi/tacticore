@@ -528,8 +528,17 @@ mas abierto (casi siempre central) => **embudo central**.
   "centro"), donde el punta y los que llegan la pelean. Subio la posesion por
   banda de ~0% a ~11-21% y hay 4-6 centros por partido. Falta: corners con
   corredores diferenciados y rematar el centro de cabeza (juego aereo).
-- **H3. Apoyos y paredes.** Pase-y-sigo (te paso, corro, me la devolves),
-  ayuda/sobre-marca en defensa, desdoblamiento del lateral.
+- **H3. Apoyos y paredes.** [hecho parcial] **Pase-y-voy**: el que da un pase
+  corto pica de apoyo hacia adelante (onside) durante una ventana corta
+  (`support_run_velocity`, `_support_runner_id`); la **pared** (devolucion de
+  primera) emerge sola porque el runner queda como opcion adelantada y libre que
+  la logica de pase (`better_finisher`/`pick_pass`) ya elige. Subio tiros 6.2->7.4
+  y goles 1.9->3.0 por partido (traza de 8 cruces). **Centrales en la salida**:
+  suben por su franja sin cerrarse al centro (`attacking_run_target`), ofrecen
+  angulo sin amontonarse. Pendiente real: ayuda/sobre-marca en defensa y
+  desdoblamiento del lateral; el juego sigue sintiendose central (~21% en banda)
+  -> se aborda mejor con la mentalidad/tacticas de H4 (una tactica "abrir/bandas"
+  y la mentalidad ofensiva ensanchan de raiz).
 - **H4. Marca configurable + tacticas.** Marca **zonal/personal** por jugador
   (seam `marking_assignment` ya existe) via comando `SetMarking`. **Mentalidad**
   del equipo: **ofensiva / neutra / defensiva** -> sesga cuanto suben las lineas,
