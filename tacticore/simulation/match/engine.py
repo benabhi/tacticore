@@ -53,6 +53,7 @@ _WIDE_MARGIN = 18.0       # a menos de esto de una banda, el jugador esta "abier
 _CROSS_ZONE = 0.30        # ultimo tercio (fraccion del largo) desde donde se centra
 _CROSS_SPEED = 18.0       # velocidad del centro al area (m/s)
 _WING_SEEK_CHANCE = 0.05  # prob. por tick de abrir el juego a un extremo libre
+_RECEPTION_TIME = 1.6     # tras un saque, el que recibe va a buscar la pelota este rato (s)
 _GOAL_KICK_DEPTH = 5.5    # el saque de arco sale desde el borde del area chica (m)
 _RESTART_NUDGE = 0.4      # la pelota del saque queda esta distancia adentro del limite
 _SHOT_SAVE_SPEED = 16.0   # a mas velocidad que esto, la pelota que llega al arquero es "remate"
@@ -112,6 +113,11 @@ class MatchEngine:
         self._restart_kind: str | None = None  # tipo de saque pendiente (lateral, corner, ...)
         self._restart_taker = None  # quien va a ejecutar el saque (hasta que la juega)
         self._kickoff_side = Side.HOME  # quien saca del medio (el local al inicio)
+        # Tras un saque/pase de saque: el receptor va a buscar la pelota y el que
+        # la jugo NO la persigue (evita que vuelvan a su zona o que la siga el mismo).
+        self._reception_id: int | None = None
+        self._reception_passer_id: int | None = None
+        self._reception_timer = 0.0
         # Jugadores "congelados" un instante (ejecuto un saque, lo gambetearon, o
         # le quitaron la pelota): id -> tiempo restante (s). No se mueven.
         self._frozen: dict[int, float] = {}
@@ -159,6 +165,7 @@ class MatchEngine:
         self._gk_carry_timer = max(0.0, self._gk_carry_timer - dt)
         self._frozen = {i: t - dt for i, t in self._frozen.items() if t - dt > 0.0}
         self._throw_wait_timer = max(0.0, self._throw_wait_timer - dt)
+        self._reception_timer = max(0.0, self._reception_timer - dt)
         self._acquire_possession()
         self._resolve_tackle()  # un defensor pegado puede intentar quitar
         self._move_players(dt)  # la accion del que lleva puede soltar la pelota
@@ -207,6 +214,7 @@ class MatchEngine:
         self._restart_taker = kicker  # queda quieto un instante tras tocarla
         self._log("pase", player=kicker, target=target, detail="corto")
         self._kick(kicker, target.position, _PASS_SPEED)
+        self._set_reception(kicker, target)
         state.phase = MatchPhase.PLAYING
 
     def _acquire_possession(self) -> None:
@@ -420,6 +428,12 @@ class MatchEngine:
         else:
             self._move_with_owner(dt, owner)
 
+    def _set_reception(self, passer, target) -> None:
+        """Tras un saque/pase de saque: el receptor va a buscar la pelota."""
+        self._reception_id = id(target)
+        self._reception_passer_id = id(passer)
+        self._reception_timer = _RECEPTION_TIME
+
     def _move_loose_ball(self, dt: float) -> None:
         """Pelota suelta: cada equipo manda a su mas cercano; el resto sostiene."""
         state = self.state
@@ -428,6 +442,11 @@ class MatchEngine:
             id(ai.team_ball_chaser(state, Side.HOME)),
             id(ai.team_ball_chaser(state, Side.AWAY)),
         }
+        # Tras un saque: el receptor va a buscarla y el que la jugo no la persigue.
+        if self._reception_timer > 0.0:
+            if self._reception_id is not None:
+                chasers.add(self._reception_id)
+            chasers.discard(self._reception_passer_id)
         for mp in state.all_players():
             if ai.is_goalkeeper(mp):
                 mp.velocity = ai.goalkeeper_velocity(mp, state)
@@ -725,6 +744,8 @@ class MatchEngine:
         )
         self._log("pase", player=taker, target=target, detail="corto")
         self._kick(taker, aim, _PASS_SPEED)
+        if target is not None:
+            self._set_reception(taker, target)
 
     def _is_wide(self, mp) -> bool:
         """Si el jugador esta pegado a una banda."""
