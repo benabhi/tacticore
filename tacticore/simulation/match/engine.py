@@ -43,6 +43,8 @@ _DRIBBLE_OFFSET = 0.5     # la pelota va esta distancia por delante del que llev
 _GK_REACH = 1.7           # el arquero domina la pelota a este radio dentro del area (m)
 _CLEAR_SPEED = 24.0       # velocidad del despeje del arquero (m/s)
 _GK_SHORT_SAFE = 24.0     # solo saca corto si el rival mas cercano esta a mas que esto (m)
+_GK_CARRY_TIME = 2.5      # el arquero camina el area buscando opcion antes de distribuir (s)
+_GK_CARRY_PRESSURE = 8.0  # si un rival se acerca mas que esto, distribuye ya (no camina)
 _GOAL_KICK_DEPTH = 5.5    # el saque de arco sale desde el borde del area chica (m)
 _RESTART_NUDGE = 0.4      # la pelota del saque queda esta distancia adentro del limite
 _SHOT_SAVE_SPEED = 16.0   # a mas velocidad que esto, la pelota que llega al arquero es "remate"
@@ -91,6 +93,8 @@ class MatchEngine:
         self._kick_cooldown = 0.0
         self._tackle_cooldown = 0.0
         self._restart_timer = 0.0  # pausa de pelota muerta en curso (s)
+        self._gk_carry_timer = 0.0  # el arquero camina el area antes de distribuir (s)
+        self._restart_is_goal_kick = False  # el saque pendiente es de arco (lo saca el GK)
         self._last_kicker = None  # ultimo que pateo (para nombrar al autor del gol)
         self._tick = 0
         # Si hay un saque pendiente (lateral/corner/saque de arco/tiro libre),
@@ -131,6 +135,7 @@ class MatchEngine:
             self._kickoff()
         self._kick_cooldown = max(0.0, self._kick_cooldown - dt)
         self._tackle_cooldown = max(0.0, self._tackle_cooldown - dt)
+        self._gk_carry_timer = max(0.0, self._gk_carry_timer - dt)
         self._acquire_possession()
         self._resolve_tackle()  # un defensor pegado puede intentar quitar
         self._move_players(dt)  # la accion del que lleva puede soltar la pelota
@@ -204,10 +209,19 @@ class MatchEngine:
             if speed > _HANDBALL_SPEED and self._rng.random() < _HANDBALL_CHANCE:
                 self._award_handball(taker)
                 return
+            was_restart = self._restart_side is not None
+            prev_touch = self.state.last_touch
             ball.owner = taker
             ball.velocity = Vec2(0.0, 0.0)
             self.state.last_touch = taker.team
             self._restart_side = None  # pelota en juego de nuevo
+            # En juego (no en un saque), si la toma el rival del ultimo toque
+            # es una recuperacion/intercepcion.
+            if not was_restart and prev_touch is not None and prev_touch is not taker.team:
+                self._log("intercepta", player=taker)
+            # El arquero que toma la pelota la "camina" un rato antes de distribuir.
+            if ai.is_goalkeeper(taker):
+                self._gk_carry_timer = _GK_CARRY_TIME
 
     def _gk_beaten_chance(self, gk) -> float:
         """Prob. de que al arquero se le escape un remate (peor reflejos/manos -> mas)."""
@@ -225,6 +239,7 @@ class MatchEngine:
             ball.velocity = Vec2(0.0, 0.0)
             self._restart_side = None
             self._restart_timer = _SETTLE_SAVE
+            self._gk_carry_timer = _GK_CARRY_TIME
             self.state.last_event = "Atajada"
             self._log("atajada", player=gk)
             return
@@ -312,6 +327,7 @@ class MatchEngine:
         self._restart_side = attacking_side
         self._tackle_cooldown = _FOUL_RECOVER
         self._restart_timer = _SETTLE_RESTART
+        self._restart_is_goal_kick = False
         self.state.last_event = event
 
     def _award_free_kick(self, victim) -> None:
@@ -335,6 +351,7 @@ class MatchEngine:
         ball.velocity = Vec2(0.0, 0.0)
         self._restart_side = defending
         self._restart_timer = _SETTLE_RESTART
+        self._restart_is_goal_kick = False
         self.state.last_touch = owner.team
         self.state.last_event = "Offside"
         self._log("offside", player=receiver)
@@ -415,13 +432,17 @@ class MatchEngine:
             taking = owner.team
         spot = ball.position
 
-        # Ejecutante: si alguien la tiene, es el; si no, el de campo mas cercano
-        # del equipo que saca (camina hasta la pelota: linea, corner, punto, etc.).
+        # Ejecutante: si alguien la tiene, es el; el saque de arco lo ejecuta el
+        # arquero; el resto, el de campo mas cercano (camina hasta la pelota:
+        # linea, corner, punto, etc.).
         taker = owner
         if taker is None and taking is not None:
-            outfield = [m for m in state.team(taking) if not ai.is_goalkeeper(m)]
-            pool = outfield or state.team(taking)
-            taker = min(pool, key=lambda m: m.position.distance_to(spot))
+            if self._restart_is_goal_kick:
+                taker = ai.team_goalkeeper(state, taking)
+            if taker is None:
+                outfield = [m for m in state.team(taking) if not ai.is_goalkeeper(m)]
+                pool = outfield or state.team(taking)
+                taker = min(pool, key=lambda m: m.position.distance_to(spot))
 
         # Barrera: solo en tiros libres a media distancia del arco que se defiende.
         wall_ids: set[int] = set()
@@ -465,8 +486,13 @@ class MatchEngine:
         state = self.state
         goal = ai.attacking_goal(state, owner.team)
 
-        # Arquero -> distribuye (saque corto seguro o pelotazo largo).
+        # Arquero con la pelota: camina el area buscando opcion y despues
+        # distribuye (saque corto seguro o pelotazo largo). Si lo presionan, ya.
         if ai.is_goalkeeper(owner):
+            rival = ai.nearest_opponent(owner, state)
+            pressured = rival.position.distance_to(owner.position) < _GK_CARRY_PRESSURE
+            if self._gk_carry_timer > 0.0 and not pressured:
+                return ai.goalkeeper_carry_velocity(owner, state)
             self._goalkeeper_distribute(owner)
             return Vec2(0.0, 0.0)
 
@@ -674,6 +700,7 @@ class MatchEngine:
         ball.owner = None
         self._restart_side = restart_side
         self._restart_timer = _SETTLE_RESTART
+        self._restart_is_goal_kick = event == "Saque de arco"
         state.last_event = event
         self._log(
             {"Lateral": "lateral", "Corner": "corner", "Saque de arco": "saque_arco"}[event],
@@ -715,4 +742,5 @@ class MatchEngine:
         self._tackle_cooldown = 0.0
         self._restart_side = None
         self._restart_timer = _SETTLE_KICKOFF
+        self._restart_is_goal_kick = False
         state.phase = MatchPhase.KICKOFF

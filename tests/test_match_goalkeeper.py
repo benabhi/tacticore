@@ -3,7 +3,14 @@
 from tacticore.core.rng import new_rng
 from tacticore.domain.enums import LeagueTier
 from tacticore.generators import ClubGenerator
-from tacticore.simulation.match import MatchEngine, MatchPhase, Side, Vec2, kickoff_state
+from tacticore.simulation.match import (
+    DEFAULT_DT,
+    MatchEngine,
+    MatchPhase,
+    Side,
+    Vec2,
+    kickoff_state,
+)
 from tacticore.simulation.match import ai
 from tacticore.ui.widgets.pitch import GK_COLOR, GK_OWNER_COLOR, compose_match_cells
 
@@ -86,6 +93,46 @@ def test_pressured_keeper_clears_long():
     st.away[1].position = gk.position + Vec2(2.0, 0.0)  # rival encima: presionado
     engine._goalkeeper_distribute(gk)
     assert st.log[-1].kind == "despeje"
+
+
+def test_goal_kick_is_taken_by_the_keeper():
+    st = _state()
+    st.last_touch = Side.HOME  # ultimo toque del atacante -> saque de arco para AWAY
+    st.ball.owner = None
+    st.ball.position = Vec2(st.pitch.length - 0.2, 50.0)
+    st.ball.velocity = Vec2(10.0, 0.0)
+    engine = MatchEngine(st, new_rng(1))
+    engine.step()  # genera el saque de arco
+    assert st.last_event == "Saque de arco"
+    assert engine._restart_is_goal_kick is True
+    gk_away = ai.team_goalkeeper(st, Side.AWAY)
+    took_it = False
+    for _ in range(int(5.0 / DEFAULT_DT)):
+        engine.step()
+        if st.ball.owner is gk_away:
+            took_it = True
+            break
+    assert took_it  # lo ejecuta el arquero, no un jugador de campo
+
+
+def test_keeper_walks_the_box_with_the_ball():
+    st = _state()
+    gk = ai.team_goalkeeper(st, Side.HOME)
+    start = Vec2(gk.position.x, gk.position.y)
+    st.ball.owner = gk
+    st.ball.position = gk.position
+    # Un companero libre adelante para que el arquero camine hacia esa zona.
+    mate = st.home[3]
+    mate.position = Vec2(20.0, 40.0)
+    for o in st.away:
+        o.position = Vec2(90.0, 34.0)  # nadie lo presiona
+    engine = MatchEngine(st, new_rng(1))
+    engine._gk_carry_timer = 2.5
+    moved = 0.0
+    for _ in range(int(1.5 / DEFAULT_DT)):
+        engine.step()
+        moved = max(moved, gk.position.distance_to(start))
+    assert moved > 1.0  # camino (no se quedo clavado)
 
 
 def test_keepers_render_in_their_own_color():

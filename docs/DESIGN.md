@@ -392,11 +392,12 @@ pausa de pelota muerta + reposicionamiento. Falta:
       decida **jugarla individual** (mas probable en gambeteadores: `dribbling`
       vs `vision`). Y a un remate **se le puede escapar al arquero** aunque vaya a
       su glifo (segun `reflexes`/`handling`) -> posible gol (evento "escapa").
-  - [x] **Distribucion del arquero con variantes:** saca corto a un companero
-        libre (segun `passing`/`composure` y presion) o revienta largo. Ademas el
-        arquero hace de **libero**: sube hacia el borde del area grande cuando su
-        equipo ataca y vuelve a la linea al defender (puede quedar mal parado en
-        un contragolpe). Arqueros en **magenta** (tono claro al tener la pelota).
+  - [x] **Distribucion del arquero con variantes:** con la pelota, **camina el
+        area** buscando opcion (sin salir del area grande) y despues distribuye:
+        saca corto a un companero libre si no hay presion cerca (>24m), o revienta
+        largo. Hace de **libero** (sube al borde del area cuando su equipo ataca).
+        El **saque de arco lo ejecuta el arquero** (antes lo tomaba un jugador de
+        campo). Arqueros en **magenta** (tono claro al tener la pelota).
   - [ ] **Pulido del balon parado (resto):** corners con corredores diferenciados
         (unos al primer palo/corto, otros al area por el largo); saque rapido "de
         sorpresa" como **orden** del manager (saltarse la pausa).

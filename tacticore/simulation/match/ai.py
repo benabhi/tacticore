@@ -96,6 +96,27 @@ def goalkeeper_short_option(
     return best if openness(best) > 5.0 else None  # solo si esta claramente libre
 
 
+def goalkeeper_carry_velocity(gk: MatchPlayer, state: MatchState) -> Vec2:
+    """El arquero camina (despacio) dentro de su area buscando a quien pasarle.
+
+    Va hacia el lado del companero libre mas conveniente (o hacia el frente de su
+    area si no hay), siempre acotado al area grande (no sale de ahi).
+    """
+    pitch = state.pitch
+    is_home = gk.team is Side.HOME
+    area = pitch.penalty_area(is_home)
+    short = goalkeeper_short_option(gk, state, max_dist=45.0)
+    if short is not None:
+        offset = short.position - gk.position
+        step = offset.normalized() * 6.0 if offset.length() > 1e-6 else offset
+        target = gk.position + step
+    else:
+        front_x = area.max_x if is_home else area.x
+        target = Vec2(front_x, gk.position.y)
+    target = area.clamp(target)  # nunca se sale del area grande
+    return arrive(gk.position, target, max_speed(gk.player) * 0.6)  # camina, no corre
+
+
 def goalkeeper_velocity(mp: MatchPlayer, state: MatchState) -> Vec2:
     """Velocidad del arquero: se planta delante del arco y sigue la y de la pelota.
 

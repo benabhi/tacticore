@@ -108,6 +108,18 @@ def test_tackles_happen_in_a_real_match():
     assert "Quite" in seen  # hubo recuperaciones por quite
 
 
+def test_interception_is_logged_when_rival_wins_a_loose_ball():
+    st = _state()
+    st.last_touch = Side.HOME            # la toco por ultimo el local...
+    st.ball.owner = None
+    st.ball.position = Vec2(50.0, 34.0)
+    st.ball.velocity = Vec2(0.0, 0.0)
+    st.away[5].position = Vec2(50.0, 34.0)  # ...y un visitante la recupera
+    engine = MatchEngine(st, new_rng(1))
+    engine.step()
+    assert any(e.kind == "intercepta" for e in st.log)
+
+
 def test_tackle_is_deterministic():
     a = MatchEngine(_state_from_kickoff(), new_rng(7))
     b = MatchEngine(_state_from_kickoff(), new_rng(7))
