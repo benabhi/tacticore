@@ -386,8 +386,13 @@ pausa de pelota muerta + reposicionamiento. Falta:
       al area, el defensor apoya sin desarmar; `_RUN_LINE_FACTOR`) y el que la
       lleva libre **cambia el juego** de vez en cuando a un companero muy solo en
       otra zona (lateral/diagonal, nunca para atras: `open_outlet`).
-  - [ ] **Pendiente:** mas presencia en las dos areas (delanteros aguantando la
-        linea de offside en vez de un tope fijo) y juego por las bandas/centros.
+- [x] **Forma de equipo (presencia en areas):** los delanteros **aguantan la
+      linea de offside** (`offside_line_x`) y **crashean el area** cuando el
+      ataque es profundo; la **linea defensiva retrocede** hacia el arco propio
+      al acercarse la pelota (`line_drop`), bajando el bloque al area; el que pasa
+      ya no elige a un companero en offside. Mejoro la forma (defensa baja al
+      area: ~2.5 jugadores), aunque la **penetracion** del ataque al area sigue
+      siendo poco frecuente en 11v11 -> balance a seguir afinando.
 - [x] **Pelota muerta (pausa + reposicionamiento):** todos los balones parados
       (lateral, corner, saque de arco, falta, tiro libre, saque del medio tras
       gol, atajada del arquero) tienen una pausa (`_restart_timer`) durante la

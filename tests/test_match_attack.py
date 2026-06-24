@@ -38,12 +38,13 @@ def test_better_finisher_picks_open_closer_mate():
     owner.position = Vec2(70.0, 34.0)  # HOME ataca x=105: a 35m del arco
     mate = st.home[9]
     mate.position = Vec2(95.0, 40.0)   # mas cerca del arco y en posicion de remate
-    # Aislamos: el resto de companeros y todos los rivales lejos.
+    # Aislamos: el resto de companeros lejos.
     for m in st.home:
         if m not in (owner, mate):
             m.position = Vec2(0.0, 0.0)
+    # Rivales atras (linea de offside en x=100): el companero en 95 queda HABILITADO.
     for o in st.away:
-        o.position = Vec2(0.0, 0.0)
+        o.position = Vec2(100.0, 64.0)
     assert ai.better_finisher(owner, st, 60.0) is mate
 
 

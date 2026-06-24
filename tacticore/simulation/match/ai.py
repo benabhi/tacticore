@@ -172,7 +172,11 @@ def best_pass_target(
         )
 
     mates = [m for m in state.team(owner.team) if m is not owner]
-    in_range = [m for m in mates if m.position.distance_to(owner.position) <= max_dist]
+    in_range = [
+        m for m in mates
+        if m.position.distance_to(owner.position) <= max_dist
+        and not is_offside(m, owner, state)  # no pasar a un companero adelantado
+    ]
     ahead = [m for m in in_range if m.position.distance_to(goal) < owner_to_goal - 1.0]
     pool = ahead or in_range
     if not pool:
@@ -239,12 +243,36 @@ def marking_point(defender: MatchPlayer, mark: MatchPlayer, state: MatchState) -
     return mark.position + goal_side
 
 
+# La linea defensiva retrocede hasta esto (m) cuando la pelota esta pegada al
+# arco propio (asi el bloque baja al area y hay jugadas adentro).
+_LINE_DROP_MAX = 12.0
+
+
+def line_drop(state: MatchState, side: Side) -> float:
+    """Cuanto retrocede la linea de `side` hacia su arco segun la cercania del balon."""
+    pitch = state.pitch
+    dist = state.ball.position.distance_to(own_goal(state, side))
+    frac = max(0.0, 1.0 - dist / (pitch.length * 0.45))  # 1 si pegada, 0 si lejos
+    return frac * _LINE_DROP_MAX
+
+
 def marking_velocity(defender: MatchPlayer, state: MatchState) -> Vec2:
-    """Velocidad de un defensor que marca su zona/rival (no es el que presiona)."""
+    """Velocidad de un defensor que marca su zona/rival (no es el que presiona).
+
+    Ademas, la linea **retrocede** hacia el arco propio cuando la pelota se acerca
+    (el bloque baja al area), arrastrando la linea de offside para que haya
+    jugadas adentro del area.
+    """
     mark = marking_assignment(defender, state)
-    if mark is None:
-        return arrive(defender.position, defender.base_position, max_speed(defender.player))
-    target = marking_point(defender, mark, state)
+    target = defender.base_position if mark is None else marking_point(defender, mark, state)
+    drop = line_drop(state, defender.team)
+    if drop > 0.0:
+        own_x = own_goal(state, defender.team).x
+        toward = -1.0 if defender.team is Side.HOME else 1.0  # hacia el arco propio
+        new_x = target.x + toward * drop
+        # no retroceder mas alla del propio arco.
+        new_x = max(own_x + 2.0, new_x) if defender.team is Side.HOME else min(own_x - 2.0, new_x)
+        target = Vec2(new_x, target.y)
     return arrive(defender.position, target, max_speed(defender.player))
 
 
@@ -284,17 +312,44 @@ _RUN_SPACE_RADIUS = 4.0
 _RUN_SPACE_PUSH = 4.0
 
 
+def offside_line_x(state: MatchState, attacking_side: Side) -> float | None:
+    """Coordenada x de la linea de offside (el anteultimo defensor rival)."""
+    defenders = state.team(_other(attacking_side))
+    if len(defenders) < 2:
+        return None
+    xs = [d.position.x for d in defenders]
+    if attacking_side is Side.HOME:  # ataca hacia +x: el 2do mas adelantado
+        return sorted(xs, reverse=True)[1]
+    return sorted(xs)[1]
+
+
 def attacking_run_target(mp: MatchPlayer, state: MatchState) -> Vec2:
     """Punto al que se desmarca un atacante sin pelota: adelantado y en espacio.
 
-    Sube desde su ancla hacia el arco rival (mas con mas `work_rate`) y, si tiene
-    un rival encima, se corre a un costado para ofrecerse libre.
+    Los delanteros **aguantan la linea de offside** (se paran justo detras del
+    anteultimo defensor para meterse al area sin quedar adelantados); el resto
+    sube una fraccion de su zona segun `work_rate` y su linea (`_RUN_LINE_FACTOR`).
+    Si tiene un rival encima, se corre a un costado para ofrecerse libre.
     """
     goal = attacking_goal(state, mp.team)
     base = mp.base_position
-    factor = _RUN_LINE_FACTOR.get(mp.player.position, 1.0)
-    advance = _lerp(_RUN_MIN_ADVANCE, _RUN_MAX_ADVANCE, mp.player.work_rate / 100.0) * factor
-    target = base + (goal - base).normalized() * advance
+    line = offside_line_x(state, mp.team)
+    if mp.player.position is Position.FORWARD and line is not None:
+        pitch = state.pitch
+        if state.ball.position.distance_to(goal) < 26.0:
+            # Ataque profundo: se mete al area (crashea), repartido hacia el centro.
+            depth = 9.0
+            tx = goal.x - depth if mp.team is Side.HOME else goal.x + depth
+            target = Vec2(tx, _lerp(base.y, pitch.width / 2, 0.5))
+        elif mp.team is Side.HOME:
+            # Si no, aguanta la linea de offside (1m detras del anteultimo defensor).
+            target = Vec2(max(base.x, line - 1.0), base.y)
+        else:
+            target = Vec2(min(base.x, line + 1.0), base.y)
+    else:
+        factor = _RUN_LINE_FACTOR.get(mp.player.position, 1.0)
+        advance = _lerp(_RUN_MIN_ADVANCE, _RUN_MAX_ADVANCE, mp.player.work_rate / 100.0) * factor
+        target = base + (goal - base).normalized() * advance
     rivals = state.team(_other(mp.team))
     if rivals:
         nearest = min(rivals, key=lambda o: o.position.distance_to(target))
@@ -384,6 +439,8 @@ def better_finisher(
     for mate in state.team(owner.team):
         if mate is owner or mate.position.distance_to(owner.position) > max_dist:
             continue
+        if is_offside(mate, owner, state):  # no asistir a un companero adelantado
+            continue
         mate_to_goal = mate.position.distance_to(goal)
         # Debe estar mas cerca del arco y en posicion de remate.
         if mate_to_goal > owner_to_goal - 4.0 or mate_to_goal > _SHOOT_MAX_RANGE:
@@ -434,16 +491,14 @@ def is_offside(receiver: MatchPlayer, owner: MatchPlayer, state: MatchState) -> 
     """
     if receiver is owner:
         return False
-    defenders = state.team(_other(owner.team))
-    if len(defenders) < 2:
+    line = offside_line_x(state, owner.team)
+    if line is None:
         return False
     mid = state.pitch.length / 2
     rx = receiver.position.x
     ball_x = state.ball.position.x
     if owner.team is Side.HOME:  # ataca hacia +x
-        line = sorted((d.position.x for d in defenders), reverse=True)[1]
         return rx > mid and rx > ball_x and rx > line
-    line = sorted(d.position.x for d in defenders)[1]  # ataca hacia -x
     return rx < mid and rx < ball_x and rx < line
 
 
