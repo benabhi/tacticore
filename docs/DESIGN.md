@@ -414,10 +414,11 @@ pausa de pelota muerta + reposicionamiento. Falta:
         El **saque de arco lo ejecuta el arquero** (antes lo tomaba un jugador de
         campo). Arqueros en **magenta** (tono claro al tener la pelota).
   - [x] **Saque de banda / corner ejecutados de verdad:** el lateral es un pase
-        corto SIEMPRE hacia adentro (no puede salir directo) y companeros cercanos
-        van a **ofrecerse**; el corner es un centro al area. Tras ejecutar un
-        saque, el ejecutante queda **quieto un instante** (no parece que se la
-        lleva). Visible en el relato (el pase del saque).
+        corto SIEMPRE hacia adentro (no puede salir directo); el que saca **espera**
+        (hasta ~3s) a tener un companero al alcance y **varios cercanos van a
+        ofrecerse** (3 puntos, adentro del campo); si lo presionan o se acaba el
+        tiempo, saca igual. El corner es un centro al area. Tras ejecutar un saque,
+        el ejecutante queda **quieto un instante**. Visible en el relato.
   - [ ] **Pulido del balon parado (resto):** corners con corredores diferenciados
         (unos al primer palo/corto, otros al area por el largo); saque rapido "de
         sorpresa" como **orden** del manager (saltarse la pausa).

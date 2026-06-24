@@ -46,6 +46,9 @@ _GK_SHORT_SAFE = 24.0     # solo saca corto si el rival mas cercano esta a mas q
 _GK_CARRY_TIME = 2.5      # el arquero camina el area buscando opcion antes de distribuir (s)
 _GK_CARRY_PRESSURE = 8.0  # si un rival se acerca mas que esto, distribuye ya (no camina)
 _TAKER_FREEZE = 0.7       # el ejecutante de un saque queda quieto este rato tras jugarla (s)
+_THROW_WAIT_MAX = 3.0     # el que saca el lateral espera hasta esto a tener un pase (s)
+_THROW_PRESSURE = 6.0     # si un rival se acerca mas que esto al que saca, saca ya (m)
+_THROW_OPTION_RANGE = 16.0  # distancia a la que un companero ya es opcion de saque (m)
 _GOAL_KICK_DEPTH = 5.5    # el saque de arco sale desde el borde del area chica (m)
 _RESTART_NUDGE = 0.4      # la pelota del saque queda esta distancia adentro del limite
 _SHOT_SAVE_SPEED = 16.0   # a mas velocidad que esto, la pelota que llega al arquero es "remate"
@@ -107,6 +110,7 @@ class MatchEngine:
         # Jugadores "congelados" un instante (ejecuto un saque, lo gambetearon, o
         # le quitaron la pelota): id -> tiempo restante (s). No se mueven.
         self._frozen: dict[int, float] = {}
+        self._throw_wait_timer = 0.0  # el que saca el lateral espera ayuda
         self._last_kicker = None  # ultimo que pateo (para nombrar al autor del gol)
         self._tick = 0
         # Si hay un saque pendiente (lateral/corner/saque de arco/tiro libre),
@@ -149,6 +153,7 @@ class MatchEngine:
         self._tackle_cooldown = max(0.0, self._tackle_cooldown - dt)
         self._gk_carry_timer = max(0.0, self._gk_carry_timer - dt)
         self._frozen = {i: t - dt for i, t in self._frozen.items() if t - dt > 0.0}
+        self._throw_wait_timer = max(0.0, self._throw_wait_timer - dt)
         self._acquire_possession()
         self._resolve_tackle()  # un defensor pegado puede intentar quitar
         self._move_players(dt)  # la accion del que lleva puede soltar la pelota
@@ -235,6 +240,8 @@ class MatchEngine:
             # Si tomo un saque pendiente, es el ejecutante (hasta que la juega).
             if was_restart:
                 self._restart_taker = taker
+                if self._restart_kind == "lateral" and not ai.is_goalkeeper(taker):
+                    self._throw_wait_timer = _THROW_WAIT_MAX  # espera ayuda
             # El arquero que toma la pelota la "camina" un rato antes de distribuir.
             if ai.is_goalkeeper(taker):
                 self._gk_carry_timer = _GK_CARRY_TIME
@@ -427,11 +434,18 @@ class MatchEngine:
         pitch = state.pitch
         defending = _other(owner.team)
         presser = ai.team_ball_chaser(state, defending)
+        # Si esta ejecutandose un lateral, los companeros cercanos siguen yendo a
+        # ofrecerse adentro del campo (no se van al ataque hasta que se juega).
+        offers = {}
+        if owner is self._restart_taker and self._restart_kind == "lateral":
+            offers = self._throw_in_offers(owner.team, owner, owner.position)
         for mp in state.all_players():
             if mp is owner:
                 mp.velocity = self._owner_action(mp)
             elif ai.is_goalkeeper(mp):
                 mp.velocity = ai.goalkeeper_velocity(mp, state)
+            elif id(mp) in offers:
+                mp.velocity = ai.arrive(mp.position, offers[id(mp)], ai.max_speed(mp.player))
             elif mp.team is defending:
                 # Uno presiona la pelota; el resto marca su zona/rival.
                 if mp is presser:
@@ -515,8 +529,9 @@ class MatchEngine:
         pitch = self.state.pitch
         inward = 1.0 if spot.y < pitch.width / 2 else -1.0  # hacia adentro del campo
         points = [
-            pitch.clamp(Vec2(spot.x - 5.0, spot.y + inward * 8.0)),
-            pitch.clamp(Vec2(spot.x + 5.0, spot.y + inward * 6.0)),
+            pitch.clamp(Vec2(spot.x - 6.0, spot.y + inward * 8.0)),
+            pitch.clamp(Vec2(spot.x + 6.0, spot.y + inward * 7.0)),
+            pitch.clamp(Vec2(spot.x, spot.y + inward * 14.0)),
         ]
         candidates = [
             m for m in self.state.team(taking)
@@ -544,6 +559,13 @@ class MatchEngine:
         # Ejecutante de un lateral o corner: saque dedicado (hacia adentro / al area).
         if owner is self._restart_taker:
             if self._restart_kind == "lateral":
+                # Espera a tener un companero al alcance (o si lo presionan / se
+                # acaba el tiempo, saca igual hacia adentro).
+                option = self._throw_option(owner)
+                rival = ai.nearest_opponent(owner, state)
+                pressured = rival.position.distance_to(owner.position) < _THROW_PRESSURE
+                if option is None and not pressured and self._throw_wait_timer > 0.0:
+                    return Vec2(0.0, 0.0)  # sostiene la pelota, espera ayuda
                 self._take_throw_in(owner)
                 return Vec2(0.0, 0.0)
             if self._restart_kind == "corner":
@@ -614,6 +636,26 @@ class MatchEngine:
         p = owner.player
         chance = _clamp(0.15 + (p.dribbling - p.vision) / 300.0, 0.05, 0.45)
         return self._rng.random() < chance
+
+    def _throw_option(self, taker):
+        """Companero ya al alcance del saque de banda (adentro del campo y libre)."""
+        pitch = self.state.pitch
+        rivals = self.state.team(_other(taker.team))
+        best = None
+        best_open = 4.0
+        for m in self.state.team(taker.team):
+            if m is taker or ai.is_goalkeeper(m):
+                continue
+            if m.position.distance_to(taker.position) > _THROW_OPTION_RANGE:
+                continue
+            if not (4.0 < m.position.y < pitch.width - 4.0):
+                continue
+            openness = min(
+                (o.position.distance_to(m.position) for o in rivals), default=999.0
+            )
+            if openness > best_open:
+                best, best_open = m, openness
+        return best
 
     def _take_throw_in(self, taker) -> None:
         """Saque de banda: pase corto SIEMPRE hacia adentro del campo (no sale)."""
