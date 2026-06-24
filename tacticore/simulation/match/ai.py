@@ -19,8 +19,10 @@ _MIN_SPEED = 3.0
 _SPEED_RANGE = 6.0
 # Radio (m) dentro del cual el jugador desacelera al acercarse al objetivo.
 _SLOW_RADIUS = 2.0
-# El arquero se planta esta distancia (m) por delante de su arco.
+# El arquero se planta entre esta distancia (defendiendo, sobre la linea) y
+# _GK_SWEEP_DEPTH (atacando su equipo, sale a hacer de libero hacia el area grande).
 _GK_GUARD_DEPTH = 3.0
+_GK_SWEEP_DEPTH = 14.0
 # Margen (m) a cada lado de la boca del arco que el arquero llega a cubrir.
 _GK_COVER_MARGIN = 1.0
 
@@ -74,6 +76,26 @@ def team_goalkeeper(state: MatchState, side: Side) -> MatchPlayer | None:
     return None
 
 
+def goalkeeper_short_option(
+    gk: MatchPlayer, state: MatchState, max_dist: float = 25.0
+) -> MatchPlayer | None:
+    """Companero cercano y bien libre para que el arquero saque corto (o None)."""
+    rivals = state.team(_other(gk.team))
+    mates = [
+        m
+        for m in state.team(gk.team)
+        if m is not gk and m.position.distance_to(gk.position) <= max_dist
+    ]
+    if not mates:
+        return None
+
+    def openness(m: MatchPlayer) -> float:
+        return min((o.position.distance_to(m.position) for o in rivals), default=999.0)
+
+    best = max(mates, key=openness)
+    return best if openness(best) > 5.0 else None  # solo si esta claramente libre
+
+
 def goalkeeper_velocity(mp: MatchPlayer, state: MatchState) -> Vec2:
     """Velocidad del arquero: se planta delante del arco y sigue la y de la pelota.
 
@@ -83,11 +105,16 @@ def goalkeeper_velocity(mp: MatchPlayer, state: MatchState) -> Vec2:
     pitch = state.pitch
     is_home = mp.team is Side.HOME
     own_goal = pitch.home_goal if is_home else pitch.away_goal
-    guard_x = own_goal.x + (_GK_GUARD_DEPTH if is_home else -_GK_GUARD_DEPTH)
+    ball = state.ball.position
+    # Sube mas cuanto mas lejos esta la pelota del arco propio (equipo atacando):
+    # de la linea (_GK_GUARD_DEPTH) al borde del area grande (_GK_SWEEP_DEPTH).
+    dist_to_own = ball.x if is_home else (pitch.length - ball.x)
+    frac = min(max(dist_to_own / pitch.length, 0.0), 1.0)
+    depth = _lerp(_GK_GUARD_DEPTH, _GK_SWEEP_DEPTH, frac)
+    guard_x = own_goal.x + (depth if is_home else -depth)
     center_y = pitch.width / 2
     half = pitch.goal_width / 2 + _GK_COVER_MARGIN
-    ball_y = state.ball.position.y
-    y = min(max(ball_y, center_y - half), center_y + half)
+    y = min(max(ball.y, center_y - half), center_y + half)
     return arrive(mp.position, Vec2(guard_x, y), max_speed(mp.player))
 
 

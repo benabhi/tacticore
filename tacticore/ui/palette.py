@@ -34,6 +34,9 @@ if TRUECOLOR:
     AWAY_BALL = "#ffb0a4"
     # Pelota suelta (en disputa / viajando).
     BALL = "#ffe14d"
+    # Arqueros: magenta para diferenciarlos de los jugadores de campo.
+    GK = "#c060d0"
+    GK_BALL = "#e6a8f0"
     # Arbitro: amarillo mas dorado/apagado para no confundirse con la pelota.
     REF = "#caa63a"
     # Texto secundario (ej. el reloj del relato): gris tenue.
@@ -49,5 +52,7 @@ else:
     AWAY = "red"
     AWAY_BALL = "bright_magenta"
     BALL = "yellow"
+    GK = "magenta"
+    GK_BALL = "bright_magenta"
     REF = "yellow"
     MUTED = "bright_black"

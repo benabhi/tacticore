@@ -12,8 +12,9 @@ temporal de [field.py](field.py).
 from rich.text import Text
 from textual.widget import Widget
 
+from ...domain.enums import Position
 from ...simulation.match import GridMap, MatchState
-from ..palette import AWAY, AWAY_BALL, BALL, HOME, HOME_BALL, REF
+from ..palette import AWAY, AWAY_BALL, BALL, GK, GK_BALL, HOME, HOME_BALL, REF
 from .field import (
     GRASS_DARK,
     GRASS_LIGHT,
@@ -29,6 +30,9 @@ HOME_COLOR = HOME
 HOME_OWNER_COLOR = HOME_BALL
 AWAY_COLOR = AWAY
 AWAY_OWNER_COLOR = AWAY_BALL
+# Arqueros: magenta (distinto de los jugadores de campo), mas claro con la pelota.
+GK_COLOR = GK
+GK_OWNER_COLOR = GK_BALL
 # Pelota suelta (cuando nadie la domina): se dibuja viajando. Mientras un
 # jugador la lleva no se dibuja (el jugador queda visible como '@' encendido).
 BALL_COLOR = BALL
@@ -79,8 +83,13 @@ def compose_match_cells(
         def place(mp, color: str, owner_color: str) -> None:
             col, row = grid.to_cell(mp.position)
             chars[row][col] = PLAYER_GLYPH
-            # El que lleva la pelota se "enciende" (tono mas claro del equipo).
-            fg[row][col] = owner_color if mp is owner else color
+            # El arquero va en magenta (su propio color), el resto en el del equipo.
+            if mp.player.position is Position.GOALKEEPER:
+                base, lit = GK_COLOR, GK_OWNER_COLOR
+            else:
+                base, lit = color, owner_color
+            # El que lleva la pelota se "enciende" (tono mas claro).
+            fg[row][col] = lit if mp is owner else base
 
         for mp in state.home:
             place(mp, HOME_COLOR, HOME_OWNER_COLOR)

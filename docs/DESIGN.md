@@ -392,10 +392,14 @@ pausa de pelota muerta + reposicionamiento. Falta:
       decida **jugarla individual** (mas probable en gambeteadores: `dribbling`
       vs `vision`). Y a un remate **se le puede escapar al arquero** aunque vaya a
       su glifo (segun `reflexes`/`handling`) -> posible gol (evento "escapa").
-  - [ ] **Pulido del balon parado:** distribucion del arquero con variantes
-        (saque con la mano corto vs patada corta/larga); corners con corredores
-        diferenciados (unos al primer palo/corto, otros al area por el largo);
-        saque rapido "de sorpresa" como **orden** del manager (saltarse la pausa).
+  - [x] **Distribucion del arquero con variantes:** saca corto a un companero
+        libre (segun `passing`/`composure` y presion) o revienta largo. Ademas el
+        arquero hace de **libero**: sube hacia el borde del area grande cuando su
+        equipo ataca y vuelve a la linea al defender (puede quedar mal parado en
+        un contragolpe). Arqueros en **magenta** (tono claro al tener la pelota).
+  - [ ] **Pulido del balon parado (resto):** corners con corredores diferenciados
+        (unos al primer palo/corto, otros al area por el largo); saque rapido "de
+        sorpresa" como **orden** del manager (saltarse la pausa).
 - [ ] **G5 pulido:** tiros al palo (geometria de palos), remates tapados por un
       defensor, control fallido del que recibe.
 - [ ] **Arbitro en diagonal (pulido):** hoy sigue la pelota de frente a ~12m;

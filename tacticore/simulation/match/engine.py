@@ -42,6 +42,7 @@ _DRIBBLE_FACTOR = 0.85    # se gambetea un poco mas lento que corriendo libre
 _DRIBBLE_OFFSET = 0.5     # la pelota va esta distancia por delante del que lleva
 _GK_REACH = 1.7           # el arquero domina la pelota a este radio dentro del area (m)
 _CLEAR_SPEED = 24.0       # velocidad del despeje del arquero (m/s)
+_GK_PRESSURE = 5.0        # si un rival esta mas cerca, el arquero no saca corto (m)
 _GOAL_KICK_DEPTH = 5.5    # el saque de arco sale desde el borde del area chica (m)
 _RESTART_NUDGE = 0.4      # la pelota del saque queda esta distancia adentro del limite
 _SHOT_SAVE_SPEED = 16.0   # a mas velocidad que esto, la pelota que llega al arquero es "remate"
@@ -464,14 +465,9 @@ class MatchEngine:
         state = self.state
         goal = ai.attacking_goal(state, owner.team)
 
-        # Arquero -> despeja: busca un companero adelante o revienta hacia el arco.
+        # Arquero -> distribuye (saque corto seguro o pelotazo largo).
         if ai.is_goalkeeper(owner):
-            target = ai.best_pass_target(owner, state, _MAX_PASS_DIST * 2.0)
-            if target is not None:
-                self._kick(owner, target.position, _CLEAR_SPEED)
-            else:
-                self._kick(owner, goal, _CLEAR_SPEED)
-            self._log("despeje", player=owner)
+            self._goalkeeper_distribute(owner)
             return Vec2(0.0, 0.0)
 
         # Dentro de su alcance de remate (segun shooting) -> remata.
@@ -517,6 +513,33 @@ class MatchEngine:
         p = owner.player
         chance = _clamp(0.15 + (p.dribbling - p.vision) / 300.0, 0.05, 0.45)
         return self._rng.random() < chance
+
+    def _goalkeeper_distribute(self, gk) -> None:
+        """El arquero reparte: saque corto a un companero libre, o pelotazo largo.
+
+        Saca corto (mano/pie) si NO esta presionado, hay un companero libre y
+        decide hacerlo (mas probable con buen `passing`/`composure`); si no,
+        revienta largo hacia un companero adelantado o el area rival.
+        """
+        state = self.state
+        rival = ai.nearest_opponent(gk, state)
+        pressured = rival.position.distance_to(gk.position) < _GK_PRESSURE
+        short = ai.goalkeeper_short_option(gk, state)
+        p = gk.player
+        plays_short = (
+            not pressured
+            and short is not None
+            and self._rng.random() < _clamp(0.2 + (p.passing + p.composure) / 400.0, 0.1, 0.85)
+        )
+        if plays_short:
+            aim = short.position + self._pass_error(p, is_long=False)
+            self._log("saque_corto", player=gk, target=short)
+            self._kick(gk, aim, _PASS_SPEED)
+        else:
+            target = ai.best_pass_target(gk, state, _MAX_PASS_DIST * 2.0)
+            dest = target.position if target is not None else ai.attacking_goal(state, gk.team)
+            self._log("despeje", player=gk)
+            self._kick(gk, dest, _CLEAR_SPEED)
 
     def _shoot(self, owner, goal: Vec2) -> None:
         """Remata al arco apuntando al palo mas lejos del arquero, con error.
