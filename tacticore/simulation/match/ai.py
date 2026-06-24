@@ -379,6 +379,17 @@ def attacking_run_velocity(mp: MatchPlayer, state: MatchState) -> Vec2:
     return arrive(mp.position, attacking_run_target(mp, state), max_speed(mp.player))
 
 
+def support_run_velocity(mp: MatchPlayer, state: MatchState) -> Vec2:
+    """Carrera de apoyo del que acaba de pasar: pica hacia adelante (onside) para
+    ofrecerse a la devolucion (pared / te paso y voy)."""
+    line = offside_line_x(state, mp.team)
+    toward = 1.0 if mp.team is Side.HOME else -1.0
+    tx = mp.position.x + toward * 12.0
+    if line is not None:
+        tx = min(tx, line - 0.8) if toward > 0 else max(tx, line + 0.8)
+    return arrive(mp.position, Vec2(tx, mp.position.y), max_speed(mp.player))
+
+
 # Hasta esta distancia (m) un pase se considera "corto"; mas alla es "largo".
 _SHORT_PASS_RANGE = 18.0
 

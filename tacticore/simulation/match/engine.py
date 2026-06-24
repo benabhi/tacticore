@@ -54,6 +54,7 @@ _CROSS_ZONE = 0.30        # ultimo tercio (fraccion del largo) desde donde se ce
 _CROSS_SPEED = 18.0       # velocidad del centro al area (m/s)
 _WING_SEEK_CHANCE = 0.05  # prob. por tick de abrir el juego a un extremo libre
 _RECEPTION_TIME = 1.6     # tras un saque, el que recibe va a buscar la pelota este rato (s)
+_SUPPORT_RUN_TIME = 1.2   # tras un pase corto, el que paso pica de apoyo este rato (s)
 _GOAL_KICK_DEPTH = 5.5    # el saque de arco sale desde el borde del area chica (m)
 _RESTART_NUDGE = 0.4      # la pelota del saque queda esta distancia adentro del limite
 _SHOT_SAVE_SPEED = 16.0   # a mas velocidad que esto, la pelota que llega al arquero es "remate"
@@ -118,6 +119,9 @@ class MatchEngine:
         self._reception_id: int | None = None
         self._reception_passer_id: int | None = None
         self._reception_timer = 0.0
+        # El que dio un pase corto pica de apoyo (pared / te paso y voy).
+        self._support_runner_id: int | None = None
+        self._support_run_timer = 0.0
         # Jugadores "congelados" un instante (ejecuto un saque, lo gambetearon, o
         # le quitaron la pelota): id -> tiempo restante (s). No se mueven.
         self._frozen: dict[int, float] = {}
@@ -166,6 +170,7 @@ class MatchEngine:
         self._frozen = {i: t - dt for i, t in self._frozen.items() if t - dt > 0.0}
         self._throw_wait_timer = max(0.0, self._throw_wait_timer - dt)
         self._reception_timer = max(0.0, self._reception_timer - dt)
+        self._support_run_timer = max(0.0, self._support_run_timer - dt)
         self._acquire_possession()
         self._resolve_tackle()  # un defensor pegado puede intentar quitar
         self._move_players(dt)  # la accion del que lleva puede soltar la pelota
@@ -448,13 +453,19 @@ class MatchEngine:
                 chasers.add(self._reception_id)
             chasers.discard(self._reception_passer_id)
         for mp in state.all_players():
-            if ai.is_goalkeeper(mp):
+            if self._is_support_runner(mp):
+                mp.velocity = ai.support_run_velocity(mp, state)  # el que paso pica de apoyo
+            elif ai.is_goalkeeper(mp):
                 mp.velocity = ai.goalkeeper_velocity(mp, state)
             else:
                 mp.velocity = ai.decide_velocity(mp, state, id(mp) in chasers)
             if self._is_frozen(mp):
                 mp.velocity = Vec2(0.0, 0.0)
             mp.position = pitch.clamp(mp.position + mp.velocity * dt)
+
+    def _is_support_runner(self, mp) -> bool:
+        """Si este jugador acaba de pasar y esta picando de apoyo."""
+        return self._support_run_timer > 0.0 and id(mp) == self._support_runner_id
 
     def _is_frozen(self, mp) -> bool:
         """Si este jugador esta congelado un instante (saque, gambeteado, despojado)."""
@@ -488,6 +499,9 @@ class MatchEngine:
                     mp.velocity = ai.decide_velocity(mp, state, is_chaser=True)
                 else:
                     mp.velocity = ai.marking_velocity(mp, state)
+            elif self._is_support_runner(mp):
+                # El que acaba de pasar pica de apoyo (pared / te paso y voy).
+                mp.velocity = ai.support_run_velocity(mp, state)
             else:
                 # Companero del que tiene la pelota: se desmarca (sube y busca espacio).
                 mp.velocity = ai.attacking_run_velocity(mp, state)
@@ -838,6 +852,10 @@ class MatchEngine:
         self._log("pase", player=owner, target=mate,
                   detail="largo" if is_long else "corto")
         self._kick(owner, aim, speed)
+        # Pase corto -> el que paso pica de apoyo (pared / te paso y voy).
+        if not is_long:
+            self._support_runner_id = id(owner)
+            self._support_run_timer = _SUPPORT_RUN_TIME
 
     def _pass_error(self, player, is_long: bool) -> Vec2:
         """Desvio del pase: inversamente proporcional a `passing`, mayor si es largo."""
