@@ -366,8 +366,8 @@ infraestructura del estadio que recauda; etc.
 - Tamaño de la base de nombres destilada (cuántos por país) y formato (SQLite vs
   CSV chico).
 - Velocidades de simulación a ofrecer (x1/x2/x4) y FPS de render objetivo.
-- ¿Cuántos jugadores por equipo en cancha al inicio (11 reales vs reducido para
-  v0)?
+- [resuelto] Jugadores por equipo: **11v11** (formacion 4-3-3, `FORMATION_11`).
+  El 7v7 queda solo para pruebas.
 
 ## 17. Pendientes — checklist vivo (no perder)
 
@@ -385,6 +385,13 @@ pausa de pelota muerta + reposicionamiento. Falta:
       camina hasta la pelota (linea/corner/punto), se arma **barrera** en tiros
       libres a media distancia, y el equipo que saca cerca del area se tira al
       ataque. Antes era instantaneo.
+- [x] **11v11 + decision de ataque + arquero batible:** el juego arranca 11v11
+      (4-3-3). El que ataca **se acerca** segun su `shooting` (mal definidor
+      gambetea para llegar al area; `ai.shoot_range`) en vez de patear de 25m
+      siempre; busca el **pase de gol** a un companero mejor ubicado, salvo que
+      decida **jugarla individual** (mas probable en gambeteadores: `dribbling`
+      vs `vision`). Y a un remate **se le puede escapar al arquero** aunque vaya a
+      su glifo (segun `reflexes`/`handling`) -> posible gol (evento "escapa").
   - [ ] **Pulido del balon parado:** distribucion del arquero con variantes
         (saque con la mano corto vs patada corta/larga); corners con corredores
         diferenciados (unos al primer palo/corto, otros al area por el largo);

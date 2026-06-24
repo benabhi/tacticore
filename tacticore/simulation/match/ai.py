@@ -292,6 +292,53 @@ def pick_pass(
     return best, is_long
 
 
+# Alcance de remate: de _SHOOT_MIN (mal tirador) a _SHOOT_MAX (elite) segun shooting.
+_SHOOT_MIN_RANGE = 12.0
+_SHOOT_MAX_RANGE = 30.0
+
+
+def shoot_range(player: Player) -> float:
+    """Distancia (m) desde la que el jugador se anima a rematar (mas con mas shooting).
+
+    Asi un mal definidor no patea de cualquier lado: gambetea para acercarse al
+    arco antes de rematar.
+    """
+    return _lerp(_SHOOT_MIN_RANGE, _SHOOT_MAX_RANGE, player.shooting / 100.0)
+
+
+def is_long_pass(owner: MatchPlayer, mate: MatchPlayer) -> bool:
+    """Si el pase entre dos jugadores cuenta como largo."""
+    return owner.position.distance_to(mate.position) > _SHORT_PASS_RANGE
+
+
+def better_finisher(
+    owner: MatchPlayer, state: MatchState, max_dist: float
+) -> MatchPlayer | None:
+    """Companero claramente mejor ubicado para definir: mas cerca del arco y libre.
+
+    Es la "jugada con un companero": en vez de rematar/gambetear, buscar el pase
+    de gol al que esta mejor parado. Devuelve None si no hay una opcion clara.
+    """
+    goal = attacking_goal(state, owner.team)
+    owner_to_goal = owner.position.distance_to(goal)
+    rivals = state.team(_other(owner.team))
+    best: MatchPlayer | None = None
+    best_open = 4.0  # espacio minimo para que valga la pena el pase
+    for mate in state.team(owner.team):
+        if mate is owner or mate.position.distance_to(owner.position) > max_dist:
+            continue
+        mate_to_goal = mate.position.distance_to(goal)
+        # Debe estar mas cerca del arco y en posicion de remate.
+        if mate_to_goal > owner_to_goal - 4.0 or mate_to_goal > _SHOOT_MAX_RANGE:
+            continue
+        openness = min(
+            (o.position.distance_to(mate.position) for o in rivals), default=999.0
+        )
+        if openness > best_open:
+            best, best_open = mate, openness
+    return best
+
+
 def is_offside(receiver: MatchPlayer, owner: MatchPlayer, state: MatchState) -> bool:
     """Si `receiver` esta en posicion adelantada al recibir un pase de `owner`.
 

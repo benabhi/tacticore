@@ -17,7 +17,8 @@ def _two_clubs():
 def test_kickoff_has_full_teams_and_ball_centered():
     home, away = _two_clubs()
     state = kickoff_state(home, away)
-    size = DEFAULT_FORMATIONS[7].size
+    size = DEFAULT_FORMATIONS[11].size  # el juego arranca 11v11
+    assert size == 11
     assert len(state.home) == size
     assert len(state.away) == size
     assert state.ball.position == state.pitch.center

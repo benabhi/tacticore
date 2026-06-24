@@ -56,8 +56,26 @@ FORMATION_7 = Formation(
     ),
 )
 
-# Formaciones por tamano de equipo. Se ira ampliando (11v11, etc.).
-DEFAULT_FORMATIONS: dict[int, Formation] = {7: FORMATION_7}
+# Formacion 11v11 (4-3-3): la estandar del juego.
+FORMATION_11 = Formation(
+    "4-3-3",
+    (
+        _slot(Position.GOALKEEPER, 0.05, 0.50),
+        _slot(Position.DEFENDER, 0.20, 0.15),
+        _slot(Position.DEFENDER, 0.18, 0.38),
+        _slot(Position.DEFENDER, 0.18, 0.62),
+        _slot(Position.DEFENDER, 0.20, 0.85),
+        _slot(Position.MIDFIELDER, 0.45, 0.30),
+        _slot(Position.MIDFIELDER, 0.42, 0.50),
+        _slot(Position.MIDFIELDER, 0.45, 0.70),
+        _slot(Position.FORWARD, 0.72, 0.22),
+        _slot(Position.FORWARD, 0.70, 0.50),
+        _slot(Position.FORWARD, 0.72, 0.78),
+    ),
+)
+
+# Formaciones por tamano de equipo. El juego usa 11v11; 7v7 queda para pruebas.
+DEFAULT_FORMATIONS: dict[int, Formation] = {7: FORMATION_7, 11: FORMATION_11}
 
 
 def slot_to_meters(slot: FormationSlot, side: Side, pitch: Pitch) -> Vec2:

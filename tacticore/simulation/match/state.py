@@ -72,7 +72,7 @@ def kickoff_state(
     Por defecto usa la formacion 7v7 de prueba; se le puede pasar otra.
     """
     pitch = pitch or Pitch()
-    formation = formation or DEFAULT_FORMATIONS[7]
+    formation = formation or DEFAULT_FORMATIONS[11]
     home = _place_team(home_club, Side.HOME, formation, pitch)
     away = _place_team(away_club, Side.AWAY, formation, pitch)
     ball = Ball(position=pitch.center)

@@ -31,7 +31,6 @@ _BALL_FRICTION = 6.0      # desaceleracion de la pelota (m/s^2)
 _KICKOFF_SPEED = 8.0      # velocidad del saque inicial (m/s)
 _CONTROL_RADIUS = 0.8     # a esta distancia un jugador domina la pelota (m)
 _KICK_COOLDOWN = 0.4      # tras patear, nadie puede dominarla un ratito (s)
-_SHOOT_RANGE = 25.0       # distancia al arco para intentar el remate (m)
 _PRESSURE_RADIUS = 1.6    # si un rival esta mas cerca, el que lleva la suelta (m)
 _MAX_PASS_DIST = 35.0     # alcance maximo de un pase (m)
 _PASS_SPEED = 14.0        # velocidad de un pase corto (m/s)
@@ -190,8 +189,14 @@ class MatchEngine:
         if on_ball:
             taker = min(on_ball, key=lambda mp: mp.position.distance_to(ball.position))
             speed = ball.velocity.length()
-            # Arquero ante un remate: puede atajar limpio o dar rebote (handling).
+            # Arquero ante un remate: puede que se le escape y siga de largo
+            # (posible gol), o que la ataje limpio / de rebote (segun atributos).
             if ai.is_goalkeeper(taker) and speed > _SHOT_SAVE_SPEED:
+                if self._rng.random() < self._gk_beaten_chance(taker):
+                    # Se le escapa: no la domina, la pelota sigue (puede entrar).
+                    self._kick_cooldown = max(self._kick_cooldown, 0.3)
+                    self._log("escapa", player=taker)
+                    return
                 self._goalkeeper_save(taker)
                 return
             # Mano (rareza): controlar una pelota rapida con la mano, muy de vez en cuando.
@@ -202,6 +207,11 @@ class MatchEngine:
             ball.velocity = Vec2(0.0, 0.0)
             self.state.last_touch = taker.team
             self._restart_side = None  # pelota en juego de nuevo
+
+    def _gk_beaten_chance(self, gk) -> float:
+        """Prob. de que al arquero se le escape un remate (peor reflejos/manos -> mas)."""
+        quality = (gk.player.reflexes + gk.player.handling) / 2.0
+        return _clamp(0.28 - quality / 220.0, 0.02, 0.28)
 
     def _goalkeeper_save(self, gk) -> None:
         """El arquero ataja un remate: lo retiene (handling) o da rebote (pelota viva)."""
@@ -464,9 +474,19 @@ class MatchEngine:
             self._log("despeje", player=owner)
             return Vec2(0.0, 0.0)
 
-        # Cerca del arco -> remate apuntado a un palo.
-        if owner.position.distance_to(goal) <= _SHOOT_RANGE:
+        # Dentro de su alcance de remate (segun shooting) -> remata.
+        if owner.position.distance_to(goal) <= ai.shoot_range(owner.player):
             self._shoot(owner, goal)
+            return Vec2(0.0, 0.0)
+
+        # Pase de gol: si un companero esta mejor ubicado para definir, asistir...
+        # ...salvo que el jugador decida jugarla individual (mas si es gambeteador).
+        assist = ai.better_finisher(owner, state, _MAX_PASS_DIST)
+        if assist is not None and not self._goes_individual(owner):
+            if ai.is_offside(assist, owner, state):
+                self._award_offside(owner, assist)
+            else:
+                self._pass(owner, assist, ai.is_long_pass(owner, assist))
             return Vec2(0.0, 0.0)
 
         # Presionado -> pase (corto o largo) al mejor companero, o remate si no hay.
@@ -483,10 +503,20 @@ class MatchEngine:
                 self._kick(owner, goal, _SHOOT_SPEED)
             return Vec2(0.0, 0.0)
 
-        # Libre -> gambetea hacia el arco.
+        # Libre -> gambetea hacia el arco (se va acercando para definir mejor).
         return ai.arrive(
             owner.position, goal, ai.max_speed(owner.player) * _DRIBBLE_FACTOR
         )
+
+    def _goes_individual(self, owner) -> bool:
+        """Si el jugador decide jugarla solo en vez de dar el pase de gol.
+
+        Pasa a veces en el futbol: mas probable en gambeteadores, menos en los de
+        buena vision/juego colectivo.
+        """
+        p = owner.player
+        chance = _clamp(0.15 + (p.dribbling - p.vision) / 300.0, 0.05, 0.45)
+        return self._rng.random() < chance
 
     def _shoot(self, owner, goal: Vec2) -> None:
         """Remata al arco apuntando al palo mas lejos del arquero, con error.

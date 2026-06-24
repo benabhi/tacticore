@@ -16,7 +16,7 @@ def _clubs():
 
 def test_log_records_events_with_protagonist():
     st = kickoff_state(*_clubs())
-    MatchEngine(st, new_rng(1)).run(60.0)
+    MatchEngine(st, new_rng(1)).run(150.0)
     assert st.log, "deberia haber eventos registrados"
     remates = [e for e in st.log if e.kind == "remate"]
     assert remates and remates[0].player  # el remate nombra al protagonista
