@@ -70,15 +70,18 @@ def kickoff_state(
     away_club: Club,
     pitch: Pitch | None = None,
     formation: Formation | None = None,
+    home_formation: Formation | None = None,
+    away_formation: Formation | None = None,
 ) -> MatchState:
     """Arma el estado inicial: equipos ubicados y pelota en el centro.
 
-    Por defecto usa la formacion 7v7 de prueba; se le puede pasar otra.
+    `formation` es el default para ambos; `home_formation`/`away_formation`
+    permiten que cada equipo juegue con una formacion distinta.
     """
     pitch = pitch or Pitch()
-    formation = formation or DEFAULT_FORMATIONS[11]
-    home = _place_team(home_club, Side.HOME, formation, pitch)
-    away = _place_team(away_club, Side.AWAY, formation, pitch)
+    default = formation or DEFAULT_FORMATIONS[11]
+    home = _place_team(home_club, Side.HOME, home_formation or default, pitch)
+    away = _place_team(away_club, Side.AWAY, away_formation or default, pitch)
     ball = Ball(position=pitch.center)
     referee = Referee(position=pitch.center)
     return MatchState(pitch=pitch, home=home, away=away, ball=ball, referee=referee)

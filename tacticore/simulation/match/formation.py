@@ -80,6 +80,28 @@ FORMATION_11 = Formation(
     ),
 )
 
+# Formacion 11v11 (4-4-2): 2 laterales + 2 centrales, 2 extremos + 2 volantes,
+# 2 puntas.
+FORMATION_11_442 = Formation(
+    "4-4-2",
+    (
+        _slot(Position.GOALKEEPER, 0.05, 0.50, Role.GOALKEEPER),
+        _slot(Position.DEFENDER, 0.20, 0.15, Role.FULLBACK),
+        _slot(Position.DEFENDER, 0.18, 0.40, Role.CENTER_BACK),
+        _slot(Position.DEFENDER, 0.18, 0.60, Role.CENTER_BACK),
+        _slot(Position.DEFENDER, 0.20, 0.85, Role.FULLBACK),
+        _slot(Position.MIDFIELDER, 0.48, 0.16, Role.WINGER),
+        _slot(Position.MIDFIELDER, 0.45, 0.40, Role.MIDFIELDER),
+        _slot(Position.MIDFIELDER, 0.45, 0.60, Role.MIDFIELDER),
+        _slot(Position.MIDFIELDER, 0.48, 0.84, Role.WINGER),
+        _slot(Position.FORWARD, 0.70, 0.40, Role.STRIKER),
+        _slot(Position.FORWARD, 0.70, 0.60, Role.STRIKER),
+    ),
+)
+
+# Formaciones 11v11 disponibles (el manager elegira una antes del partido).
+FORMATIONS_11: tuple[Formation, ...] = (FORMATION_11, FORMATION_11_442)
+
 # Formaciones por tamano de equipo. El juego usa 11v11; 7v7 queda para pruebas.
 DEFAULT_FORMATIONS: dict[int, Formation] = {7: FORMATION_7, 11: FORMATION_11}
 

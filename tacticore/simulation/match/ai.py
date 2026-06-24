@@ -267,14 +267,15 @@ def marking_velocity(defender: MatchPlayer, state: MatchState) -> Vec2:
     uno su franja; el resto marca a su rival goal-side.
     """
     mark = marking_assignment(defender, state)
-    if defender.role in (Role.CENTER_BACK, Role.FULLBACK):
-        line_x = defensive_line_x(state, defender.team)
-        y = mark.position.y if mark is not None else defender.base_position.y
-        target = Vec2(line_x, y)
-    elif mark is None:
-        target = defender.base_position
-    else:
+    if mark is not None:
+        # Marca activa: se planta goal-side del rival y lo acompana (lo sigue
+        # aunque se mueva), no se queda parado en la linea.
         target = marking_point(defender, mark, state)
+    elif defender.role in (Role.CENTER_BACK, Role.FULLBACK):
+        # Sin rival a quien marcar: la ultima linea sostiene su altura compacta.
+        target = Vec2(defensive_line_x(state, defender.team), defender.base_position.y)
+    else:
+        target = defender.base_position
     return arrive(defender.position, target, max_speed(defender.player))
 
 

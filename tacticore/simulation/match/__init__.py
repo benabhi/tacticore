@@ -10,7 +10,14 @@ from .engine import DEFAULT_DT, MatchEngine
 from .entities import Ball, MatchPlayer, Referee, Role, Side
 from .events import MatchEvent
 from .field import GridMap, Pitch
-from .formation import DEFAULT_FORMATIONS, Formation, FormationSlot
+from .formation import (
+    DEFAULT_FORMATIONS,
+    FORMATION_11,
+    FORMATION_11_442,
+    FORMATIONS_11,
+    Formation,
+    FormationSlot,
+)
 from .geometry import Rect, Vec2
 from .state import MatchPhase, MatchState, kickoff_state
 
@@ -19,6 +26,9 @@ __all__ = [
     "Command",
     "DEFAULT_DT",
     "DEFAULT_FORMATIONS",
+    "FORMATION_11",
+    "FORMATION_11_442",
+    "FORMATIONS_11",
     "Formation",
     "FormationSlot",
     "GridMap",

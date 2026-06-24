@@ -25,6 +25,7 @@ from textual.app import App
 from tacticore.core.rng import new_rng
 from tacticore.domain.enums import LeagueTier
 from tacticore.generators import ClubGenerator
+from tacticore.simulation.match import FORMATIONS_11
 from tacticore.ui.screens.match_screen import MatchScreen
 
 # Paises con pool de nombres disponible (ver generators/data/names/).
@@ -40,7 +41,9 @@ def _build_match(seed: int):
     gen = ClubGenerator(setup)
     home = gen.generate(squad_size=16, country_code=home_cc, tier=tier)
     away = gen.generate(squad_size=16, country_code=away_cc, tier=tier)
-    return home, away, home_cc, away_cc, tier
+    home_formation = setup.choice(FORMATIONS_11)
+    away_formation = setup.choice(FORMATIONS_11)
+    return home, away, home_cc, away_cc, tier, home_formation, away_formation
 
 
 class _WatchApp(App):
@@ -53,9 +56,11 @@ class _WatchApp(App):
         self._seed = seed
 
     def on_mount(self) -> None:
-        home, away, *_ = _build_match(self._seed)
+        home, away, _hc, _ac, _t, hf, af = _build_match(self._seed)
         # El partido en si usa su propia corriente determinista por la misma seed.
-        self.push_screen(MatchScreen(home, away, seed=self._seed))
+        self.push_screen(
+            MatchScreen(home, away, seed=self._seed, home_formation=hf, away_formation=af)
+        )
 
 
 if __name__ == "__main__":
@@ -64,9 +69,9 @@ if __name__ == "__main__":
     else:
         seed = random.randint(1, 9_999_999)
 
-    home, away, home_cc, away_cc, tier = _build_match(seed)
-    print(f"Partido: {home.short_name} ({home_cc}) vs {away.short_name} ({away_cc})"
-          f"  -  liga {tier.value}")
+    home, away, home_cc, away_cc, tier, hf, af = _build_match(seed)
+    print(f"Partido: {home.short_name} ({home_cc}, {hf.name}) vs "
+          f"{away.short_name} ({away_cc}, {af.name})  -  liga {tier.value}")
     print(f"Semilla: {seed}   (repetilo con: python scripts/watch_match.py {seed})")
 
     _WatchApp(seed).run()

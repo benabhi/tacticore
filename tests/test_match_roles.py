@@ -6,6 +6,8 @@ from tacticore.core.rng import new_rng
 from tacticore.domain.enums import LeagueTier
 from tacticore.generators import ClubGenerator
 from tacticore.simulation.match import (
+    FORMATION_11,
+    FORMATION_11_442,
     MatchEngine,
     MatchPhase,
     Role,
@@ -51,6 +53,23 @@ def test_defensive_line_follows_the_deepest_attacker():
     st.away[9].position = Vec2(25.0, 34.0)        # un rival se adelanta hacia el arco
     after = ai.defensive_line_x(st, Side.HOME)
     assert after < before  # la linea acompana: baja con el atacante
+
+
+def test_kickoff_is_a_pass_between_teammates():
+    st = _state()
+    MatchEngine(st, new_rng(1)).step()  # saque del medio
+    assert st.log and st.log[0].kind == "pase"
+    assert st.log[0].player and st.log[0].target  # de un jugador a un companero
+
+
+def test_teams_can_use_different_formations():
+    gen = ClubGenerator(new_rng(42))
+    home = gen.generate(squad_size=16, country_code="AR", tier=LeagueTier.C)
+    away = gen.generate(squad_size=16, country_code="BR", tier=LeagueTier.C)
+    st = kickoff_state(home, away, home_formation=FORMATION_11, away_formation=FORMATION_11_442)
+    home_strikers = sum(1 for m in st.home if m.role is Role.STRIKER)
+    away_strikers = sum(1 for m in st.away if m.role is Role.STRIKER)
+    assert home_strikers == 1 and away_strikers == 2  # 4-3-3 vs 4-4-2
 
 
 def test_winger_in_wide_advanced_zone_crosses():

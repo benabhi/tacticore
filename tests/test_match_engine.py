@@ -28,11 +28,15 @@ def test_same_seed_is_deterministic():
 
 
 def test_different_seed_diverges():
+    # El saque del medio es determinista (un pase); la divergencia viene del azar
+    # del juego (errores de pase, quites, atajadas). Tras un rato, difieren.
     a = MatchEngine(_fresh_state(), new_rng(1))
     b = MatchEngine(_fresh_state(), new_rng(2))
-    a.step()  # el saque usa el rng -> distinta direccion
-    b.step()
-    assert a.state.ball.velocity != b.state.ball.velocity
+    a.run(8.0)
+    b.run(8.0)
+    pa = [(mp.position.x, mp.position.y) for mp in a.state.all_players()]
+    pb = [(mp.position.x, mp.position.y) for mp in b.state.all_players()]
+    assert pa != pb
 
 
 def test_kickoff_sets_ball_moving_and_phase():

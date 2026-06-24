@@ -111,6 +111,7 @@ class MatchEngine:
         self._gk_carry_timer = 0.0  # el arquero camina el area antes de distribuir (s)
         self._restart_kind: str | None = None  # tipo de saque pendiente (lateral, corner, ...)
         self._restart_taker = None  # quien va a ejecutar el saque (hasta que la juega)
+        self._kickoff_side = Side.HOME  # quien saca del medio (el local al inicio)
         # Jugadores "congelados" un instante (ejecuto un saque, lo gambetearon, o
         # le quitaron la pelota): id -> tiempo restante (s). No se mueven.
         self._frozen: dict[int, float] = {}
@@ -189,12 +190,24 @@ class MatchEngine:
     # --- Internos ---
 
     def _kickoff(self) -> None:
-        """Saca del medio: la pelota sale en una direccion al azar (por seed)."""
-        angle = self._rng.uniform(0.0, 2.0 * math.pi)
-        self.state.ball.velocity = Vec2(
-            math.cos(angle) * _KICKOFF_SPEED, math.sin(angle) * _KICKOFF_SPEED
-        )
-        self.state.phase = MatchPhase.PLAYING
+        """Saca del medio: un jugador en el centro le PASA a un companero (no sale
+        la pelota de la nada). Saca el equipo que corresponde (`_kickoff_side`)."""
+        state = self.state
+        team = state.team(self._kickoff_side)
+        outfield = [mp for mp in team if not ai.is_goalkeeper(mp)]
+        pool = outfield or team
+        center = state.pitch.center
+        kicker = min(pool, key=lambda mp: mp.position.distance_to(center))
+        kicker.position = center
+        state.ball.position = center
+        state.ball.owner = None
+        # Le toca a un companero cercano (no el arquero): el saque es un pase.
+        mates = [mp for mp in pool if mp is not kicker]
+        target = min(mates, key=lambda mp: mp.position.distance_to(kicker.position))
+        self._restart_taker = kicker  # queda quieto un instante tras tocarla
+        self._log("pase", player=kicker, target=target, detail="corto")
+        self._kick(kicker, target.position, _PASS_SPEED)
+        state.phase = MatchPhase.PLAYING
 
     def _acquire_possession(self) -> None:
         """Si la pelota esta suelta, la domina el jugador mas cercano que la alcance.
@@ -935,6 +948,7 @@ class MatchEngine:
             self.state.score_away += 1
         self.state.last_event = "Gol"
         self._log("gol", player=self._last_kicker, team=side)
+        self._kickoff_side = _other(side)  # saca del medio el que recibio el gol
         self._reset_for_kickoff()
 
     def _reset_for_kickoff(self) -> None:

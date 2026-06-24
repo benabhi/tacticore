@@ -49,11 +49,14 @@ class MatchScreen(BaseScreen):
     }
     """
 
-    def __init__(self, home: Club, away: Club, seed: int = 0, **kwargs) -> None:
+    def __init__(self, home: Club, away: Club, seed: int = 0,
+                 home_formation=None, away_formation=None, **kwargs) -> None:
         super().__init__(**kwargs)
         self._home = home
         self._away = away
         self._seed = seed
+        self._home_formation = home_formation
+        self._away_formation = away_formation
         self._paused = False
         self._timer = None
         self._log_shown = 0  # cuantos eventos del relato ya mostramos
@@ -64,7 +67,11 @@ class MatchScreen(BaseScreen):
         yield Static("", id="log")
 
     def on_mount(self) -> None:
-        state = kickoff_state(self._home, self._away)
+        state = kickoff_state(
+            self._home, self._away,
+            home_formation=self._home_formation,
+            away_formation=self._away_formation,
+        )
         self._engine = MatchEngine(state, new_rng(self._seed))
         self.query_one("#pitch", MatchPitch).state = state
         self._update_hud()
