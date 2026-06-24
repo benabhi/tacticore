@@ -490,3 +490,56 @@ pausa de pelota muerta + reposicionamiento. Falta:
 afinidad entre jugadores, moral, clima, sponsors, mercado de pases, valor de
 mercado, hinchada, infraestructura del estadio. Nacionalidad selectable en la
 pantalla de nuevo juego (meter al equipo en la liga del pais).
+
+## 18. Fase H — Revision y pulido del motor (que se vea un partido de verdad)
+
+Stop de revision. El partido ya se ve, pero falta **vida**: juego en el area,
+**bandas/desbordes/centros**, circulacion por toda la cancha, **paredes** y
+apoyos. Y hay que asegurar que **cada atributo pese**. Principio: que se vea
+natural y dinamico, basado en **chances + atributos**; sin ultra-realismo.
+
+### Auditoria de atributos (al hacer la revision)
+- **Usados (14):** speed, work_rate, positioning, anticipation, vision, shooting,
+  passing, reflexes, handling, tackling, dribbling, strength, agility, composure.
+- **Sin usar (5):**
+  - `acceleration`, `stamina` -> **usables YA** (arranque/cierre; desgaste de
+    `fitness`).
+  - `jumping`, `heading`, `aerial_reach` -> necesitan **juego aereo** (eje z).
+- `form`/`fitness`/`morale`: **sin efecto** en partido todavia (`fitness` fijo 100).
+- **Falta** un atributo `temperament` (estilo Hattrick) -> propension a faltas/tarjetas.
+
+### Causa raiz de "todo por el centro / poco juego de area"
+El posicionamiento se ancla a la formacion con un "avance" simple y **no hay
+roles**: nadie juega de **extremo** (abrir, desbordar, centrar) ni de **lateral**
+que sube/marca. El que lleva gambetea al centro y pasa al companero adelantado
+mas abierto (casi siempre central) => **embudo central**.
+
+### Plan (orden por dependencias)
+- **H1. Roles en la formacion.** Cada slot tiene un ROL (arquero, central,
+  lateral, volante, extremo, delantero) con comportamiento propio; refactor del
+  posicionamiento a roles. **Cimiento de todo lo demas** (bandas, tacticas).
+- **H2. Juego por las bandas + area.** Extremos/laterales usan el **ancho**:
+  desbordan y **tiran centros** desde el lateral al area; los delanteros atacan
+  el centro y la rematan. Asi hay circulacion y jugadas de area.
+- **H3. Apoyos y paredes.** Pase-y-sigo (te paso, corro, me la devolves),
+  ayuda/sobre-marca en defensa, desdoblamiento del lateral.
+- **H4. Marca configurable + tacticas.** Marca **zonal/personal** por jugador
+  (seam `marking_assignment` ya existe) via comando `SetMarking`. **Tacticas
+  rapidas** predefinidas (jugar por bandas, contraataque, presion, atacar por el
+  medio, defensivo) = sesgos de roles/posicion/agresividad. **Formaciones como
+  datos** con **familiaridad/nivel** (sube jugando con esa formacion). El manager
+  puede **romper la zona** de un jugador (`SetPlayerZone` ya existe).
+- **H5. Peso de atributos faltantes.** `acceleration` (arranque/cierre);
+  `stamina` -> `fitness` que baja en partido y afecta velocidad/precision;
+  `temperament` -> faltas. Juego **aereo** (jumping/heading/aerial_reach) en su
+  propio paso (eje z).
+- **H-refactor.** `engine.py` crecio a ~900 lineas mezclando muchas cosas;
+  partirlo (decisiones del que lleva, balon parado, arquero) por mantenibilidad.
+
+### Extensibilidad (a tener presente)
+- **Zonas:** el ancla de formacion es el default; el manager puede **moverla**
+  (`SetPlayerZone`) o un jugador romperla por necesidad. Roles parametrizables.
+- **Marca:** zonal/personal/hibrida/doble por jugador (seam listo).
+- **Tacticas/formaciones:** paquete de **presets** + override individual;
+  familiaridad por uso. Setear **antes** del partido + intervenir **en vivo**
+  (comandos B4, replayable).
