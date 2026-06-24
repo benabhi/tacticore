@@ -71,19 +71,18 @@ def test_only_restart_team_can_take_the_ball():
     engine.step()  # genera el lateral (saque para AWAY)
     assert engine._restart_side is Side.AWAY
 
-    spot = st.ball.position
-    # Un jugador del equipo equivocado (HOME) justo encima NO puede tomarla;
-    # alejamos a los AWAY para que nadie del que saca este cerca.
-    st.home[5].position = spot
+    # Equipo equivocado (HOME) encima; alejamos a los AWAY para que ninguno
+    # del que saca llegue. Tras la pausa, con solo HOME cerca, no se pone en juego.
+    st.home[5].position = st.ball.position
     for mp in st.away:
         mp.position = Vec2(10.0, 10.0)
-    engine.step()
+    engine.run(3.0)  # pasa la pausa de pelota muerta
     assert st.ball.owner is None              # el equipo equivocado no la tomo
     assert engine._restart_side is Side.AWAY  # el saque sigue pendiente
 
     # Cuando un jugador del que saca (AWAY) llega a la pelota, la pone en juego.
     st.away[5].position = st.ball.position
-    engine.step()
+    engine.run(0.3)
     assert engine._restart_side is None       # saque ejecutado: pelota en juego
 
 

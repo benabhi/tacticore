@@ -376,8 +376,19 @@ partido usa los **atributos** del jugador (no constantes uniformes).
 
 **Jugabilidad del motor (Fase G) — prioridad actual.** Hecho: G0 arbitro, G1
 reanudaciones, G2 marca zonal, G3 pases corto/largo, G3.x desmarques, G4
-quite/faltas/tiros libres, G5 rebotes/atajadas del arquero, G6 offside/mano.
-Falta:
+quite/faltas/tiros libres, G5 rebotes/atajadas del arquero, G6 offside/mano,
+pausa de pelota muerta + reposicionamiento. Falta:
+- [x] **Pelota muerta (pausa + reposicionamiento):** todos los balones parados
+      (lateral, corner, saque de arco, falta, tiro libre, saque del medio tras
+      gol, atajada del arquero) tienen una pausa (`_restart_timer`) durante la
+      cual la pelota queda quieta y los jugadores se acomodan: el ejecutante
+      camina hasta la pelota (linea/corner/punto), se arma **barrera** en tiros
+      libres a media distancia, y el equipo que saca cerca del area se tira al
+      ataque. Antes era instantaneo.
+  - [ ] **Pulido del balon parado:** distribucion del arquero con variantes
+        (saque con la mano corto vs patada corta/larga); corners con corredores
+        diferenciados (unos al primer palo/corto, otros al area por el largo);
+        saque rapido "de sorpresa" como **orden** del manager (saltarse la pausa).
 - [ ] **G5 pulido:** tiros al palo (geometria de palos), remates tapados por un
       defensor, control fallido del que recibe.
 - [ ] **Arbitro en diagonal (pulido):** hoy sigue la pelota de frente a ~12m;

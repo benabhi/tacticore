@@ -52,6 +52,14 @@ _TACKLE_COOLDOWN = 0.6    # tras un intento de quite, espera este rato (s)
 _FOUL_RECOVER = 1.0       # tras una falta, no se vuelve a quitar por este rato (s)
 _HANDBALL_SPEED = 8.0      # solo una pelota mas rapida que esto puede ser "mano"
 _HANDBALL_CHANCE = 0.0005  # mano: extremadamente rara (rareza, ~1 cada muchos partidos)
+# Pausa (s) de "pelota muerta": la pelota se acomoda y los jugadores se
+# reposicionan antes de reanudar (que el balon parado se vea y no sea instantaneo).
+_SETTLE_RESTART = 1.8      # lateral / corner / saque de arco / falta / tiro libre
+_SETTLE_KICKOFF = 2.5      # saque del medio (inicio y tras gol)
+_SETTLE_SAVE = 1.5         # el arquero atajo y acomoda antes de distribuir
+_WALL_DIST = 9.15          # distancia (m) de la barrera al balon en un tiro libre
+_WALL_MIN = 16.0           # hay barrera si el tiro libre esta entre estas distancias
+_WALL_MAX = 32.0           #   del arco (mas cerca seria penal; mas lejos, sin barrera)
 
 
 def _other(side: Side) -> Side:
@@ -82,6 +90,7 @@ class MatchEngine:
         self._rng = rng or random.Random()
         self._kick_cooldown = 0.0
         self._tackle_cooldown = 0.0
+        self._restart_timer = 0.0  # pausa de pelota muerta en curso (s)
         self._last_kicker = None  # ultimo que pateo (para nombrar al autor del gol)
         self._tick = 0
         # Si hay un saque pendiente (lateral/corner/saque de arco/tiro libre),
@@ -111,6 +120,13 @@ class MatchEngine:
         # Comandos del manager de este tick (mismo camino en vivo y en replay).
         for command in self._pending.pop(self._tick, ()):
             command.apply(self.state)
+        # Pelota muerta: pausa para acomodar la pelota y reposicionar a todos.
+        if self._restart_timer > 0.0:
+            self._restart_timer = max(0.0, self._restart_timer - dt)
+            self._settle(dt)
+            self.state.clock += dt
+            self._tick += 1
+            return
         if self.state.phase is MatchPhase.KICKOFF:
             self._kickoff()
         self._kick_cooldown = max(0.0, self._kick_cooldown - dt)
@@ -197,6 +213,7 @@ class MatchEngine:
             ball.owner = gk
             ball.velocity = Vec2(0.0, 0.0)
             self._restart_side = None
+            self._restart_timer = _SETTLE_SAVE
             self.state.last_event = "Atajada"
             self._log("atajada", player=gk)
             return
@@ -283,6 +300,7 @@ class MatchEngine:
         ball.velocity = Vec2(0.0, 0.0)
         self._restart_side = attacking_side
         self._tackle_cooldown = _FOUL_RECOVER
+        self._restart_timer = _SETTLE_RESTART
         self.state.last_event = event
 
     def _award_free_kick(self, victim) -> None:
@@ -305,6 +323,7 @@ class MatchEngine:
         ball.position = self.state.pitch.clamp(receiver.position)
         ball.velocity = Vec2(0.0, 0.0)
         self._restart_side = defending
+        self._restart_timer = _SETTLE_RESTART
         self.state.last_touch = owner.team
         self.state.last_event = "Offside"
         self._log("offside", player=receiver)
@@ -316,6 +335,11 @@ class MatchEngine:
         ref.position = self.state.pitch.clamp(ref.position + ref.velocity * dt)
 
     def _move_players(self, dt: float) -> None:
+        # Si se acaba de cobrar una pelota muerta en este mismo tick, no se juega:
+        # todos se reposicionan (la pausa la maneja el branch de settle en step).
+        if self._restart_timer > 0.0:
+            self._reposition_dead_ball(dt)
+            return
         state = self.state
         owner = state.ball.owner
         if owner is None:
@@ -359,6 +383,71 @@ class MatchEngine:
                 # Companero del que tiene la pelota: se desmarca (sube y busca espacio).
                 mp.velocity = ai.attacking_run_velocity(mp, state)
             mp.position = pitch.clamp(mp.position + mp.velocity * dt)
+
+    def _settle(self, dt: float) -> None:
+        """Pelota muerta: la pelota queda quieta y todos se reposicionan."""
+        self._reposition_dead_ball(dt)
+        ball = self.state.ball
+        if ball.owner is not None:
+            # El arquero (o quien la tenga) la sostiene mientras se acomodan.
+            ball.position = ball.owner.position
+        self._move_referee(dt)
+
+    def _reposition_dead_ball(self, dt: float) -> None:
+        """Mueve a todos a sus lugares del balon parado: ejecutante, barrera, area."""
+        state = self.state
+        pitch = state.pitch
+        ball = state.ball
+        owner = ball.owner
+        taking = self._restart_side
+        if taking is None and owner is not None:
+            taking = owner.team
+        spot = ball.position
+
+        # Ejecutante: si alguien la tiene, es el; si no, el de campo mas cercano
+        # del equipo que saca (camina hasta la pelota: linea, corner, punto, etc.).
+        taker = owner
+        if taker is None and taking is not None:
+            outfield = [m for m in state.team(taking) if not ai.is_goalkeeper(m)]
+            pool = outfield or state.team(taking)
+            taker = min(pool, key=lambda m: m.position.distance_to(spot))
+
+        # Barrera: solo en tiros libres a media distancia del arco que se defiende.
+        wall_ids: set[int] = set()
+        if taking is not None:
+            goal_def = ai.own_goal(state, _other(taking))
+            if _WALL_MIN < spot.distance_to(goal_def) < _WALL_MAX:
+                wp = self._wall_point(spot, goal_def)
+                defs = [m for m in state.team(_other(taking)) if not ai.is_goalkeeper(m)]
+                for m in sorted(defs, key=lambda m: m.position.distance_to(wp))[:2]:
+                    wall_ids.add(id(m))
+
+        for mp in state.all_players():
+            if mp is taker and owner is None:
+                vel = ai.arrive(mp.position, spot, ai.max_speed(mp.player))
+            elif ai.is_goalkeeper(mp):
+                vel = ai.goalkeeper_velocity(mp, state)
+            elif id(mp) in wall_ids:
+                wp = self._wall_point(spot, ai.own_goal(state, mp.team))
+                vel = ai.arrive(mp.position, wp, ai.max_speed(mp.player))
+            elif taking is not None and mp.team is taking and self._in_attacking_third(spot, taking):
+                # El equipo que saca cerca del area rival: se tiran al ataque.
+                vel = ai.attacking_run_velocity(mp, state)
+            else:
+                vel = ai.decide_velocity(mp, state, is_chaser=False)
+            mp.velocity = vel
+            mp.position = pitch.clamp(mp.position + vel * dt)
+
+    def _wall_point(self, spot: Vec2, goal: Vec2) -> Vec2:
+        """Punto de barrera: entre la pelota y el arco, a _WALL_DIST del balon."""
+        return spot + (goal - spot).normalized() * _WALL_DIST
+
+    def _in_attacking_third(self, spot: Vec2, side: Side) -> bool:
+        """Si el punto esta en el ultimo tercio de ataque del equipo `side`."""
+        length = self.state.pitch.length
+        if side is Side.HOME:
+            return spot.x > length * 2.0 / 3.0
+        return spot.x < length / 3.0
 
     def _owner_action(self, owner) -> Vec2:
         """Decide que hace el que tiene la pelota; devuelve su velocidad."""
@@ -456,6 +545,12 @@ class MatchEngine:
         state = self.state
         ball = state.ball
 
+        # Pelota muerta recien cobrada: queda quieta (o pegada al que la sostiene).
+        if self._restart_timer > 0.0:
+            if ball.owner is not None:
+                ball.position = ball.owner.position
+            return
+
         # Si alguien la lleva, la pelota va con el, un poco por delante.
         if ball.owner is not None:
             owner = ball.owner
@@ -523,6 +618,7 @@ class MatchEngine:
         ball.velocity = Vec2(0.0, 0.0)
         ball.owner = None
         self._restart_side = restart_side
+        self._restart_timer = _SETTLE_RESTART
         state.last_event = event
         self._log(
             {"Lateral": "lateral", "Corner": "corner", "Saque de arco": "saque_arco"}[event],
@@ -563,4 +659,5 @@ class MatchEngine:
         self._kick_cooldown = 0.0
         self._tackle_cooldown = 0.0
         self._restart_side = None
+        self._restart_timer = _SETTLE_KICKOFF
         state.phase = MatchPhase.KICKOFF
