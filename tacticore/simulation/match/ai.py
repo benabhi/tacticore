@@ -496,6 +496,30 @@ def open_outlet(owner: MatchPlayer, state: MatchState, max_dist: float) -> Match
     return best if openness(best) > 10.0 else None  # bien solo (no marcado)
 
 
+def open_winger(owner: MatchPlayer, state: MatchState, max_dist: float) -> MatchPlayer | None:
+    """Extremo del equipo, abierto y no atrasado, para abrir el juego a la banda."""
+    goal = attacking_goal(state, owner.team)
+    owner_to_goal = owner.position.distance_to(goal)
+    rivals = state.team(_other(owner.team))
+    wingers = [
+        m
+        for m in state.team(owner.team)
+        if m.role is Role.WINGER
+        and m is not owner
+        and m.position.distance_to(owner.position) <= max_dist
+        and m.position.distance_to(goal) <= owner_to_goal + 6.0  # no muy atras
+        and not is_offside(m, owner, state)
+    ]
+    if not wingers:
+        return None
+
+    def openness(m: MatchPlayer) -> float:
+        return min((o.position.distance_to(m.position) for o in rivals), default=999.0)
+
+    best = max(wingers, key=openness)
+    return best if openness(best) > 6.0 else None
+
+
 def is_offside(receiver: MatchPlayer, owner: MatchPlayer, state: MatchState) -> bool:
     """Si `receiver` esta en posicion adelantada al recibir un pase de `owner`.
 

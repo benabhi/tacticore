@@ -5,7 +5,14 @@ from collections import Counter
 from tacticore.core.rng import new_rng
 from tacticore.domain.enums import LeagueTier
 from tacticore.generators import ClubGenerator
-from tacticore.simulation.match import Role, Side, Vec2, kickoff_state
+from tacticore.simulation.match import (
+    MatchEngine,
+    MatchPhase,
+    Role,
+    Side,
+    Vec2,
+    kickoff_state,
+)
 from tacticore.simulation.match import ai
 
 
@@ -44,3 +51,15 @@ def test_defensive_line_follows_the_deepest_attacker():
     st.away[9].position = Vec2(25.0, 34.0)        # un rival se adelanta hacia el arco
     after = ai.defensive_line_x(st, Side.HOME)
     assert after < before  # la linea acompana: baja con el atacante
+
+
+def test_winger_in_wide_advanced_zone_crosses():
+    st = _state()
+    st.phase = MatchPhase.PLAYING
+    winger = next(m for m in st.home if m.role is Role.WINGER)
+    winger.position = Vec2(st.pitch.length - 10.0, 8.0)  # profundo y pegado a la banda
+    st.ball.owner = winger
+    st.ball.position = winger.position
+    engine = MatchEngine(st, new_rng(1))
+    engine._owner_action(winger)
+    assert st.log and st.log[-1].kind == "centro"

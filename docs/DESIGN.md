@@ -522,9 +522,12 @@ mas abierto (casi siempre central) => **embudo central**.
   defensiva acompana** al atacante mas adelantado (`defensive_line_x`) -> queda
   habilitado, sin offsides constantes. `is_goalkeeper` y el color del arquero por
   rol. Falta el **pago visible**: que el balon vaya a la banda y haya centros (H2).
-- **H2. Juego por las bandas + area.** Extremos/laterales usan el **ancho**:
-  desbordan y **tiran centros** desde el lateral al area; los delanteros atacan
-  el centro y la rematan. Asi hay circulacion y jugadas de area.
+- **H2. Juego por las bandas + area.** [hecho] El que la lleva libre **abre el
+  juego** a un extremo desmarcado (`open_winger`); el extremo, abierto y profundo,
+  **desborda por la linea** y **tira el centro** al area (`_cross`, evento
+  "centro"), donde el punta y los que llegan la pelean. Subio la posesion por
+  banda de ~0% a ~11-21% y hay 4-6 centros por partido. Falta: corners con
+  corredores diferenciados y rematar el centro de cabeza (juego aereo).
 - **H3. Apoyos y paredes.** Pase-y-sigo (te paso, corro, me la devolves),
   ayuda/sobre-marca en defensa, desdoblamiento del lateral.
 - **H4. Marca configurable + tacticas.** Marca **zonal/personal** por jugador

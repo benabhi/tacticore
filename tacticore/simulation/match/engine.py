@@ -19,7 +19,7 @@ import random
 
 from . import ai
 from .commands import Command
-from .entities import Side
+from .entities import Role, Side
 from .events import MatchEvent
 from .geometry import Vec2
 from .state import MatchPhase, MatchState
@@ -49,6 +49,10 @@ _TAKER_FREEZE = 0.7       # el ejecutante de un saque queda quieto este rato tra
 _THROW_WAIT_MAX = 3.0     # el que saca el lateral espera hasta esto a tener un pase (s)
 _THROW_PRESSURE = 6.0     # si un rival se acerca mas que esto al que saca, saca ya (m)
 _THROW_OPTION_RANGE = 16.0  # distancia a la que un companero ya es opcion de saque (m)
+_WIDE_MARGIN = 18.0       # a menos de esto de una banda, el jugador esta "abierto"
+_CROSS_ZONE = 0.30        # ultimo tercio (fraccion del largo) desde donde se centra
+_CROSS_SPEED = 18.0       # velocidad del centro al area (m/s)
+_WING_SEEK_CHANCE = 0.05  # prob. por tick de abrir el juego a un extremo libre
 _GOAL_KICK_DEPTH = 5.5    # el saque de arco sale desde el borde del area chica (m)
 _RESTART_NUDGE = 0.4      # la pelota del saque queda esta distancia adentro del limite
 _SHOT_SAVE_SPEED = 16.0   # a mas velocidad que esto, la pelota que llega al arquero es "remate"
@@ -582,6 +586,16 @@ class MatchEngine:
             self._goalkeeper_distribute(owner)
             return Vec2(0.0, 0.0)
 
+        # Extremo por la banda: si esta abierto y profundo, tira el CENTRO al area;
+        # si esta abierto pero no tan profundo, desborda por la linea de fondo.
+        if owner.role is Role.WINGER and self._is_wide(owner):
+            if self._in_crossing_zone(owner):
+                self._cross(owner)
+                return Vec2(0.0, 0.0)
+            toward = 1.0 if owner.team is Side.HOME else -1.0
+            byline = state.pitch.clamp(Vec2(owner.position.x + toward * 6.0, owner.position.y))
+            return ai.arrive(owner.position, byline, ai.max_speed(owner.player) * _DRIBBLE_FACTOR)
+
         # Dentro de su alcance de remate (segun shooting) -> remata.
         if owner.position.distance_to(goal) <= ai.shoot_range(owner.player):
             self._shoot(owner, goal)
@@ -609,6 +623,16 @@ class MatchEngine:
                     self._pass(owner, mate, is_long)
             else:
                 self._kick(owner, goal, _SHOOT_SPEED)
+            return Vec2(0.0, 0.0)
+
+        # Libre -> abre el juego a un extremo libre para atacar por la banda.
+        winger = ai.open_winger(owner, state, _MAX_PASS_DIST)
+        if (
+            winger is not None
+            and owner.role is not Role.WINGER
+            and self._rng.random() < _WING_SEEK_CHANCE
+        ):
+            self._pass(owner, winger, ai.is_long_pass(owner, winger))
             return Vec2(0.0, 0.0)
 
         # Libre -> de vez en cuando cambia el juego a un companero muy solo en otra
@@ -688,6 +712,25 @@ class MatchEngine:
         )
         self._log("pase", player=taker, target=target, detail="corto")
         self._kick(taker, aim, _PASS_SPEED)
+
+    def _is_wide(self, mp) -> bool:
+        """Si el jugador esta pegado a una banda."""
+        w = self.state.pitch.width
+        return mp.position.y < _WIDE_MARGIN or mp.position.y > w - _WIDE_MARGIN
+
+    def _in_crossing_zone(self, mp) -> bool:
+        """Si el extremo esta abierto Y profundo como para tirar el centro."""
+        goal = ai.attacking_goal(self.state, mp.team)
+        deep = mp.position.distance_to(goal) < self.state.pitch.length * _CROSS_ZONE
+        return self._is_wide(mp) and deep
+
+    def _cross(self, winger) -> None:
+        """Centro del extremo al area rival (donde estan el punta y los que llegan)."""
+        is_home = winger.team is Side.HOME
+        target = self.state.pitch.penalty_spot(home=not is_home)
+        aim = target + self._pass_error(winger.player, is_long=True)
+        self._log("centro", player=winger)
+        self._kick(winger, aim, _CROSS_SPEED)
 
     def _take_corner(self, taker) -> None:
         """Corner: centro al area rival (donde los companeros se tiraron al ataque)."""

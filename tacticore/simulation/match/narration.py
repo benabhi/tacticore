@@ -21,6 +21,7 @@ _TEMPLATES: dict[str, str] = {
     "gol": "GOOOL! La clava {who} y hace estallar el estadio!",
     "remate": "{who} se anima y saca un remate al arco!",
     "pase": "{who} prueba un pase {detail} para {target}",
+    "centro": "{who} desborda por la banda y tira el centro al area!",
     "despeje": "{who} la manda bien lejos, pelotazo al area rival",
     "saque_corto": "{who} saca corto y juega para {target}",
     "atajada": "Gran atajada de {who}, le tapa el remate!",
