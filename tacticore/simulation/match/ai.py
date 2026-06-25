@@ -343,8 +343,15 @@ def team_shift(state: MatchState, side: Side) -> Vec2:
 
 
 def shifted_base(mp: MatchPlayer, state: MatchState) -> Vec2:
-    """Ancla de formacion del jugador, corrida con el bloque hacia la pelota."""
-    return mp.base_position + team_shift(state, mp.team)
+    """Ancla de formacion del jugador, corrida con el bloque hacia la pelota.
+
+    Se acota para que un jugador off-ball no quede parado pegado a la banda (la
+    linea de lateral): el que desborda por la banda lo hace con la pelota, no
+    esperando ahi sin ella.
+    """
+    s = mp.base_position + team_shift(state, mp.team)
+    w = state.pitch.width
+    return Vec2(s.x, min(max(s.y, 5.0), w - 5.0))
 
 
 # --- Desmarques / movimiento off-ball del ataque (G3.x) ---
@@ -404,10 +411,12 @@ def box_crash_target(mp: MatchPlayer, state: MatchState) -> Vec2:
     meten al area a la espera del cabezazo aunque queden algo adelantados.
     """
     pitch = state.pitch
-    spot = pitch.penalty_spot(home=(mp.team is Side.AWAY))  # area que ataca
+    goal = attacking_goal(state, mp.team)
+    toward = 1.0 if mp.team is Side.HOME else -1.0
+    tx = goal.x - toward * 7.0  # BIEN adentro del area (no en el borde)
     bias = -1.0 if mp.base_position.y < pitch.width / 2 else 1.0
     ty = min(max(pitch.width / 2 + bias * _BOX_SPREAD, 16.0), pitch.width - 16.0)
-    return Vec2(spot.x, ty)
+    return Vec2(tx, ty)
 
 
 def box_crash_velocity(mp: MatchPlayer, state: MatchState) -> Vec2:
@@ -449,7 +458,12 @@ def attacking_run_target(mp: MatchPlayer, state: MatchState) -> Vec2:
     ball_depth = abs(goal.x - state.ball.position.x)
     if ball_depth < _DEEP_ATTACK and mp.role in (Role.STRIKER, Role.MIDFIELDER):
         t = box_crash_target(mp, state)
-        return Vec2(onside(t.x), t.y)
+        # Entra al area aunque quede un poco pasado de la linea (offside esporadico):
+        # cap suave, 3m por delante del anteultimo defensor, no clavado en el borde.
+        tx = t.x
+        if line is not None:
+            tx = min(tx, line + 3.0) if toward > 0 else max(tx, line - 3.0)
+        return Vec2(tx, t.y)
 
     if mp.role is Role.STRIKER:
         # Empuja al area cuando el equipo ataca (pelota en campo rival); si no,
