@@ -461,7 +461,11 @@ class MatchEngine:
         state = self.state
         owner = state.ball.owner
         if owner is None:
-            if self._cross_flight_timer > 0.0 and self._crossing_side is not None:
+            if self._restart_side is not None:
+                # Saque pendiente y todavia nadie la tomo (el ejecutante no llego a
+                # la pelota en la pausa): sigue yendo a buscarla, no se va andando.
+                self._reposition_dead_ball(dt)
+            elif self._cross_flight_timer > 0.0 and self._crossing_side is not None:
                 self._move_cross_flight(dt)
             else:
                 self._move_loose_ball(dt)
