@@ -281,17 +281,24 @@ def marking_velocity(defender: MatchPlayer, state: MatchState) -> Vec2:
 
 # El arbitro sigue la jugada a esta distancia (m) y corre a esta velocidad (m/s).
 _REF_FOLLOW_DIST = 12.0
+_REF_MIN_DIST = 7.0   # nunca mas cerca que esto: no tapa el juego (ej. saque del medio)
 _REF_MAX_SPEED = 6.5
 
 
 def referee_velocity(ref, state: MatchState) -> Vec2:
-    """Velocidad del arbitro: trota hacia la pelota pero la sigue a distancia.
+    """Velocidad del arbitro: trota cerca de la jugada pero sin taparla.
 
-    Si ya esta dentro de la distancia de seguimiento, se queda; si la pelota se
-    aleja, se acerca hasta esa distancia (no la alcanza ni la disputa).
+    Mantiene una banda de distancia: si la pelota se aleja, se acerca hasta
+    `_REF_FOLLOW_DIST`; si le queda **demasiado encima** (saque del medio, balon
+    parado), se corre al costado hasta `_REF_MIN_DIST` para no tapar al que juega.
     """
     to_ball = state.ball.position - ref.position
     dist = to_ball.length()
+    if dist < _REF_MIN_DIST:
+        # Demasiado cerca: se aparta (si esta justo encima, hacia un costado fijo).
+        away = (to_ball * -1.0).normalized() if dist > 1e-6 else Vec2(0.0, 1.0)
+        target = state.ball.position + away * _REF_FOLLOW_DIST
+        return arrive(ref.position, target, _REF_MAX_SPEED)
     if dist <= _REF_FOLLOW_DIST:
         return Vec2(0.0, 0.0)
     target = state.ball.position - to_ball.normalized() * _REF_FOLLOW_DIST
@@ -328,11 +335,49 @@ def offside_line_x(state: MatchState, attacking_side: Side) -> float | None:
     return sorted(xs)[1]
 
 
+# Centro inminente: la pelota esta abierta (cerca de una banda) y profunda
+# (ultimo tramo del campo rival). Cuando pasa, los de adentro crashean el area.
+_CROSS_WIDE_Y = 18.0     # a menos de esto de una banda, la pelota esta "abierta"
+_CROSS_DEPTH = 0.32      # fraccion del largo desde la linea de fondo: anticipa el centro
+_BOX_SPREAD = 10.0       # cuanto se abren los que llegan al area (primer/segundo palo)
+
+
+def cross_imminent(state: MatchState, attacking_side: Side) -> bool:
+    """Si la pelota esta abierta y profunda en campo rival: se viene un centro."""
+    ball = state.ball.position
+    pitch = state.pitch
+    goal = attacking_goal(state, attacking_side)
+    wide = ball.y < _CROSS_WIDE_Y or ball.y > pitch.width - _CROSS_WIDE_Y
+    deep = abs(goal.x - ball.x) < pitch.length * _CROSS_DEPTH  # cerca de la linea de fondo
+    return wide and deep
+
+
+def box_crash_target(mp: MatchPlayer, state: MatchState) -> Vec2:
+    """Punto DENTRO del area al que llega un atacante a esperar el centro.
+
+    Se abren entre primer y segundo palo segun su franja, a la altura del punto
+    penal. No se limita por la linea de offside: el centro se patea a un punto (no
+    dispara la regla del offside) y, como en un partido real, los que llegan se
+    meten al area a la espera del cabezazo aunque queden algo adelantados.
+    """
+    pitch = state.pitch
+    spot = pitch.penalty_spot(home=(mp.team is Side.AWAY))  # area que ataca
+    bias = -1.0 if mp.base_position.y < pitch.width / 2 else 1.0
+    ty = min(max(pitch.width / 2 + bias * _BOX_SPREAD, 16.0), pitch.width - 16.0)
+    return Vec2(spot.x, ty)
+
+
+def box_crash_velocity(mp: MatchPlayer, state: MatchState) -> Vec2:
+    """Velocidad del que llega al area a esperar/rematar el centro."""
+    return arrive(mp.position, box_crash_target(mp, state), max_speed(mp.player))
+
+
 def attacking_run_target(mp: MatchPlayer, state: MatchState) -> Vec2:
     """Punto al que se desmarca un atacante sin pelota: adelantado y en espacio.
 
-    Los delanteros **aguantan la linea de offside** (se paran justo detras del
-    anteultimo defensor para meterse al area sin quedar adelantados); el resto
+    Si **se viene un centro** (pelota abierta y profunda), los atacantes centrales
+    crashean el area a esperar el cabezazo. Si no, los delanteros **aguantan la
+    linea de offside**, los extremos/laterales suben **por la banda** y el resto
     sube una fraccion de su zona segun `work_rate` y su linea (`_RUN_LINE_FACTOR`).
     Si tiene un rival encima, se corre a un costado para ofrecerse libre.
     """
@@ -341,6 +386,13 @@ def attacking_run_target(mp: MatchPlayer, state: MatchState) -> Vec2:
     pitch = state.pitch
     toward = 1.0 if mp.team is Side.HOME else -1.0  # signo hacia el arco rival (en x)
     line = offside_line_x(state, mp.team)
+
+    # Viene el centro -> los de adentro (punta, volantes, extremo lejano) crashean
+    # el area (el que centra tiene la pelota, no pasa por aca).
+    if cross_imminent(state, mp.team) and mp.role in (
+        Role.STRIKER, Role.MIDFIELDER, Role.WINGER
+    ):
+        return box_crash_target(mp, state)
 
     def onside(tx: float) -> float:
         # No pasar la linea de offside (queda 0.8m detras) ni quedar atras de su zona.

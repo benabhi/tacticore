@@ -50,8 +50,9 @@ _THROW_WAIT_MAX = 3.0     # el que saca el lateral espera hasta esto a tener un 
 _THROW_PRESSURE = 6.0     # si un rival se acerca mas que esto al que saca, saca ya (m)
 _THROW_OPTION_RANGE = 16.0  # distancia a la que un companero ya es opcion de saque (m)
 _WIDE_MARGIN = 18.0       # a menos de esto de una banda, el jugador esta "abierto"
-_CROSS_ZONE = 0.30        # ultimo tercio (fraccion del largo) desde donde se centra
+_CROSS_ZONE = 0.22        # hay que profundizar cerca de la linea de fondo para centrar
 _CROSS_SPEED = 18.0       # velocidad del centro al area (m/s)
+_CROSS_FLIGHT_TIME = 3.0  # ventana del centro/rebote (gente al area, definicion dificil)
 _WING_SEEK_CHANCE = 0.05  # prob. por tick de abrir el juego a un extremo libre
 _RECEPTION_TIME = 1.6     # tras un saque, el que recibe va a buscar la pelota este rato (s)
 _SUPPORT_RUN_TIME = 1.2   # tras un pase corto, el que paso pica de apoyo este rato (s)
@@ -122,6 +123,10 @@ class MatchEngine:
         # El que dio un pase corto pica de apoyo (pared / te paso y voy).
         self._support_runner_id: int | None = None
         self._support_run_timer = 0.0
+        # Centro en el aire: el equipo que centro mantiene gente en el area y la
+        # defensa marca, durante una ventana corta hasta que se resuelve.
+        self._crossing_side: Side | None = None
+        self._cross_flight_timer = 0.0
         # Jugadores "congelados" un instante (ejecuto un saque, lo gambetearon, o
         # le quitaron la pelota): id -> tiempo restante (s). No se mueven.
         self._frozen: dict[int, float] = {}
@@ -171,6 +176,7 @@ class MatchEngine:
         self._throw_wait_timer = max(0.0, self._throw_wait_timer - dt)
         self._reception_timer = max(0.0, self._reception_timer - dt)
         self._support_run_timer = max(0.0, self._support_run_timer - dt)
+        self._cross_flight_timer = max(0.0, self._cross_flight_timer - dt)
         self._acquire_possession()
         self._resolve_tackle()  # un defensor pegado puede intentar quitar
         self._move_players(dt)  # la accion del que lleva puede soltar la pelota
@@ -429,7 +435,10 @@ class MatchEngine:
         state = self.state
         owner = state.ball.owner
         if owner is None:
-            self._move_loose_ball(dt)
+            if self._cross_flight_timer > 0.0 and self._crossing_side is not None:
+                self._move_cross_flight(dt)
+            else:
+                self._move_loose_ball(dt)
         else:
             self._move_with_owner(dt, owner)
 
@@ -466,6 +475,41 @@ class MatchEngine:
     def _is_support_runner(self, mp) -> bool:
         """Si este jugador acaba de pasar y esta picando de apoyo."""
         return self._support_run_timer > 0.0 and id(mp) == self._support_runner_id
+
+    def _begin_cross_flight(self, side) -> None:
+        """Arranca la ventana del centro: el equipo `side` ataca el area."""
+        self._crossing_side = side
+        self._cross_flight_timer = _CROSS_FLIGHT_TIME
+
+    def _move_cross_flight(self, dt: float) -> None:
+        """Centro en el aire: el que centro mete gente al area, la defensa marca.
+
+        El mas cercano de cada equipo va a la pelota (a cabecear / despejar); del
+        equipo que ataca, los centrales del frente llegan al area; la defensa
+        marca (sus rivales mas peligrosos / el area). El resto sostiene.
+        """
+        state = self.state
+        pitch = state.pitch
+        atk = self._crossing_side
+        chasers = {
+            id(ai.team_ball_chaser(state, Side.HOME)),
+            id(ai.team_ball_chaser(state, Side.AWAY)),
+        }
+        for mp in state.all_players():
+            if id(mp) in chasers:
+                vel = ai.decide_velocity(mp, state, is_chaser=True)
+            elif ai.is_goalkeeper(mp):
+                vel = ai.goalkeeper_velocity(mp, state)
+            elif mp.team is atk and mp.role in (Role.STRIKER, Role.MIDFIELDER, Role.WINGER):
+                vel = ai.box_crash_velocity(mp, state)  # llega al area al centro
+            elif mp.team is not atk:
+                vel = ai.marking_velocity(mp, state)     # la defensa marca
+            else:
+                vel = ai.decide_velocity(mp, state, is_chaser=False)
+            if self._is_frozen(mp):
+                vel = Vec2(0.0, 0.0)
+            mp.velocity = vel
+            mp.position = pitch.clamp(mp.position + vel * dt)
 
     def _is_frozen(self, mp) -> bool:
         """Si este jugador esta congelado un instante (saque, gambeteado, despojado)."""
@@ -551,8 +595,10 @@ class MatchEngine:
                 for m in sorted(defs, key=lambda m: m.position.distance_to(wp))[:2]:
                     wall_ids.add(id(m))
 
-        # Lateral: un par de companeros cercanos van a ofrecerse ADENTRO del campo.
+        # Lateral: un par de companeros cercanos van a ofrecerse ADENTRO del campo
+        # y los rivales que tienen cerca intentan marcarlos (goal-side).
         offers = self._throw_in_offers(taking, taker, spot) if self._restart_kind == "lateral" else {}
+        throw_marks = self._throw_in_marks(taking, offers) if self._restart_kind == "lateral" else {}
 
         for mp in state.all_players():
             if mp is taker and owner is None:
@@ -561,6 +607,8 @@ class MatchEngine:
                 vel = ai.goalkeeper_velocity(mp, state)
             elif id(mp) in offers:
                 vel = ai.arrive(mp.position, offers[id(mp)], ai.max_speed(mp.player))
+            elif id(mp) in throw_marks:
+                vel = ai.arrive(mp.position, throw_marks[id(mp)], ai.max_speed(mp.player))
             elif id(mp) in wall_ids:
                 wp = self._wall_point(spot, ai.own_goal(state, mp.team))
                 vel = ai.arrive(mp.position, wp, ai.max_speed(mp.player))
@@ -589,6 +637,27 @@ class MatchEngine:
         ]
         candidates.sort(key=lambda m: m.position.distance_to(spot))
         return {id(m): p for m, p in zip(candidates, points)}
+
+    def _throw_in_marks(self, taking, offers: dict) -> dict:
+        """Rivales cercanos marcan (goal-side) a los companeros que se ofrecen."""
+        if taking is None or not offers:
+            return {}
+        state = self.state
+        rivals = [m for m in state.team(_other(taking)) if not ai.is_goalkeeper(m)]
+        offered = [m for m in state.team(taking) if id(m) in offers]
+        marks: dict = {}
+        used: set[int] = set()
+        for tm in offered:
+            cand = [
+                r for r in rivals
+                if id(r) not in used and r.position.distance_to(tm.position) < 22.0
+            ]
+            if not cand:
+                continue
+            r = min(cand, key=lambda r: r.position.distance_to(tm.position))
+            used.add(id(r))
+            marks[id(r)] = ai.marking_point(r, tm, state)
+        return marks
 
     def _wall_point(self, spot: Vec2, goal: Vec2) -> Vec2:
         """Punto de barrera: entre la pelota y el arco, a _WALL_DIST del balon."""
@@ -632,15 +701,18 @@ class MatchEngine:
             self._goalkeeper_distribute(owner)
             return Vec2(0.0, 0.0)
 
-        # Extremo por la banda: si esta abierto y profundo, tira el CENTRO al area;
-        # si esta abierto pero no tan profundo, desborda por la linea de fondo.
-        if owner.role is Role.WINGER and self._is_wide(owner):
+        # Extremo o lateral por la banda: si esta abierto y BIEN PROFUNDO (cerca de
+        # la linea de fondo), tira el CENTRO al area; si no, encara hacia el corner
+        # (profundiza pegado a la banda) para tirar el centro desde el fondo.
+        if owner.role in (Role.WINGER, Role.FULLBACK) and self._is_wide(owner):
             if self._in_crossing_zone(owner):
                 self._cross(owner)
                 return Vec2(0.0, 0.0)
             toward = 1.0 if owner.team is Side.HOME else -1.0
-            byline = state.pitch.clamp(Vec2(owner.position.x + toward * 6.0, owner.position.y))
-            return ai.arrive(owner.position, byline, ai.max_speed(owner.player) * _DRIBBLE_FACTOR)
+            w = state.pitch.width
+            touch_y = 5.0 if owner.position.y < w / 2 else w - 5.0  # se pega a la banda
+            corner = state.pitch.clamp(Vec2(owner.position.x + toward * 9.0, touch_y))
+            return ai.arrive(owner.position, corner, ai.max_speed(owner.player) * _DRIBBLE_FACTOR)
 
         # Dentro de su alcance de remate (segun shooting) -> remata.
         if owner.position.distance_to(goal) <= ai.shoot_range(owner.player):
@@ -767,9 +839,10 @@ class MatchEngine:
         return mp.position.y < _WIDE_MARGIN or mp.position.y > w - _WIDE_MARGIN
 
     def _in_crossing_zone(self, mp) -> bool:
-        """Si el extremo esta abierto Y profundo como para tirar el centro."""
+        """Si el que la lleva esta abierto Y cerca de la linea de fondo (profundo)."""
         goal = ai.attacking_goal(self.state, mp.team)
-        deep = mp.position.distance_to(goal) < self.state.pitch.length * _CROSS_ZONE
+        depth = abs(goal.x - mp.position.x)  # cercania a la linea de fondo (en x)
+        deep = depth < self.state.pitch.length * _CROSS_ZONE
         return self._is_wide(mp) and deep
 
     def _cross(self, winger) -> None:
@@ -779,6 +852,7 @@ class MatchEngine:
         aim = target + self._pass_error(winger.player, is_long=True)
         self._log("centro", player=winger)
         self._kick(winger, aim, _CROSS_SPEED)
+        self._begin_cross_flight(winger.team)
 
     def _take_corner(self, taker) -> None:
         """Corner: centro al area rival (donde los companeros se tiraron al ataque)."""
@@ -789,6 +863,7 @@ class MatchEngine:
         aim = target + self._pass_error(taker.player, is_long=True)
         self._log("pase", player=taker, target=None, detail="largo")
         self._kick(taker, aim, _LONG_PASS_SPEED)
+        self._begin_cross_flight(taker.team)
 
     def _goalkeeper_distribute(self, gk) -> None:
         """El arquero reparte: saque corto a un companero libre, o pelotazo largo.
@@ -835,8 +910,16 @@ class MatchEngine:
         else:
             aim_side = 1.0
         accuracy = owner.player.shooting / 100.0
+        # Remate de primera tras un centro (cabezazo/volea): mucho mas dificil de
+        # acomodar -> menos punteria y mas dispersion (no todo centro es gol).
+        off_cross = self._cross_flight_timer > 0.0
+        if off_cross:
+            accuracy *= 0.5
         target_y = goal.y + aim_side * half * (0.4 + 0.6 * accuracy)
-        target_y += self._rng.uniform(-1.0, 1.0) * (1.0 - accuracy) * half * 1.5
+        spread = (1.0 - accuracy) * half * 1.5
+        if off_cross:
+            spread *= 2.0
+        target_y += self._rng.uniform(-1.0, 1.0) * spread
         self._log("remate", player=owner)
         self._kick(owner, Vec2(goal.x, target_y), _SHOOT_SPEED)
 

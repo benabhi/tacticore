@@ -13,9 +13,11 @@ def _fresh_state():
     return kickoff_state(home, away)
 
 
-def test_referee_starts_at_center():
+def test_referee_starts_near_center_off_the_ball():
     st = _fresh_state()
-    assert st.referee.position == st.pitch.center
+    # Arranca cerca del centro pero NO encima de la pelota/pasador del saque.
+    assert st.referee.position.distance_to(st.pitch.center) > 1.0
+    assert st.referee.position.distance_to(st.ball.position) > 5.0
 
 
 def test_referee_follows_the_play():

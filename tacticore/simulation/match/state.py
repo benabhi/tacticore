@@ -83,5 +83,6 @@ def kickoff_state(
     home = _place_team(home_club, Side.HOME, home_formation or default, pitch)
     away = _place_team(away_club, Side.AWAY, away_formation or default, pitch)
     ball = Ball(position=pitch.center)
-    referee = Referee(position=pitch.center)
+    # El arbitro arranca al costado del centro (no encima de la pelota/pasador).
+    referee = Referee(position=pitch.center + Vec2(0.0, 9.0))
     return MatchState(pitch=pitch, home=home, away=away, ball=ball, referee=referee)

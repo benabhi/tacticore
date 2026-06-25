@@ -82,3 +82,32 @@ def test_winger_in_wide_advanced_zone_crosses():
     engine = MatchEngine(st, new_rng(1))
     engine._owner_action(winger)
     assert st.log and st.log[-1].kind == "centro"
+
+
+def test_fullback_overlapping_wide_and_deep_crosses():
+    st = _state()
+    st.phase = MatchPhase.PLAYING
+    fb = next(m for m in st.home if m.role is Role.FULLBACK)
+    fb.position = Vec2(st.pitch.length - 8.0, 6.0)  # lateral que desbordo hasta el fondo
+    st.ball.owner = fb
+    st.ball.position = fb.position
+    engine = MatchEngine(st, new_rng(1))
+    engine._owner_action(fb)
+    assert st.log and st.log[-1].kind == "centro"
+
+
+def test_cross_opens_a_flight_window_and_box_targets():
+    st = _state()
+    st.phase = MatchPhase.PLAYING
+    winger = next(m for m in st.home if m.role is Role.WINGER)
+    winger.position = Vec2(st.pitch.length - 6.0, 6.0)
+    st.ball.owner = winger
+    st.ball.position = winger.position
+    engine = MatchEngine(st, new_rng(1))
+    engine._owner_action(winger)  # tira el centro
+    assert engine._cross_flight_timer > 0.0  # se abre la ventana del centro
+    # los de adentro apuntan al area rival a esperar el cabezazo
+    striker = next(m for m in st.home if m.role is Role.STRIKER)
+    target = ai.box_crash_target(striker, st)
+    goal = ai.attacking_goal(st, Side.HOME)
+    assert abs(target.x - goal.x) < 17.0  # dentro / al borde del area
