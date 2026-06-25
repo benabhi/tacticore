@@ -40,6 +40,7 @@ _SHORT_PASS_ERROR = 3.0   # desvio maximo de un pase corto con passing=0 (m)
 _LONG_PASS_ERROR = 8.0    # desvio maximo de un pase largo con passing=0 (m)
 _SHOOT_SPEED = 25.0       # velocidad de un remate (m/s)
 _FREE_KICK_SHOOT_RANGE = 24.0  # desde mas cerca que esto, el tiro libre va al arco
+_KEEPER_DRIBBLE_RANGE = 16.0   # de mas cerca que esto, un 1v1 puede intentar gambetear al arquero
 _SAVE_BASE = 0.50         # ancla: nivel de atajadas de la liga (los atributos ajustan)
 _DRIBBLE_FACTOR = 0.85    # se gambetea un poco mas lento que corriendo libre
 _DRIBBLE_OFFSET = 0.5     # la pelota va esta distancia por delante del que lleva
@@ -897,6 +898,16 @@ class MatchEngine:
             corner = state.pitch.clamp(Vec2(owner.position.x + toward * 9.0, touch_y))
             return ai.arrive(owner.position, corner, ai.max_speed(owner.player) * _DRIBBLE_FACTOR)
 
+        # 1v1: cerca del arco y zafado de los defensores, un buen gambeteador a
+        # veces intenta RODEAR al arquero en vez de rematar (si sale, queda de cara
+        # al arco; si no, el arquero le gana el duelo).
+        if (
+            owner.position.distance_to(goal) < _KEEPER_DRIBBLE_RANGE
+            and self._one_on_one(owner)
+            and self._rng.random() < _clamp(owner.player.dribbling / 400.0, 0.04, 0.25)
+        ):
+            return self._dribble_keeper(owner)
+
         # Dentro de su alcance de remate (segun shooting) -> remata.
         if owner.position.distance_to(goal) <= ai.shoot_range(owner.player):
             self._shoot(owner, goal)
@@ -962,6 +973,41 @@ class MatchEngine:
         return ai.arrive(
             owner.position, goal, ai.max_speed(owner.player) * _DRIBBLE_FACTOR
         )
+
+    def _one_on_one(self, owner) -> bool:
+        """Si el que lleva esta encarando de frente al arco, cerca (el rango ya lo
+        filtra el gate): situacion para intentar rodear al arquero en vez de rematar."""
+        goal = ai.attacking_goal(self.state, owner.team)
+        return abs(owner.position.y - goal.y) < 13.0
+
+    def _dribble_keeper(self, owner) -> Vec2:
+        """Intenta gambetear al arquero. Si sale, el arquero queda frenado y el que
+        lleva sigue de cara al arco; si no, el arquero le gana el duelo y se queda
+        con la pelota. Depende de `dribbling` del atacante vs reflejos/aplomo del 1."""
+        state = self.state
+        goal = ai.attacking_goal(state, owner.team)
+        keeper = ai.team_goalkeeper(state, _other(owner.team))
+        o = owner.player
+        if keeper is None:
+            return ai.arrive(owner.position, goal, ai.max_speed(o) * _DRIBBLE_FACTOR)
+        k = keeper.player
+        p = _clamp(0.30 + (o.dribbling - (k.reflexes + k.composure) / 2.0) / 200.0, 0.1, 0.85)
+        if self._rng.random() < p:
+            # Lo gambetea: el arquero queda frenado, sigue solo hacia el arco.
+            self._log("gambeta", player=owner, target=keeper)
+            self._freeze(keeper, _recovery_freeze(k.agility, k.composure))
+            return ai.arrive(owner.position, goal, ai.max_speed(o) * _DRIBBLE_FACTOR)
+        # El arquero le gana el duelo: se le tira a los pies y se queda la pelota.
+        ball = state.ball
+        ball.owner = keeper
+        ball.velocity = Vec2(0.0, 0.0)
+        state.last_touch = keeper.team
+        state.last_event = "Atajada"
+        self._log("atajada", player=keeper)
+        self._gk_carry_timer = _GK_CARRY_TIME
+        self._restart_timer = _SETTLE_SAVE
+        self._freeze(owner, _recovery_freeze(o.agility, o.composure))
+        return Vec2(0.0, 0.0)
 
     def _in_build_up_zone(self, owner) -> bool:
         """Si el que lleva la pelota esta en su zona de salida/mediocampo propio."""
