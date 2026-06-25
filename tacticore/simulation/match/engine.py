@@ -40,7 +40,7 @@ _SHORT_PASS_ERROR = 3.0   # desvio maximo de un pase corto con passing=0 (m)
 _LONG_PASS_ERROR = 8.0    # desvio maximo de un pase largo con passing=0 (m)
 _SHOOT_SPEED = 25.0       # velocidad de un remate (m/s)
 _FREE_KICK_SHOOT_RANGE = 24.0  # desde mas cerca que esto, el tiro libre va al arco
-_SAVE_BASE = 0.68         # ancla: nivel de atajadas de la liga (los atributos ajustan)
+_SAVE_BASE = 0.50         # ancla: nivel de atajadas de la liga (los atributos ajustan)
 _DRIBBLE_FACTOR = 0.85    # se gambetea un poco mas lento que corriendo libre
 _DRIBBLE_OFFSET = 0.5     # la pelota va esta distancia por delante del que lleva
 _GK_REACH = 1.7           # el arquero domina la pelota a este radio dentro del area (m)
@@ -53,9 +53,11 @@ _THROW_WAIT_MAX = 3.0     # el que saca el lateral espera hasta esto a tener un 
 _THROW_PRESSURE = 6.0     # si un rival se acerca mas que esto al que saca, saca ya (m)
 _THROW_OPTION_RANGE = 16.0  # distancia a la que un companero ya es opcion de saque (m)
 _WIDE_MARGIN = 18.0       # a menos de esto de una banda, el jugador esta "abierto"
-_CROSS_ZONE = 0.22        # hay que profundizar cerca de la linea de fondo para centrar
+_CROSS_ZONE = 0.09        # hay que llegar BIEN al fondo (cerca de la linea) para centrar
 _CROSS_SPEED = 18.0       # velocidad del centro al area (m/s)
 _CROSS_FLIGHT_TIME = 3.0  # ventana del centro/rebote (gente al area, definicion dificil)
+_CORNER_WAIT_MAX = 2.8    # el que saca el corner espera hasta esto a que llenen el area
+_CORNER_BOX_READY = 3     # con esta cantidad de companeros en el area, ya saca el corner
 _WING_SEEK_CHANCE = 0.05  # prob. por tick de abrir el juego a un extremo libre
 _RECEPTION_TIME = 1.6     # tras un saque, el que recibe va a buscar la pelota este rato (s)
 _SUPPORT_RUN_TIME = 1.2   # tras un pase corto, el que paso pica de apoyo este rato (s)
@@ -130,6 +132,8 @@ class MatchEngine:
         # defensa marca, durante una ventana corta hasta que se resuelve.
         self._crossing_side: Side | None = None
         self._cross_flight_timer = 0.0
+        # El que saca el corner espera a que los companeros llenen el area.
+        self._corner_wait_timer = 0.0
         # Jugadores "congelados" un instante (ejecuto un saque, lo gambetearon, o
         # le quitaron la pelota): id -> tiempo restante (s). No se mueven.
         self._frozen: dict[int, float] = {}
@@ -180,6 +184,7 @@ class MatchEngine:
         self._reception_timer = max(0.0, self._reception_timer - dt)
         self._support_run_timer = max(0.0, self._support_run_timer - dt)
         self._cross_flight_timer = max(0.0, self._cross_flight_timer - dt)
+        self._corner_wait_timer = max(0.0, self._corner_wait_timer - dt)
         self._acquire_possession()
         self._resolve_tackle()  # un defensor pegado puede intentar quitar
         self._move_players(dt)  # la accion del que lleva puede soltar la pelota
@@ -281,6 +286,8 @@ class MatchEngine:
                 self._restart_taker = taker
                 if self._restart_kind == "lateral" and not ai.is_goalkeeper(taker):
                     self._throw_wait_timer = _THROW_WAIT_MAX  # espera ayuda
+                if self._restart_kind == "corner":
+                    self._corner_wait_timer = _CORNER_WAIT_MAX  # espera que llenen el area
             # El arquero que toma la pelota la "camina" un rato antes de distribuir.
             if ai.is_goalkeeper(taker):
                 self._gk_carry_timer = _GK_CARRY_TIME
@@ -698,6 +705,12 @@ class MatchEngine:
                 self._take_throw_in(owner)
                 return Vec2(0.0, 0.0)
             if self._restart_kind == "corner":
+                # Espera a que los companeros se metan al area antes de tirar el corner.
+                if (
+                    self._corner_wait_timer > 0.0
+                    and self._box_attackers(owner.team) < _CORNER_BOX_READY
+                ):
+                    return Vec2(0.0, 0.0)
                 self._take_corner(owner)
                 return Vec2(0.0, 0.0)
             if self._restart_kind in ("tiro_libre", "penal", "offside"):
@@ -866,11 +879,26 @@ class MatchEngine:
         return self._is_wide(mp) and deep
 
     def _cross(self, winger) -> None:
-        """Centro del extremo al area rival (donde estan el punta y los que llegan)."""
+        """Centro del que llego al fondo: al area (punto penal) o ATRAS (cut-back).
+
+        Desde bien pegado a la linea de fondo, a veces la tira atras al borde del
+        area (cut-back) donde llega un volante, en vez del centro alto al area.
+        """
+        state = self.state
+        pitch = state.pitch
         is_home = winger.team is Side.HOME
-        target = self.state.pitch.penalty_spot(home=not is_home)
+        goal = ai.attacking_goal(state, winger.team)
+        depth = abs(goal.x - winger.position.x)
+        toward = 1.0 if is_home else -1.0
+        if depth < 6.0 and self._rng.random() < 0.45:
+            # Cut-back: centro atras al borde del area, para el que llega de frente.
+            target = Vec2(goal.x - toward * 11.0, pitch.width / 2)
+            detail = " atras"
+        else:
+            target = pitch.penalty_spot(home=not is_home)
+            detail = None
         aim = target + self._pass_error(winger.player, is_long=True)
-        self._log("centro", player=winger)
+        self._log("centro", player=winger, detail=detail)
         self._kick(winger, aim, _CROSS_SPEED)
         self._begin_cross_flight(winger.team)
 
@@ -898,6 +926,17 @@ class MatchEngine:
         dest = self._inbounds_target(dest)
         self._log("pase", player=taker, target=target, detail="largo")
         self._kick(taker, dest, _LONG_PASS_SPEED)
+
+    def _box_attackers(self, side: Side) -> int:
+        """Cuantos jugadores de `side` estan dentro del area rival (esperando)."""
+        state = self.state
+        goal = ai.attacking_goal(state, side)
+        margin = 14.0
+        return sum(
+            1 for m in state.team(side)
+            if abs(m.position.x - goal.x) < 16.5
+            and margin < m.position.y < state.pitch.width - margin
+        )
 
     def _concede_corner(self, defending: Side, near_y: float) -> None:
         """Concede un corner al rival de `defending` (saque desde la esquina)."""

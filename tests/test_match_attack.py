@@ -64,6 +64,6 @@ def test_players_shoot_during_a_match():
     home = gen.generate(squad_size=16, country_code="AR", tier=LeagueTier.C)
     away = gen.generate(squad_size=16, country_code="BR", tier=LeagueTier.C)
     st = kickoff_state(home, away)
-    MatchEngine(st, new_rng(4)).run(300.0)
-    remates = [e for e in st.log if e.kind == "remate"]
+    MatchEngine(st, new_rng(4)).run(600.0)
+    remates = [e for e in st.log if e.kind in ("remate", "cabezazo")]
     assert len(remates) >= 3  # hay remates en un partido (no solo pases)

@@ -22,7 +22,7 @@ _TEMPLATES: dict[str, str] = {
     "remate": "{who} se anima y saca un remate al arco!",
     "cabezazo": "{who} salta y cabecea al arco!",
     "pase": "{who} prueba un pase {detail} para {target}",
-    "centro": "{who} desborda por la banda y tira el centro al area!",
+    "centro": "{who} llega al fondo y mete el centro{detail}!",
     "despeje": "{who} despeja{detail} y la saca del area",
     "saque_corto": "{who} saca corto y juega para {target}",
     "atajada": "Gran atajada de {who}, le tapa el remate!",

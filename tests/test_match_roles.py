@@ -76,7 +76,7 @@ def test_winger_in_wide_advanced_zone_crosses():
     st = _state()
     st.phase = MatchPhase.PLAYING
     winger = next(m for m in st.home if m.role is Role.WINGER)
-    winger.position = Vec2(st.pitch.length - 10.0, 8.0)  # profundo y pegado a la banda
+    winger.position = Vec2(st.pitch.length - 6.0, 8.0)  # BIEN al fondo y pegado a la banda
     st.ball.owner = winger
     st.ball.position = winger.position
     engine = MatchEngine(st, new_rng(1))

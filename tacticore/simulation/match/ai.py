@@ -382,6 +382,7 @@ def offside_line_x(state: MatchState, attacking_side: Side) -> float | None:
 _CROSS_WIDE_Y = 18.0     # a menos de esto de una banda, la pelota esta "abierta"
 _CROSS_DEPTH = 0.32      # fraccion del largo desde la linea de fondo: anticipa el centro
 _BOX_SPREAD = 10.0       # cuanto se abren los que llegan al area (primer/segundo palo)
+_DEEP_ATTACK = 26.0      # con la pelota a menos de esto del arco, punta y volante entran al area
 
 
 def cross_imminent(state: MatchState, attacking_side: Side) -> bool:
@@ -429,18 +430,26 @@ def attacking_run_target(mp: MatchPlayer, state: MatchState) -> Vec2:
     toward = 1.0 if mp.team is Side.HOME else -1.0  # signo hacia el arco rival (en x)
     line = offside_line_x(state, mp.team)
 
-    # Viene el centro -> los de adentro (punta, volantes, extremo lejano) crashean
-    # el area (el que centra tiene la pelota, no pasa por aca).
-    if cross_imminent(state, mp.team) and mp.role in (
-        Role.STRIKER, Role.MIDFIELDER, Role.WINGER
-    ):
-        return box_crash_target(mp, state)
-
     def onside(tx: float) -> float:
         # No pasar la linea de offside (queda 0.8m detras) ni quedar atras de su zona.
         if line is not None:
             tx = min(tx, line - 0.8) if toward > 0 else max(tx, line + 0.8)
         return max(tx, base.x) if toward > 0 else min(tx, base.x)
+
+    # Viene el centro -> los de adentro (punta, volantes, extremo lejano) crashean
+    # el area SIN tope de offside (el centro no dispara la regla del offside).
+    if cross_imminent(state, mp.team) and mp.role in (
+        Role.STRIKER, Role.MIDFIELDER, Role.WINGER
+    ):
+        return box_crash_target(mp, state)
+
+    # Ataque profundo por el centro (sin centro inminente): el punta y un volante
+    # se METEN al area a ofrecerse para el pase de gol, pero respetando el offside
+    # (cuando el ataque es profundo la defensa baja -> entran habilitados).
+    ball_depth = abs(goal.x - state.ball.position.x)
+    if ball_depth < _DEEP_ATTACK and mp.role in (Role.STRIKER, Role.MIDFIELDER):
+        t = box_crash_target(mp, state)
+        return Vec2(onside(t.x), t.y)
 
     if mp.role is Role.STRIKER:
         # Empuja al area cuando el equipo ataca (pelota en campo rival); si no,
@@ -570,8 +579,10 @@ def pick_pass(
 
 
 # Alcance de remate: de _SHOOT_MIN (mal tirador) a _SHOOT_MAX (elite) segun shooting.
-_SHOOT_MIN_RANGE = 12.0
-_SHOOT_MAX_RANGE = 30.0
+# Acotado para que entren al area antes de patear (no que rematen de cualquier
+# lado de afuera); solo los cracks se animan desde el borde / un poco mas lejos.
+_SHOOT_MIN_RANGE = 11.0
+_SHOOT_MAX_RANGE = 27.0
 
 
 def shoot_range(player: Player) -> float:
