@@ -565,3 +565,47 @@ mas abierto (casi siempre central) => **embudo central**.
 - **Tacticas/formaciones:** paquete de **presets** + override individual;
   familiaridad por uso. Setear **antes** del partido + intervenir **en vivo**
   (comandos B4, replayable).
+
+## 19. Fase I — Que se vea vivo: compacidad, ayuda y criterio (feedback de juego)
+
+Observaciones jugando (orden por impacto):
+
+- **Demasiado separados / formacion muy marcada.** Falta abarrotamiento real,
+  sobre todo en el medio y el area. El equipo debe **acompanar la pelota**: no
+  solo subir/bajar en vertical (cuando uno sube, suben todos) sino **correrse al
+  lateral** cuando la pelota va a una banda. Relacion fina **posicion-base vs
+  cuanto se aleja** segun rol/atributos (work_rate, stamina).
+- **Ayuda al que tiene la pelota.** Los companeros deben **acercarse/proyectarse**
+  para dar opcion de pase; se ven laterales solos mientras el resto mantiene
+  posicion. Siempre debe haber 1-2 opciones cortas.
+- **Centrales y laterales pasivos.** Los laterales desbordan por banda y los
+  centrales suben/entran al medio a ofrecer o a defender; hoy quedan quietos.
+  Un central libre puede subir un poco; un volante lateral va y viene.
+- **Criterio de pase.** Nada de **pases atras sin sentido** estando libre: el
+  toque atras es para **cuando estas muy marcado** (reiniciar / buscar zona
+  limpia). No pasar a un companero que tiene un **rival adelante** que intercepta
+  facil (lane bloqueado). No tirar **diagonales al area a nadie** (el receptor
+  esta en retroceso).
+- **Defensa reactiva.** Subir la linea para **comprimir y habilitar offside**
+  cuando los delanteros rivales quedan adelantados; eso obliga a los delanteros a
+  **bajar a colaborar** en la salida (alguno puede quedarse arriba a veces).
+  Marcar al que se proyecta, anticipar pases, marca personal.
+- **Bugs concretos:** (a) tiros libres donde el ejecutante **sale jugando/gambeteando**
+  en vez de **patear** (pase/centro/remate); (b) **saques de arco que se van al
+  lateral**; (c) el **arquero no sale** a asegurar pelotas sueltas en su area;
+  (d) casi **no hay corners** (los despejes nunca salen por el fondo); (e) **todos
+  los remates son de afuera** del area (en el futbol es lo menos habitual).
+- **Mecanicas faltantes:** **cabezazo** (no hay ninguno) y **centro hacia atras /
+  cut-back** desde el fondo; **corners** ejecutados con corredores. (Eje aereo: H5.)
+
+Plan por lotes (bajo riesgo primero):
+- **I1. Balon parado + arquero:** ejecutante de tiro libre patea de verdad;
+  saque de arco/despeje largo no se va al lateral (clamp adentro); el arquero
+  sale a asegurar pelotas sueltas lentas en su area.
+- **I2. Criterio de pase:** penalizar pase atras salvo presion; rechazar pase con
+  lane bloqueado por un rival; preferir companero que progresa y esta de cara.
+- **I3. Compacidad y ayuda:** shift lateral + vertical del bloque; acercar
+  off-ball a la pelota (bunching) segun rol; 1-2 opciones cortas siempre;
+  desdoblamiento del lateral y subida selectiva del central.
+- **I4. Cabezazo + cut-back + corners ejecutados.** (mecanica nueva)
+- **I5. Remates: menos de afuera** (incentivar entrar al area antes de patear).

@@ -38,6 +38,7 @@ _LONG_PASS_SPEED = 19.0   # velocidad de un pase largo (m/s)
 _SHORT_PASS_ERROR = 3.0   # desvio maximo de un pase corto con passing=0 (m)
 _LONG_PASS_ERROR = 8.0    # desvio maximo de un pase largo con passing=0 (m)
 _SHOOT_SPEED = 25.0       # velocidad de un remate (m/s)
+_FREE_KICK_SHOOT_RANGE = 24.0  # desde mas cerca que esto, el tiro libre va al arco
 _DRIBBLE_FACTOR = 0.85    # se gambetea un poco mas lento que corriendo libre
 _DRIBBLE_OFFSET = 0.5     # la pelota va esta distancia por delante del que lleva
 _GK_REACH = 1.7           # el arquero domina la pelota a este radio dentro del area (m)
@@ -690,6 +691,10 @@ class MatchEngine:
             if self._restart_kind == "corner":
                 self._take_corner(owner)
                 return Vec2(0.0, 0.0)
+            if self._restart_kind in ("tiro_libre", "penal", "offside"):
+                # Tiro libre: se patea de verdad (remate o pase), no se sale gambeteando.
+                self._take_free_kick(owner)
+                return Vec2(0.0, 0.0)
 
         # Arquero con la pelota: camina el area buscando opcion y despues
         # distribuye (saque corto seguro o pelotazo largo). Si lo presionan, ya.
@@ -854,6 +859,39 @@ class MatchEngine:
         self._kick(winger, aim, _CROSS_SPEED)
         self._begin_cross_flight(winger.team)
 
+    def _take_free_kick(self, taker) -> None:
+        """Ejecuta un tiro libre: remata si esta cerca y de frente, si no la juega.
+
+        Nunca se sale gambeteando: o va al arco, o es un pase (al mejor companero
+        que progresa) o un pelotazo al area. El penal siempre es remate.
+        """
+        state = self.state
+        goal = ai.attacking_goal(state, taker.team)
+        dist = taker.position.distance_to(goal)
+        if self._restart_kind == "penal" or dist <= _FREE_KICK_SHOOT_RANGE:
+            self._shoot(taker, goal)
+            return
+        pick = ai.pick_pass(taker, state, _MAX_PASS_DIST * 1.6)
+        if pick is not None:
+            mate, is_long = pick
+            if not ai.is_offside(mate, taker, state):
+                self._pass(taker, mate, is_long)
+                return
+        # Sin opcion clara: pelotazo adelante / al area (clamp adentro del campo).
+        target = ai.best_pass_target(taker, state, _MAX_PASS_DIST * 2.0)
+        dest = target.position if target is not None else goal
+        dest = self._inbounds_target(dest)
+        self._log("pase", player=taker, target=target, detail="largo")
+        self._kick(taker, dest, _LONG_PASS_SPEED)
+
+    def _inbounds_target(self, dest: Vec2) -> Vec2:
+        """Acota un destino de pelotazo bien adentro del campo (no se va al lateral)."""
+        pitch = self.state.pitch
+        return Vec2(
+            min(max(dest.x, 3.0), pitch.length - 3.0),
+            min(max(dest.y, 8.0), pitch.width - 8.0),
+        )
+
     def _take_corner(self, taker) -> None:
         """Corner: centro al area rival (donde los companeros se tiraron al ataque)."""
         state = self.state
@@ -891,6 +929,7 @@ class MatchEngine:
         else:
             target = ai.best_pass_target(gk, state, _MAX_PASS_DIST * 2.0)
             dest = target.position if target is not None else ai.attacking_goal(state, gk.team)
+            dest = self._inbounds_target(dest)  # el saque/despeje no se va al lateral
             self._log("despeje", player=gk)
             self._kick(gk, dest, _CLEAR_SPEED)
 

@@ -46,6 +46,7 @@ def test_keeper_sweeps_up_when_team_attacks():
     st.ball.position = Vec2(95.0, 34.0)  # equipo atacando: la pelota arriba
     attack = ai.goalkeeper_velocity(gk, st)
     st.ball.position = Vec2(8.0, 34.0)   # defendiendo: pelota cerca del arco
+    st.ball.owner = ai.nearest_opponent(gk, st)  # en juego (no es pelota suelta a barrer)
     defend = ai.goalkeeper_velocity(gk, st)
     assert attack.x > 0       # sube a hacer de libero
     assert defend.x <= 0      # se queda sobre la linea

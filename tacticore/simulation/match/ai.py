@@ -24,6 +24,8 @@ _GK_GUARD_DEPTH = 3.0
 _GK_SWEEP_DEPTH = 14.0
 # Margen (m) a cada lado de la boca del arco que el arquero llega a cubrir.
 _GK_COVER_MARGIN = 1.0
+# Pelota suelta mas lenta que esto, dentro del area -> el arquero sale a asegurarla.
+_GK_CLAIM_SPEED = 12.0
 
 
 def max_speed(player: Player) -> float:
@@ -126,6 +128,14 @@ def goalkeeper_velocity(mp: MatchPlayer, state: MatchState) -> Vec2:
     is_home = mp.team is Side.HOME
     own_goal = pitch.home_goal if is_home else pitch.away_goal
     ball = state.ball.position
+    # Pelota suelta y lenta dentro de su area: SALE a asegurarla (la barre).
+    area = pitch.penalty_area(is_home)
+    if (
+        state.ball.owner is None
+        and area.contains(ball)
+        and state.ball.velocity.length() < _GK_CLAIM_SPEED
+    ):
+        return arrive(mp.position, ball, max_speed(mp.player))
     # Sube mas cuanto mas lejos esta la pelota del arco propio (equipo atacando):
     # de la linea (_GK_GUARD_DEPTH) al borde del area grande (_GK_SWEEP_DEPTH).
     dist_to_own = ball.x if is_home else (pitch.length - ball.x)
