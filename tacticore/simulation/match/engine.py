@@ -472,11 +472,15 @@ class MatchEngine:
         else:
             self._move_with_owner(dt, owner)
 
-    def _set_reception(self, passer, target) -> None:
-        """Tras un saque/pase de saque: el receptor va a buscar la pelota."""
+    def _set_reception(self, passer, target, duration: float | None = None) -> None:
+        """El receptor del pase va a buscar la pelota (y el que paso no la persigue).
+
+        La ventana dura lo que tarde la pelota en llegar (`duration`) para que un
+        pase largo no se quede a mitad de camino cuando se vence un contador fijo.
+        """
         self._reception_id = id(target)
         self._reception_passer_id = id(passer)
-        self._reception_timer = _RECEPTION_TIME
+        self._reception_timer = duration if duration is not None else _RECEPTION_TIME
 
     def _move_loose_ball(self, dt: float) -> None:
         """Pelota suelta: cada equipo manda a su mas cercano; el resto sostiene."""
@@ -1163,9 +1167,9 @@ class MatchEngine:
             self._kick(owner, Vec2(goal.x, target_y), _SHOOT_SPEED)
             return
         target_y = goal.y + aim_side * half * (0.4 + 0.6 * accuracy)
-        spread = (1.0 - accuracy) * half * 1.5
+        spread = (1.0 - accuracy) * half * 2.4  # remates no perfectos (mas se van afuera)
         if off_cross:
-            spread *= 2.0
+            spread *= 1.8
         target_y += self._rng.uniform(-1.0, 1.0) * spread
         self._kick(owner, Vec2(goal.x, target_y), _SHOOT_SPEED)
 
@@ -1196,6 +1200,10 @@ class MatchEngine:
         self._log("pase", player=owner, target=mate,
                   detail="largo" if is_long else "corto")
         self._kick(owner, aim, speed)
+        # El companero al que va dirigido el pase VA A BUSCARLO (no se vuelve a su
+        # zona): la ventana dura lo que tarda la pelota en llegar, mas un margen.
+        travel = owner.position.distance_to(mate.position) / speed + 0.8
+        self._set_reception(owner, mate, travel)
         # Pase corto -> el que paso pica de apoyo (pared / te paso y voy).
         if not is_long:
             self._support_runner_id = id(owner)
