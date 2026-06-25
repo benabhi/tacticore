@@ -871,10 +871,29 @@ class MatchEngine:
             self._pass(owner, outlet, ai.is_long_pass(owner, outlet))
             return Vec2(0.0, 0.0)
 
+        # Salida / mediocampo: en vez de ir SIEMPRE para adelante, circula la pelota
+        # (lateral o un poco atras) a un companero libre para armar desde abajo.
+        # Mas probable con buena vision; involucra a la defensa en la elaboracion.
+        if self._in_build_up_zone(owner):
+            mate = ai.build_up_pass(owner, state, _MAX_PASS_DIST)
+            if mate is not None and self._rng.random() < _clamp(
+                0.03 + owner.player.vision / 2500.0, 0.03, 0.08
+            ):
+                self._pass(owner, mate, ai.is_long_pass(owner, mate))
+                return Vec2(0.0, 0.0)
+
         # Si no, gambetea hacia el arco (se va acercando para definir mejor).
         return ai.arrive(
             owner.position, goal, ai.max_speed(owner.player) * _DRIBBLE_FACTOR
         )
+
+    def _in_build_up_zone(self, owner) -> bool:
+        """Si el que lleva la pelota esta en su zona de salida/mediocampo propio."""
+        length = self.state.pitch.length
+        x = owner.position.x
+        if owner.team is Side.HOME:  # ataca +x -> su salida es la mitad de x bajo
+            return x < length * 0.60
+        return x > length * 0.40
 
     def _goes_individual(self, owner) -> bool:
         """Si el jugador decide jugarla solo en vez de dar el pase de gol.

@@ -613,6 +613,31 @@ def is_long_pass(owner: MatchPlayer, mate: MatchPlayer) -> bool:
     return owner.position.distance_to(mate.position) > _SHORT_PASS_RANGE
 
 
+def build_up_pass(owner: MatchPlayer, state: MatchState, max_dist: float) -> MatchPlayer | None:
+    """Companero libre para CIRCULAR en la salida/mediocampo (elaboracion).
+
+    A diferencia de buscar siempre adelante, aca vale el pase lateral o un poco
+    para atras a un companero bien suelto y con la linea de pase limpia, para
+    retener, mover el balon y armar desde abajo (no ir siempre para adelante).
+    Devuelve None si no hay una opcion claramente libre.
+    """
+    rivals = state.team(_other(owner.team))
+    mates = [
+        m for m in state.team(owner.team)
+        if m is not owner
+        and m.position.distance_to(owner.position) <= max_dist
+        and not pass_lane_blocked(owner, m, rivals)
+    ]
+    if not mates:
+        return None
+
+    def openness(m: MatchPlayer) -> float:
+        return min((o.position.distance_to(m.position) for o in rivals), default=999.0)
+
+    best = max(mates, key=openness)
+    return best if openness(best) > 8.0 else None
+
+
 def better_finisher(
     owner: MatchPlayer, state: MatchState, max_dist: float
 ) -> MatchPlayer | None:
