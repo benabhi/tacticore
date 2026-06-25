@@ -599,13 +599,23 @@ Observaciones jugando (orden por impacto):
   cut-back** desde el fondo; **corners** ejecutados con corredores. (Eje aereo: H5.)
 
 Plan por lotes (bajo riesgo primero):
-- **I1. Balon parado + arquero:** ejecutante de tiro libre patea de verdad;
-  saque de arco/despeje largo no se va al lateral (clamp adentro); el arquero
-  sale a asegurar pelotas sueltas lentas en su area.
-- **I2. Criterio de pase:** penalizar pase atras salvo presion; rechazar pase con
-  lane bloqueado por un rival; preferir companero que progresa y esta de cara.
-- **I3. Compacidad y ayuda:** shift lateral + vertical del bloque; acercar
-  off-ball a la pelota (bunching) segun rol; 1-2 opciones cortas siempre;
-  desdoblamiento del lateral y subida selectiva del central.
-- **I4. Cabezazo + cut-back + corners ejecutados.** (mecanica nueva)
+- **I1. Balon parado + arquero.** [hecho] Ejecutante de tiro libre/penal/offside
+  patea de verdad (`_take_free_kick`); saque de arco/despeje no se va al lateral
+  (`_inbounds_target`); el arquero sale a asegurar pelotas sueltas lentas en su
+  area (`goalkeeper_velocity` claim).
+- **I2. Criterio de pase.** [hecho] `pass_lane_blocked` descarta pases con un
+  rival sobre la linea; no se asiste a quien retrocede (`_retreating`);
+  `open_outlet` ya no habilita el toque para atras. Intercepciones ~55 -> ~35.
+- **I3. Compacidad + definicion.** [hecho] `team_shift`/`shifted_base`: el bloque
+  acompana la pelota (fuerte lateral, suave vertical; corr ~0.96). El extra de
+  chances que genera la compacidad lo contiene el nuevo sistema de atajada
+  (`_shot_save_chance`, ancla + atributos): conversion ~10%, ~2 goles y ~14
+  atajadas por partido.
+- **I4. Cabezazo + corners.** [hecho] Remate de centro = cabezazo en el relato;
+  el arquero manotea al corner; el defensor despeja (de cabeza) y un mal despeje
+  da corner; `_concede_corner` otorga el corner directo. Corners 0 -> ~4.8/partido.
+- **Pendiente:** cut-back / centro atras desde el fondo; corners EJECUTADOS con
+  corredores diferenciados (hoy el corner se centra al area, falta variar).
+  Desdoblamiento del lateral y subida del central a cabecear (roaming por rol).
+  Delanteros que bajan a colaborar en la salida (y alguno que queda arriba).
 - **I5. Remates: menos de afuera** (incentivar entrar al area antes de patear).
