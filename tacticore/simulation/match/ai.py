@@ -461,6 +461,40 @@ def support_run_velocity(mp: MatchPlayer, state: MatchState) -> Vec2:
 
 # Hasta esta distancia (m) un pase se considera "corto"; mas alla es "largo".
 _SHORT_PASS_RANGE = 18.0
+_INTERCEPT_RADIUS = 2.3  # un rival a menos de esto de la linea del pase lo intercepta
+
+
+def pass_lane_blocked(owner: MatchPlayer, mate: MatchPlayer, rivals) -> bool:
+    """Si un rival esta sobre la linea del pase y lo cortaria facil.
+
+    Mira si algun rival cae cerca del segmento owner->mate (entre los dos, no
+    detras del pasador ni ya pegado al receptor). Evita pases 'regalados' a un
+    companero que tiene un contrario adelante.
+    """
+    start = owner.position
+    seg = mate.position - start
+    length = seg.length()
+    if length < 1e-6:
+        return False
+    d = seg.normalized()
+    for o in rivals:
+        rel = o.position - start
+        t = rel.dot(d)
+        if t <= 1.5 or t >= length - 1.0:
+            continue
+        perp = (rel - d * t).length()
+        if perp < _INTERCEPT_RADIUS:
+            return True
+    return False
+
+
+def _retreating(mate: MatchPlayer, goal: Vec2) -> bool:
+    """Si el companero se esta yendo del arco rival (en retroceso): no asistirle ahi."""
+    v = mate.velocity
+    to_goal = goal - mate.position
+    if v.length() < 0.5 or to_goal.length() < 1e-6:
+        return False
+    return v.dot(to_goal.normalized()) < -1.5  # retrocede a mas de 1.5 m/s
 
 
 def pick_pass(
@@ -479,6 +513,10 @@ def pick_pass(
     in_range = [m for m in mates if m.position.distance_to(owner.position) <= max_dist]
     if not in_range:
         return None
+    # Descarta companeros con la linea de pase tapada por un rival (interceptable);
+    # si TODAS estan tapadas (presion total) se suelta igual con lo que haya.
+    clear = [m for m in in_range if not pass_lane_blocked(owner, m, rivals)]
+    usable = clear or in_range
 
     def openness(m: MatchPlayer) -> float:
         return min((o.position.distance_to(m.position) for o in rivals), default=999.0)
@@ -492,8 +530,8 @@ def pick_pass(
 
     # Se prioriza progresar: companeros mas cerca del arco rival que el que tiene
     # la pelota; si no hay, se elige entre todos. Entre el pool, el mas desmarcado.
-    ahead = [m for m in in_range if m.position.distance_to(goal) < owner_to_goal - 1.0]
-    pool = ahead or in_range
+    ahead = [m for m in usable if m.position.distance_to(goal) < owner_to_goal - 1.0]
+    pool = ahead or usable
     best = max(pool, key=score)
     is_long = best.position.distance_to(owner.position) > _SHORT_PASS_RANGE
     return best, is_long
@@ -536,6 +574,10 @@ def better_finisher(
             continue
         if is_offside(mate, owner, state):  # no asistir a un companero adelantado
             continue
+        if _retreating(mate, goal):  # no tirar la diagonal al que va en retroceso
+            continue
+        if pass_lane_blocked(owner, mate, rivals):  # con un rival adelante, no
+            continue
         mate_to_goal = mate.position.distance_to(goal)
         # Debe estar mas cerca del arco y en posicion de remate.
         if mate_to_goal > owner_to_goal - 4.0 or mate_to_goal > _SHOOT_MAX_RANGE:
@@ -564,8 +606,9 @@ def open_outlet(owner: MatchPlayer, state: MatchState, max_dist: float) -> Match
         for m in state.team(owner.team)
         if m is not owner
         and m.position.distance_to(owner.position) <= max_dist
-        and m.position.distance_to(goal) <= owner_to_goal + 4.0  # no mas atras
+        and m.position.distance_to(goal) <= owner_to_goal + 1.0  # no para atras
         and m.position.distance_to(owner.position) > 12.0        # a otra zona
+        and not pass_lane_blocked(owner, m, rivals)              # lane libre
     ]
     if not mates:
         return None
@@ -590,6 +633,7 @@ def open_winger(owner: MatchPlayer, state: MatchState, max_dist: float) -> Match
         and m.position.distance_to(owner.position) <= max_dist
         and m.position.distance_to(goal) <= owner_to_goal + 6.0  # no muy atras
         and not is_offside(m, owner, state)
+        and not pass_lane_blocked(owner, m, rivals)
     ]
     if not wingers:
         return None
