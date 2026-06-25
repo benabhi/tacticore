@@ -34,7 +34,7 @@ def _keeper(state, side_players):
 
 def test_good_hands_hold_the_shot():
     engine = MatchEngine(_state(), new_rng(1))
-    engine._rng = _FakeRng([0.0])  # random < p_hold -> atajada limpia
+    engine._rng = _FakeRng([0.9, 0.0])  # no la tira al corner; random < p_hold -> retiene
     st = engine.state
     gk = _keeper(st, st.away)
     gk.player.handling = 100.0
@@ -44,6 +44,21 @@ def test_good_hands_hold_the_shot():
     engine._goalkeeper_save(gk)
     assert st.ball.owner is gk
     assert st.last_event == "Atajada"
+
+
+def test_keeper_can_tip_the_shot_for_a_corner():
+    engine = MatchEngine(_state(), new_rng(1))
+    engine._rng = _FakeRng([0.0])  # primer roll < p_corner -> manotazo al corner
+    st = engine.state
+    from tacticore.simulation.match import Side
+    gk = _keeper(st, st.away)       # AWAY defiende x = length
+    st.ball.position = gk.position
+    st.ball.velocity = Vec2(20.0, 0.0)
+    st.ball.owner = None
+    engine._goalkeeper_save(gk)
+    assert engine._restart_kind == "corner"      # se concede un corner
+    assert engine._restart_side is Side.HOME      # para el rival del arquero
+    assert st.ball.position.x > st.pitch.length - 1.0  # saque desde la esquina del fondo
 
 
 def test_poor_hands_can_spill_a_rebound():

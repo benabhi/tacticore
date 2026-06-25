@@ -20,9 +20,10 @@ MAX_WIDTH = 72
 _TEMPLATES: dict[str, str] = {
     "gol": "GOOOL! La clava {who} y hace estallar el estadio!",
     "remate": "{who} se anima y saca un remate al arco!",
+    "cabezazo": "{who} salta y cabecea al arco!",
     "pase": "{who} prueba un pase {detail} para {target}",
     "centro": "{who} desborda por la banda y tira el centro al area!",
-    "despeje": "{who} la manda bien lejos, pelotazo al area rival",
+    "despeje": "{who} despeja{detail} y la saca del area",
     "saque_corto": "{who} saca corto y juega para {target}",
     "atajada": "Gran atajada de {who}, le tapa el remate!",
     "escapa": "Se le escapa de las manos a {who}!",

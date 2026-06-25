@@ -32,6 +32,7 @@ _KICKOFF_SPEED = 8.0      # velocidad del saque inicial (m/s)
 _CONTROL_RADIUS = 0.8     # a esta distancia un jugador domina la pelota (m)
 _KICK_COOLDOWN = 0.4      # tras patear, nadie puede dominarla un ratito (s)
 _PRESSURE_RADIUS = 1.6    # si un rival esta mas cerca, el que lleva la suelta (m)
+_CLEAR_PRESSURE = 6.0     # defensor en su area con un rival a menos de esto: despeja
 _MAX_PASS_DIST = 35.0     # alcance maximo de un pase (m)
 _PASS_SPEED = 14.0        # velocidad de un pase corto (m/s)
 _LONG_PASS_SPEED = 19.0   # velocidad de un pase largo (m/s)
@@ -290,10 +291,18 @@ class MatchEngine:
         return _clamp(0.28 - quality / 220.0, 0.02, 0.28)
 
     def _goalkeeper_save(self, gk) -> None:
-        """El arquero ataja un remate: lo retiene (handling) o da rebote (pelota viva)."""
+        """El arquero ataja un remate: lo manda al corner, lo retiene, o da rebote."""
         ball = self.state.ball
         self.state.last_touch = gk.team
-        p_hold = _clamp(0.35 + gk.player.handling / 150.0, 0.2, 0.95)
+        own = ai.own_goal(self.state, gk.team)
+        # Manotazo al palo: la tira AL CORNER (mas probable con buenos reflejos).
+        p_corner = _clamp(0.12 + gk.player.reflexes / 500.0, 0.1, 0.30)
+        if self._rng.random() < p_corner:
+            self.state.last_event = "Atajada"
+            self._log("atajada", player=gk)
+            self._concede_corner(gk.team, ball.position.y)
+            return
+        p_hold = _clamp(0.40 + gk.player.handling / 150.0, 0.2, 0.92)
         if self._rng.random() < p_hold:
             # Atajada limpia: la retiene.
             ball.owner = gk
@@ -305,7 +314,6 @@ class MatchEngine:
             self._log("atajada", player=gk)
             return
         # Rebote: la despeja sin control, hacia afuera del arco y con angulo al azar.
-        own = ai.own_goal(self.state, gk.team)
         outward = ball.position - own
         if outward.length() < 1e-6:
             outward = Vec2(1.0, 0.0) if gk.team is Side.HOME else Vec2(-1.0, 0.0)
@@ -707,6 +715,12 @@ class MatchEngine:
             self._goalkeeper_distribute(owner)
             return Vec2(0.0, 0.0)
 
+        # Defensor que gana la pelota en su propia area bajo presion: la DESPEJA
+        # (la saca lejos), de cabeza si venia un centro; un mal despeje se va al corner.
+        if self._should_clear(owner):
+            self._clear_ball(owner)
+            return Vec2(0.0, 0.0)
+
         # Extremo o lateral por la banda: si esta abierto y BIEN PROFUNDO (cerca de
         # la linea de fondo), tira el CENTRO al area; si no, encara hacia el corner
         # (profundiza pegado a la banda) para tirar el centro desde el fondo.
@@ -885,6 +899,56 @@ class MatchEngine:
         self._log("pase", player=taker, target=target, detail="largo")
         self._kick(taker, dest, _LONG_PASS_SPEED)
 
+    def _concede_corner(self, defending: Side, near_y: float) -> None:
+        """Concede un corner al rival de `defending` (saque desde la esquina)."""
+        state = self.state
+        pitch = state.pitch
+        own = ai.own_goal(state, defending)
+        corner_y = 0.0 if near_y < pitch.width / 2 else pitch.width
+        spot = Vec2(_nudge_inside(own.x, pitch.length), _nudge_inside(corner_y, pitch.width))
+        ball = state.ball
+        ball.position = spot
+        ball.velocity = Vec2(0.0, 0.0)
+        ball.owner = None
+        self._restart_side = _other(defending)
+        self._restart_timer = _SETTLE_RESTART
+        self._restart_kind = "corner"
+        state.last_event = "Corner"
+        self._log("corner", team=_other(defending))
+
+    def _should_clear(self, owner) -> bool:
+        """Si un defensor gano la pelota en su propia area con un rival encima."""
+        state = self.state
+        area = state.pitch.penalty_area(owner.team is Side.HOME)
+        if not area.contains(owner.position):
+            return False
+        rival = ai.nearest_opponent(owner, state)
+        return rival.position.distance_to(owner.position) < _CLEAR_PRESSURE
+
+    def _clear_ball(self, owner) -> None:
+        """Despeje del defensor: la saca lejos del arco propio; un mal despeje (poca
+        composure, mas si la cabecea) se va por su linea de fondo = corner rival."""
+        state = self.state
+        pitch = state.pitch
+        own = ai.own_goal(state, owner.team)
+        header = self._cross_flight_timer > 0.0
+        detail = " de cabeza" if header else None
+        panic = _clamp(0.10 - owner.player.composure / 1200.0, 0.02, 0.12)
+        if header:
+            panic += 0.05
+        if self._rng.random() < panic:
+            # Mal despeje: la manda por su propia linea de fondo -> corner rival.
+            self._log("despeje", player=owner, detail=detail)
+            self._concede_corner(owner.team, owner.position.y)
+            return
+        # Despeje normal: lejos del arco propio (arriba) y a un costado, con dispersion.
+        toward = 1.0 if owner.team is Side.HOME else -1.0
+        side = 1.0 if owner.position.y < pitch.width / 2 else -1.0
+        aim = Vec2(owner.position.x + toward * 32.0, owner.position.y + side * 10.0)
+        aim = self._inbounds_target(aim + self._pass_error(owner.player, is_long=True))
+        self._log("despeje", player=owner, detail=detail)
+        self._kick(owner, aim, _CLEAR_SPEED)
+
     def _inbounds_target(self, dest: Vec2) -> Vec2:
         """Acota un destino de pelotazo bien adentro del campo (no se va al lateral)."""
         pitch = self.state.pitch
@@ -956,7 +1020,8 @@ class MatchEngine:
         if off_cross:
             accuracy *= 0.5
         dist = owner.position.distance_to(goal)
-        self._log("remate", player=owner)
+        # Si viene de un centro/corner en el aire, es un cabezazo (se ve en el relato).
+        self._log("cabezazo" if off_cross else "remate", player=owner)
         # El arquero achica el angulo y tapa la MAYORIA de los remates (segun sus
         # reflejos/posicion vs la jerarquia del tirador). Si "ataja", la pelota va
         # hacia el (la atrapa o da rebote en _acquire_possession). Si no, va al palo
