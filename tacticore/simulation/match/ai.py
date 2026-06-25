@@ -282,10 +282,11 @@ def marking_velocity(defender: MatchPlayer, state: MatchState) -> Vec2:
         # aunque se mueva), no se queda parado en la linea.
         target = marking_point(defender, mark, state)
     elif defender.role in (Role.CENTER_BACK, Role.FULLBACK):
-        # Sin rival a quien marcar: la ultima linea sostiene su altura compacta.
-        target = Vec2(defensive_line_x(state, defender.team), defender.base_position.y)
+        # Sin rival a quien marcar: la ultima linea sostiene su altura compacta,
+        # corrida al lateral de la pelota (el bloque acompana).
+        target = Vec2(defensive_line_x(state, defender.team), shifted_base(defender, state).y)
     else:
-        target = defender.base_position
+        target = shifted_base(defender, state)
     return arrive(defender.position, target, max_speed(defender.player))
 
 
@@ -313,6 +314,37 @@ def referee_velocity(ref, state: MatchState) -> Vec2:
         return Vec2(0.0, 0.0)
     target = state.ball.position - to_ball.normalized() * _REF_FOLLOW_DIST
     return arrive(ref.position, target, _REF_MAX_SPEED)
+
+
+# --- Bloque que acompana la pelota (compacidad: I3) ---
+# El equipo se mueve como unidad hacia la pelota: cuando va a una banda el bloque
+# se corre al lateral, y cuando sube/baja el juego el bloque sube/baja. Es una
+# traslacion de las anclas (conserva la forma, no amontona en un punto).
+# El componente vertical es suave (la altura del bloque ya la maneja la linea
+# defensiva): subir mucho a todos sobrecarga el ataque. El lateral es el fuerte.
+_SHIFT_X = 0.12      # fraccion del desvio de la pelota que el bloque acompana en x
+_SHIFT_Y = 0.40      # idem en y (mas marcado: se corre al lateral de la pelota)
+_SHIFT_MAX_X = 8.0   # tope del corrimiento vertical (m)
+_SHIFT_MAX_Y = 12.0  # tope del corrimiento lateral (m)
+
+
+def team_shift(state: MatchState, side: Side) -> Vec2:
+    """Desplazamiento del bloque para ACOMPANAR la pelota (corre al lado / sube)."""
+    players = state.team(side)
+    if not players:
+        return Vec2(0.0, 0.0)
+    n = len(players)
+    cx = sum(p.base_position.x for p in players) / n
+    cy = sum(p.base_position.y for p in players) / n
+    ball = state.ball.position
+    dx = min(max((ball.x - cx) * _SHIFT_X, -_SHIFT_MAX_X), _SHIFT_MAX_X)
+    dy = min(max((ball.y - cy) * _SHIFT_Y, -_SHIFT_MAX_Y), _SHIFT_MAX_Y)
+    return Vec2(dx, dy)
+
+
+def shifted_base(mp: MatchPlayer, state: MatchState) -> Vec2:
+    """Ancla de formacion del jugador, corrida con el bloque hacia la pelota."""
+    return mp.base_position + team_shift(state, mp.team)
 
 
 # --- Desmarques / movimiento off-ball del ataque (G3.x) ---
@@ -392,7 +424,7 @@ def attacking_run_target(mp: MatchPlayer, state: MatchState) -> Vec2:
     Si tiene un rival encima, se corre a un costado para ofrecerse libre.
     """
     goal = attacking_goal(state, mp.team)
-    base = mp.base_position
+    base = shifted_base(mp, state)  # el ancla acompana a la pelota (bloque compacto)
     pitch = state.pitch
     toward = 1.0 if mp.team is Side.HOME else -1.0  # signo hacia el arco rival (en x)
     line = offside_line_x(state, mp.team)
@@ -668,7 +700,8 @@ def is_offside(receiver: MatchPlayer, owner: MatchPlayer, state: MatchState) -> 
 def decide_velocity(mp: MatchPlayer, state: MatchState, is_chaser: bool) -> Vec2:
     """Velocidad deseada de un jugador en este tick.
 
-    El que persigue va hacia la pelota; el resto vuelve a su ancla de formacion.
+    El que persigue va hacia la pelota; el resto vuelve a su ancla de formacion,
+    corrida con el bloque hacia la pelota (compacidad).
     """
-    target = state.ball.position if is_chaser else mp.base_position
+    target = state.ball.position if is_chaser else shifted_base(mp, state)
     return arrive(mp.position, target, max_speed(mp.player))

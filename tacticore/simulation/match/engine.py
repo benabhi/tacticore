@@ -39,6 +39,7 @@ _SHORT_PASS_ERROR = 3.0   # desvio maximo de un pase corto con passing=0 (m)
 _LONG_PASS_ERROR = 8.0    # desvio maximo de un pase largo con passing=0 (m)
 _SHOOT_SPEED = 25.0       # velocidad de un remate (m/s)
 _FREE_KICK_SHOOT_RANGE = 24.0  # desde mas cerca que esto, el tiro libre va al arco
+_SAVE_BASE = 0.68         # ancla: nivel de atajadas de la liga (los atributos ajustan)
 _DRIBBLE_FACTOR = 0.85    # se gambetea un poco mas lento que corriendo libre
 _DRIBBLE_OFFSET = 0.5     # la pelota va esta distancia por delante del que lleva
 _GK_REACH = 1.7           # el arquero domina la pelota a este radio dentro del area (m)
@@ -954,13 +955,37 @@ class MatchEngine:
         off_cross = self._cross_flight_timer > 0.0
         if off_cross:
             accuracy *= 0.5
+        dist = owner.position.distance_to(goal)
+        self._log("remate", player=owner)
+        # El arquero achica el angulo y tapa la MAYORIA de los remates (segun sus
+        # reflejos/posicion vs la jerarquia del tirador). Si "ataja", la pelota va
+        # hacia el (la atrapa o da rebote en _acquire_possession). Si no, va al palo
+        # lejano (y la dispersion puede irse afuera). Asi no todo remate es gol.
+        if keeper is not None and self._rng.random() < self._shot_save_chance(owner, keeper, dist):
+            target_y = keeper.position.y + self._rng.uniform(-1.0, 1.0) * 1.5
+            self._kick(owner, Vec2(goal.x, target_y), _SHOOT_SPEED)
+            return
         target_y = goal.y + aim_side * half * (0.4 + 0.6 * accuracy)
         spread = (1.0 - accuracy) * half * 1.5
         if off_cross:
             spread *= 2.0
         target_y += self._rng.uniform(-1.0, 1.0) * spread
-        self._log("remate", player=owner)
         self._kick(owner, Vec2(goal.x, target_y), _SHOOT_SPEED)
+
+    def _shot_save_chance(self, shooter, keeper, dist: float) -> float:
+        """Prob. de que el arquero tape el remate: ancla de liga + atributos.
+
+        Sube con reflejos/posicionamiento del arquero, baja con el shooting del
+        tirador, y de lejos es mas atajable (mas tiempo de reaccion) que de cerca.
+        """
+        gk = (keeper.player.reflexes + keeper.player.positioning) / 2.0
+        chance = (
+            _SAVE_BASE
+            + (gk - 55.0) / 250.0
+            - (shooter.player.shooting - 55.0) / 250.0
+            + _clamp((dist - 16.0) / 120.0, -0.08, 0.08)
+        )
+        return _clamp(chance, 0.2, 0.93)
 
     def _pass(self, owner, mate, is_long: bool) -> None:
         """Pasa la pelota a un companero, con error segun `passing` del que pasa.

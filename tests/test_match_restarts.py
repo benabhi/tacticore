@@ -82,9 +82,15 @@ def test_only_restart_team_can_take_the_ball():
     assert engine._restart_side is Side.AWAY  # el saque sigue pendiente
 
     # Cuando un jugador del que saca (AWAY) llega a la pelota, la pone en juego.
+    st.home[5].position = Vec2(40.0, 40.0)    # el rival deja de tapar el saque
     st.away[5].position = st.ball.position
-    engine.run(0.3)
-    assert engine._restart_side is None       # saque ejecutado: pelota en juego
+    played = False
+    for _ in range(15):                       # en algun tick el saque se ejecuta
+        engine.step()
+        if engine._restart_side is None:
+            played = True
+            break
+    assert played                             # saque ejecutado: pelota en juego
 
 
 def test_throw_in_is_played_inward_not_out():
