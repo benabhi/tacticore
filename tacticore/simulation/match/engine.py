@@ -168,9 +168,11 @@ class MatchEngine:
             self._restart_kind = "kickoff"
             self._restart_side = self._kickoff_side
             self._kickoff_setup = 0.0
+            # Arrancan YA ubicados en su mitad (no se los ve volver de arriba): los
+            # delanteros, cuya ancla esta alta, parten replegados a la linea.
             for mp in self.state.all_players():
                 jitter = Vec2(self._rng.uniform(-3.0, 3.0), self._rng.uniform(-3.0, 3.0))
-                mp.position = self.state.pitch.clamp(mp.position + jitter)
+                mp.position = self.state.pitch.clamp(self._kickoff_position(mp) + jitter)
 
     def schedule(self, command: Command) -> None:
         """Programa un comando del manager (en vivo). No puede ser en el pasado."""

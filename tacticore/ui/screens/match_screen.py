@@ -21,7 +21,11 @@ from .base_screen import BaseScreen
 # Ritmo de juego del demo.
 _FRAME_INTERVAL = 0.05   # segundos reales por frame (20 fps)
 _STEPS_PER_FRAME = 1     # ticks de simulacion por frame (~0.67x tiempo real)
-_FULL_TIME = 600.0       # duracion del partido en segundos simulados
+_FULL_TIME = 600.0       # futbol simulado (calibrado para totales realistas por partido)
+# El RELOJ del partido corre mas rapido que la animacion: esos 600 s de juego se
+# muestran como 90 minutos (los dos tiempos), para que el reloj llegue a 90:00.
+_MATCH_SECONDS = 90 * 60
+_CLOCK_SCALE = _MATCH_SECONDS / _FULL_TIME
 
 
 class MatchScreen(BaseScreen):
@@ -102,7 +106,8 @@ class MatchScreen(BaseScreen):
 
     def _commentary(self, event) -> Text:
         """Arma la linea: reloj en gris + frase con los nombres en color de equipo."""
-        mm, ss = int(event.clock // 60), int(event.clock % 60)
+        clock = event.clock * _CLOCK_SCALE  # reloj de partido (90 min), no el de simulacion
+        mm, ss = int(clock // 60), int(clock % 60)
         color = None if event.team is None else (HOME if event.team is Side.HOME else AWAY)
         text = Text(no_wrap=True, overflow="ellipsis")
         text.append(f"{mm:02d}:{ss:02d} ", style=MUTED)
@@ -112,7 +117,7 @@ class MatchScreen(BaseScreen):
 
     def _update_hud(self) -> None:
         state = self._engine.state
-        clock = min(state.clock, _FULL_TIME)
+        clock = min(state.clock, _FULL_TIME) * _CLOCK_SCALE  # reloj de partido (hasta 90:00)
         mm, ss = int(clock // 60), int(clock % 60)
         if state.phase is MatchPhase.FINISHED:
             tag = "  FINAL"
