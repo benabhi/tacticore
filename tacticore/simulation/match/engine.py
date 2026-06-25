@@ -212,8 +212,6 @@ class MatchEngine:
             self.state.clock += dt
             self._tick += 1
             return
-        if self.state.phase is MatchPhase.KICKOFF:
-            self._kickoff()
         self._kick_cooldown = max(0.0, self._kick_cooldown - dt)
         self._tackle_cooldown = max(0.0, self._tackle_cooldown - dt)
         self._gk_carry_timer = max(0.0, self._gk_carry_timer - dt)
@@ -275,24 +273,18 @@ class MatchEngine:
                 out += 1
         return out <= 1  # solo el que va a sacar puede estar en el medio
 
-    def _kickoff(self) -> None:
-        """Saca del medio: un jugador en el centro le PASA a un companero (no sale
-        la pelota de la nada). Saca el equipo que corresponde (`_kickoff_side`)."""
+    def _take_kickoff(self, kicker) -> None:
+        """Saca del medio: el ejecutante, ya prendido a la pelota en el centro, le
+        PASA a un companero cercano (el saque es un pase, no sale de la nada)."""
         state = self.state
-        team = state.team(self._kickoff_side)
-        outfield = [mp for mp in team if not ai.is_goalkeeper(mp)]
-        pool = outfield or team
-        center = state.pitch.center
-        kicker = min(pool, key=lambda mp: mp.position.distance_to(center))
-        kicker.position = center  # ya venia caminando al centro en la pausa
-        state.ball.position = center
-        state.ball.owner = None
-        # Le toca a un companero cercano (no el arquero): el saque es un pase.
-        mates = [mp for mp in pool if mp is not kicker]
+        mates = [mp for mp in state.team(kicker.team)
+                 if mp is not kicker and not ai.is_goalkeeper(mp)]
+        if not mates:
+            mates = [mp for mp in state.team(kicker.team) if mp is not kicker]
         target = min(mates, key=lambda mp: mp.position.distance_to(kicker.position))
         self._restart_side = None
         self._restart_kind = None
-        self._restart_taker = kicker  # queda quieto un instante tras tocarla
+        self._restart_taker = None
         self._log("pase", player=kicker, target=target, detail="corto")
         self._kick(kicker, target.position, _PASS_SPEED)
         self._set_reception(kicker, target)
@@ -870,6 +862,10 @@ class MatchEngine:
             if self._restart_kind in ("tiro_libre", "penal", "offside"):
                 # Tiro libre: se patea de verdad (remate o pase), no se sale gambeteando.
                 self._take_free_kick(owner)
+                return Vec2(0.0, 0.0)
+            if self._restart_kind == "kickoff":
+                # Saque del medio: ya prendido a la pelota, le pasa a un companero.
+                self._take_kickoff(owner)
                 return Vec2(0.0, 0.0)
 
         # Arquero con la pelota: camina el area buscando opcion y despues
