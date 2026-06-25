@@ -28,6 +28,7 @@ _TEMPLATES: dict[str, str] = {
     "atajada": "Gran atajada de {who}, le tapa el remate!",
     "escapa": "Se le escapa de las manos a {who}!",
     "rebote": "{who} no la pudo retener, queda viva en el area!",
+    "gambeta": "{who} encara y se saca de encima a {target}!",
     "quite": "{who} mete el pie firme y le saca la pelota",
     "intercepta": "{who} se anticipa y corta la jugada!",
     "falta": "Falta de {who}, el arbitro detiene el juego",

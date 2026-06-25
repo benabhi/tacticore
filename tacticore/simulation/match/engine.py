@@ -75,6 +75,8 @@ _HANDBALL_CHANCE = 0.0005  # mano: extremadamente rara (rareza, ~1 cada muchos p
 _SETTLE_RESTART = 1.8      # lateral / corner / saque de arco / falta / tiro libre
 _SETTLE_FREEKICK = 2.8     # tiro libre / penal: mas tiempo (el ejecutante va, se arma la barrera)
 _SETTLE_KICKOFF = 2.5      # saque del medio (inicio y tras gol)
+_PRE_MATCH_MIN = 2.5       # delay variable antes del saque inicial (los jugadores se acomodan)
+_PRE_MATCH_MAX = 5.0
 _SETTLE_SAVE = 1.5         # el arquero atajo y acomoda antes de distribuir
 _WALL_DIST = 9.15          # distancia (m) de la barrera al balon en un tiro libre
 _WALL_MIN = 16.0           # hay barrera si el tiro libre esta entre estas distancias
@@ -150,6 +152,16 @@ class MatchEngine:
         self.command_log: list[Command] = []
         for cmd in commands or ():
             self._enqueue(cmd)
+        # Delay pre-partido: unos segundos variables antes del saque inicial, con
+        # los jugadores acomodandose (no arranca "de una"). Un pequeno desorden los
+        # hace caminar a su lugar -> se ve movimiento, como un partido por arrancar.
+        if self.state.phase is MatchPhase.KICKOFF and self.state.clock == 0.0:
+            self._restart_timer = _PRE_MATCH_MIN + self._rng.random() * (_PRE_MATCH_MAX - _PRE_MATCH_MIN)
+            self._restart_kind = "kickoff"
+            self._restart_side = self._kickoff_side
+            for mp in self.state.all_players():
+                jitter = Vec2(self._rng.uniform(-3.0, 3.0), self._rng.uniform(-3.0, 3.0))
+                mp.position = self.state.pitch.clamp(mp.position + jitter)
 
     def schedule(self, command: Command) -> None:
         """Programa un comando del manager (en vivo). No puede ser en el pasado."""
@@ -399,7 +411,9 @@ class MatchEngine:
             self._log("falta", player=tackler)
             self._award_free_kick(carrier)
         else:
-            # Lo gambetearon / erro el quite: el defensor queda frenado un instante.
+            # Lo gambetearon: el que lleva supero al defensor (queda frenado un
+            # instante). Es la jugada individual hecha accion -> se ve en el relato.
+            self._log("gambeta", player=carrier, target=tackler)
             self._freeze(tackler, _recovery_freeze(t.agility, t.anticipation))
 
     def _award_set_piece(self, spot: Vec2, attacking_side: Side, event: str) -> None:
