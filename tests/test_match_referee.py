@@ -24,7 +24,7 @@ def test_referee_follows_the_play():
     st = _fresh_state()
     start = st.referee.position
     engine = MatchEngine(st, new_rng(1))
-    engine.run(8.0)
+    engine.run(16.0)  # incluye el delay pre-partido + un rato de juego
     # Se movio de su lugar inicial siguiendo la jugada...
     assert st.referee.position.distance_to(start) > 1.0
     # ...pero se mantiene a distancia razonable de la pelota (no la disputa).

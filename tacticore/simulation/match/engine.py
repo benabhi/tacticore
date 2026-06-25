@@ -77,6 +77,8 @@ _SETTLE_FREEKICK = 2.8     # tiro libre / penal: mas tiempo (el ejecutante va, s
 _SETTLE_KICKOFF = 2.5      # saque del medio (inicio y tras gol)
 _PRE_MATCH_MIN = 2.5       # delay variable antes del saque inicial (los jugadores se acomodan)
 _PRE_MATCH_MAX = 5.0
+_KICKOFF_WAIT_MAX = 8.0    # tope de espera a que ambos equipos esten en su mitad
+_IDLE_DRIFT = 1.2          # micro-movimiento en las pausas (que se vean vivos, no quietos)
 _SETTLE_SAVE = 1.5         # el arquero atajo y acomoda antes de distribuir
 _WALL_DIST = 9.15          # distancia (m) de la barrera al balon en un tiro libre
 _WALL_MIN = 16.0           # hay barrera si el tiro libre esta entre estas distancias
@@ -137,6 +139,8 @@ class MatchEngine:
         self._cross_flight_timer = 0.0
         # Corner: tiempo que lleva armandose (pelota muerta hasta que el area se llena).
         self._corner_setup = 0.0
+        # Saque del medio: tiempo acomodandose hasta que ambos equipos esten en su mitad.
+        self._kickoff_setup = 0.0
         # Jugadores "congelados" un instante (ejecuto un saque, lo gambetearon, o
         # le quitaron la pelota): id -> tiempo restante (s). No se mueven.
         self._frozen: dict[int, float] = {}
@@ -159,6 +163,7 @@ class MatchEngine:
             self._restart_timer = _PRE_MATCH_MIN + self._rng.random() * (_PRE_MATCH_MAX - _PRE_MATCH_MIN)
             self._restart_kind = "kickoff"
             self._restart_side = self._kickoff_side
+            self._kickoff_setup = 0.0
             for mp in self.state.all_players():
                 jitter = Vec2(self._rng.uniform(-3.0, 3.0), self._rng.uniform(-3.0, 3.0))
                 mp.position = self.state.pitch.clamp(mp.position + jitter)
@@ -193,6 +198,11 @@ class MatchEngine:
                     self._execute_corner()
                 else:
                     self._restart_timer = max(self._restart_timer, 0.1)  # mantiene la pausa
+            elif self._restart_kind == "kickoff" and self.state.phase is MatchPhase.KICKOFF:
+                # No se saca del medio hasta que los dos equipos esten en su mitad.
+                self._kickoff_setup += dt
+                if not self._kickoff_ready() and self._kickoff_setup < _KICKOFF_WAIT_MAX:
+                    self._restart_timer = max(self._restart_timer, 0.1)
             self.state.clock += dt
             self._tick += 1
             return
@@ -235,6 +245,28 @@ class MatchEngine:
         )
 
     # --- Internos ---
+
+    def _kickoff_position(self, mp) -> Vec2:
+        """Lugar del jugador en el saque del medio: su ancla pero acotada a su
+        propia mitad (los delanteros se repliegan a la linea, no quedan arriba)."""
+        base = mp.base_position
+        mid = self.state.pitch.length / 2
+        if mp.team is Side.HOME:  # defiende x=0 -> su mitad es x < mid
+            return Vec2(min(base.x, mid - 3.0), base.y)
+        return Vec2(max(base.x, mid + 3.0), base.y)
+
+    def _kickoff_ready(self) -> bool:
+        """Si los dos equipos ya estan cada uno en su mitad (listos para el saque)."""
+        mid = self.state.pitch.length / 2
+        tol = 2.0
+        out = 0
+        for mp in self.state.home:      # HOME defiende x=0: su mitad es x < mid
+            if mp.position.x > mid + tol:
+                out += 1
+        for mp in self.state.away:      # AWAY defiende x=length: su mitad es x > mid
+            if mp.position.x < mid - tol:
+                out += 1
+        return out <= 1  # solo el que va a sacar puede estar en el medio
 
     def _kickoff(self) -> None:
         """Saca del medio: un jugador en el centro le PASA a un companero (no sale
@@ -692,13 +724,23 @@ class MatchEngine:
             elif id(mp) in wall_ids:
                 wp = self._wall_point(spot, ai.own_goal(state, mp.team))
                 vel = ai.arrive(mp.position, wp, ai.max_speed(mp.player))
+            elif self._restart_kind == "kickoff":
+                # Saque del medio: cada uno a su mitad (los delanteros se repliegan).
+                vel = ai.arrive(mp.position, self._kickoff_position(mp), ai.max_speed(mp.player))
             elif taking is not None and mp.team is taking and self._in_attacking_third(spot, taking):
                 # El equipo que saca cerca del area rival: se tiran al ataque.
                 vel = ai.attacking_run_velocity(mp, state)
             else:
                 vel = ai.decide_velocity(mp, state, is_chaser=False)
             mp.velocity = vel
-            mp.position = pitch.clamp(mp.position + vel * dt)
+            # Micro-movimiento para que no queden congelados en la pausa (se ven
+            # vivos): no se le aplica al ejecutante, que tiene que llegar a la pelota.
+            move = vel
+            if mp is not taker:
+                ph = mp.base_position.x * 0.7 + mp.base_position.y * 1.3  # fase estable (determinista)
+                clk = self.state.clock
+                move = vel + Vec2(math.sin(clk * 2.3 + ph), math.cos(clk * 1.7 + ph)) * _IDLE_DRIFT
+            mp.position = pitch.clamp(mp.position + move * dt)
 
     def _free_kick_taker(self, taking, spot: Vec2):
         """Quien patea el tiro libre: el mejor pasador/pateador cerca de la pelota
@@ -1391,4 +1433,5 @@ class MatchEngine:
         self._restart_side = self._kickoff_side  # el que saca camina al centro
         self._restart_timer = _SETTLE_KICKOFF
         self._restart_kind = "kickoff"
+        self._kickoff_setup = 0.0
         state.phase = MatchPhase.KICKOFF

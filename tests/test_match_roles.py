@@ -57,7 +57,7 @@ def test_defensive_line_follows_the_deepest_attacker():
 
 def test_kickoff_is_a_pass_between_teammates():
     st = _state()
-    MatchEngine(st, new_rng(1)).run(6.0)  # pasa el delay pre-partido y saca del medio
+    MatchEngine(st, new_rng(1)).run(12.0)  # pasa el delay pre-partido y saca del medio
     assert st.log and st.log[0].kind == "pase"
     assert st.log[0].player and st.log[0].target  # de un jugador a un companero
 

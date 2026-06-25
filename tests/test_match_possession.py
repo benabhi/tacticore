@@ -17,7 +17,7 @@ def _fresh_state():
 def test_possession_is_gained():
     engine = MatchEngine(_fresh_state(), new_rng(1))
     gained = False
-    for _ in range(int(8.0 / DEFAULT_DT)):
+    for _ in range(int(16.0 / DEFAULT_DT)):
         engine.step()
         if engine.state.ball.owner is not None:
             gained = True

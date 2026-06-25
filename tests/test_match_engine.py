@@ -42,7 +42,7 @@ def test_different_seed_diverges():
 def test_kickoff_sets_ball_moving_and_phase():
     engine = MatchEngine(_fresh_state(), new_rng(3))
     assert engine.state.phase is MatchPhase.KICKOFF
-    engine.run(6.0)  # pasa el delay pre-partido y se saca del medio
+    engine.run(12.0)  # pasa el delay pre-partido y se saca del medio
     assert engine.state.phase is MatchPhase.PLAYING
     assert engine.state.ball.velocity.length() > 0.0
 
