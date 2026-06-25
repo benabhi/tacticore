@@ -79,6 +79,7 @@ _PRE_MATCH_MIN = 2.5       # delay variable antes del saque inicial (los jugador
 _PRE_MATCH_MAX = 5.0
 _KICKOFF_WAIT_MAX = 8.0    # tope de espera a que ambos equipos esten en su mitad
 _IDLE_DRIFT = 1.2          # micro-movimiento en las pausas (que se vean vivos, no quietos)
+_RESTART_HOLD = 0.8        # el ejecutante, ya con la pelota (prendido), espera esto antes de jugarla
 _SETTLE_SAVE = 1.5         # el arquero atajo y acomoda antes de distribuir
 _WALL_DIST = 9.15          # distancia (m) de la barrera al balon en un tiro libre
 _WALL_MIN = 16.0           # hay barrera si el tiro libre esta entre estas distancias
@@ -145,6 +146,9 @@ class MatchEngine:
         # le quitaron la pelota): id -> tiempo restante (s). No se mueven.
         self._frozen: dict[int, float] = {}
         self._throw_wait_timer = 0.0  # el que saca el lateral espera ayuda
+        # El ejecutante de un saque, ya sobre la pelota (prendido), espera un
+        # instante antes de jugarla (se ve que la tiene); no se la pueden robar.
+        self._restart_hold_timer = 0.0
         self._last_kicker = None  # ultimo que pateo (para nombrar al autor del gol)
         self._tick = 0
         # Si hay un saque pendiente (lateral/corner/saque de arco/tiro libre),
@@ -195,7 +199,7 @@ class MatchEngine:
                 self._corner_setup += dt
                 ready = self._box_attackers(self._restart_side) >= _CORNER_BOX_READY
                 if ready or self._corner_setup >= _CORNER_WAIT_MAX:
-                    self._execute_corner()
+                    self._restart_timer = 0.0  # el ejecutante toma la pelota (prendido) y centra
                 else:
                     self._restart_timer = max(self._restart_timer, 0.1)  # mantiene la pausa
             elif self._restart_kind == "kickoff" and self.state.phase is MatchPhase.KICKOFF:
@@ -216,6 +220,7 @@ class MatchEngine:
         self._reception_timer = max(0.0, self._reception_timer - dt)
         self._support_run_timer = max(0.0, self._support_run_timer - dt)
         self._cross_flight_timer = max(0.0, self._cross_flight_timer - dt)
+        self._restart_hold_timer = max(0.0, self._restart_hold_timer - dt)
         self._acquire_possession()
         self._resolve_tackle()  # un defensor pegado puede intentar quitar
         self._move_players(dt)  # la accion del que lleva puede soltar la pelota
@@ -336,9 +341,11 @@ class MatchEngine:
             # es una recuperacion/intercepcion.
             if not was_restart and prev_touch is not None and prev_touch is not taker.team:
                 self._log("intercepta", player=taker)
-            # Si tomo un saque pendiente, es el ejecutante (hasta que la juega).
+            # Si tomo un saque pendiente, es el ejecutante (hasta que la juega):
+            # queda un instante "prendido" sobre la pelota antes de jugarla.
             if was_restart:
                 self._restart_taker = taker
+                self._restart_hold_timer = _RESTART_HOLD
                 if self._restart_kind == "lateral" and not ai.is_goalkeeper(taker):
                     self._throw_wait_timer = _THROW_WAIT_MAX  # espera ayuda
             # El arquero que toma la pelota la "camina" un rato antes de distribuir.
@@ -403,6 +410,9 @@ class MatchEngine:
             return
         carrier = self.state.ball.owner
         if carrier is None:
+            return
+        # Al ejecutante de un saque, ya prendido a la pelota, no se la roban.
+        if carrier is self._restart_taker:
             return
         defenders = [
             mp
@@ -604,7 +614,9 @@ class MatchEngine:
         state = self.state
         pitch = state.pitch
         defending = _other(owner.team)
-        presser = ai.team_ball_chaser(state, defending)
+        # A un ejecutante de saque (prendido a la pelota) no se lo va a presionar:
+        # la defensa se arma/marca, no le corre a robar el balon parado.
+        presser = None if owner is self._restart_taker else ai.team_ball_chaser(state, defending)
         # Si esta ejecutandose un lateral, los companeros cercanos siguen yendo a
         # ofrecerse adentro del campo (no se van al ataque hasta que se juega).
         offers = {}
@@ -828,6 +840,10 @@ class MatchEngine:
 
         # Ejecutante de un lateral o corner: saque dedicado (hacia adentro / al area).
         if owner is self._restart_taker:
+            # Recien tomo la pelota: queda un instante PRENDIDO (se ve que la
+            # tiene) antes de jugarla; nadie se la puede robar en ese ratito.
+            if self._restart_hold_timer > 0.0:
+                return Vec2(0.0, 0.0)
             if self._restart_kind == "lateral":
                 # Espera a tener un companero al alcance (o si lo presionan / se
                 # acaba el tiempo, saca igual hacia adentro).
@@ -838,9 +854,15 @@ class MatchEngine:
                     return Vec2(0.0, 0.0)  # sostiene la pelota, espera ayuda
                 self._take_throw_in(owner)
                 return Vec2(0.0, 0.0)
-            # El corner se ejecuta desde la pelota muerta (ver _execute_corner), no
-            # en vivo: si por algun motivo se llega aca, se tira el centro.
             if self._restart_kind == "corner":
+                # A veces lo juega CORTO (engano) a un companero junto a la esquina.
+                rec, _pt = self._corner_short_offer(owner.team, owner, owner.position)
+                if rec is not None and self._rng.random() < 0.22:
+                    self._restart_taker = None
+                    self._log("pase", player=owner, target=rec, detail="corto")
+                    self._kick(owner, rec.position, _PASS_SPEED)
+                    self._set_reception(owner, rec)
+                    return Vec2(0.0, 0.0)
                 self._take_corner(owner)
                 return Vec2(0.0, 0.0)
             if self._restart_kind in ("tiro_libre", "penal", "offside"):
@@ -1145,28 +1167,6 @@ class MatchEngine:
             min(max(dest.x, 3.0), pitch.length - 3.0),
             min(max(dest.y, 8.0), pitch.width - 8.0),
         )
-
-    def _execute_corner(self) -> None:
-        """Ejecuta el corner desde la pelota muerta (ya con el area llena): centro
-        al area, o de vez en cuando CORTO (engano) a un companero junto a la esquina."""
-        state = self.state
-        taking = self._restart_side
-        spot = state.ball.position
-        outfield = [m for m in state.team(taking) if not ai.is_goalkeeper(m)]
-        pool = outfield or state.team(taking)
-        taker = min(pool, key=lambda m: m.position.distance_to(spot))
-        # Sale de la pelota muerta: a partir de aca la pelota esta viva.
-        self._restart_timer = 0.0
-        self._restart_kind = None
-        self._restart_side = None
-        self._restart_taker = None
-        rec, _pt = self._corner_short_offer(taking, taker, spot)
-        if rec is not None and self._rng.random() < 0.22:
-            self._log("pase", player=taker, target=rec, detail="corto")
-            self._kick(taker, rec.position, _PASS_SPEED)
-            self._set_reception(taker, rec)
-        else:
-            self._take_corner(taker)
 
     def _take_corner(self, taker) -> None:
         """Corner: centro al area rival (donde los companeros se tiraron al ataque)."""
