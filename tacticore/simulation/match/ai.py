@@ -390,6 +390,7 @@ _CROSS_WIDE_Y = 18.0     # a menos de esto de una banda, la pelota esta "abierta
 _CROSS_DEPTH = 0.32      # fraccion del largo desde la linea de fondo: anticipa el centro
 _BOX_SPREAD = 10.0       # cuanto se abren los que llegan al area (primer/segundo palo)
 _DEEP_ATTACK = 26.0      # con la pelota a menos de esto del arco, punta y volante entran al area
+_COMPACT_GAP = 35.0      # la ultima linea se mantiene a ~esto detras de la pelota (bloque compacto)
 
 
 def cross_imminent(state: MatchState, attacking_side: Side) -> bool:
@@ -472,18 +473,34 @@ def attacking_run_target(mp: MatchPlayer, state: MatchState) -> Vec2:
         attacking = ball_x > pitch.length / 2 if toward > 0 else ball_x < pitch.length / 2
         tx = goal.x - toward * 12.0 if attacking else base.x
         target = Vec2(onside(tx), _lerp(base.y, pitch.width / 2, 0.5))
-    elif mp.role in (Role.WINGER, Role.FULLBACK):
+    elif mp.role is Role.WINGER:
         # Sube POR LA BANDA manteniendo el ancho (la y de su zona), siempre onside.
-        factor = _RUN_LINE_FACTOR[mp.role]
+        factor = _RUN_LINE_FACTOR[Role.WINGER]
         advance = _lerp(_RUN_MIN_ADVANCE, _RUN_MAX_ADVANCE, mp.player.work_rate / 100.0) * factor
         target = Vec2(onside(base.x + toward * advance), base.y)
+    elif mp.role is Role.FULLBACK:
+        # El lateral se PROYECTA por la banda acompanando el bloque (mas arriba que
+        # el central, desdoblamiento): a ~_COMPACT_GAP-12 detras de la pelota,
+        # manteniendo el ancho de su banda, siempre onside.
+        ball_x = state.ball.position.x
+        line_x = ball_x - toward * (_COMPACT_GAP - 12.0)
+        if toward > 0:
+            tx = min(max(line_x, base.x), pitch.length * 0.82)
+        else:
+            tx = max(min(line_x, base.x), pitch.length * 0.18)
+        target = Vec2(onside(tx), base.y)
     elif mp.role is Role.CENTER_BACK:
-        # El central se DESCARGA por su franja: sube a apoyar la salida en x SIN
-        # cerrarse al centro (mantiene su y para abrir angulos de pase, en vez de
-        # amontonarse en el eje). Asi ofrece salida sin abandonar la ultima linea.
-        factor = _RUN_LINE_FACTOR[mp.role]
-        advance = _lerp(_RUN_MIN_ADVANCE, _RUN_MAX_ADVANCE, mp.player.work_rate / 100.0) * factor
-        target = Vec2(onside(base.x + toward * advance), base.y)
+        # El central ACOMPANA la subida del bloque: mantiene la ultima linea a
+        # ~_COMPACT_GAP detras de la pelota (linea alta cuando el equipo ataca,
+        # equipo compacto), sin cerrarse al centro (mantiene su y) ni cruzar mucho
+        # a la otra mitad (queda de resguardo ante la perdida).
+        ball_x = state.ball.position.x
+        line_x = ball_x - toward * _COMPACT_GAP
+        if toward > 0:
+            tx = min(max(line_x, base.x), pitch.length * 0.60)
+        else:
+            tx = max(min(line_x, base.x), pitch.length * 0.40)
+        target = Vec2(tx, base.y)
     else:
         # Volantes y centrales: avanzan hacia el arco (en diagonal a su zona).
         factor = _RUN_LINE_FACTOR.get(mp.role, 1.0)
