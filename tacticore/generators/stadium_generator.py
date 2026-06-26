@@ -4,6 +4,7 @@ import random
 
 from ..domain.enums import LeagueTier
 from ..domain.stadium import Stadium
+from .name_generator import club_core
 
 # Capacidad (min, max) segun el nivel de la liga: mejor liga, estadio mas grande.
 _TIER_CAPACITY: dict[LeagueTier, tuple[int, int]] = {
@@ -13,6 +14,12 @@ _TIER_CAPACITY: dict[LeagueTier, tuple[int, int]] = {
     LeagueTier.D: (5_000, 15_000),
     LeagueTier.E: (2_000, 8_000),
 }
+
+# Apodos genericos de estadio (raros), con su articulo ya puesto.
+_STADIUM_NICKS = [
+    "El Coloso", "El Templo", "El Castillo", "La Fortaleza", "La Caldera",
+    "El Bastion", "El Gigante", "El Coliseo", "La Catedral", "El Fortin",
+]
 
 
 class StadiumGenerator:
@@ -25,6 +32,22 @@ class StadiumGenerator:
         """Genera un estadio para un club de la liga `tier`."""
         low, high = _TIER_CAPACITY[tier]
         capacity = self._rng.randint(low, high)
-        # Nombre simple a partir del nucleo del nombre del club.
-        core = club_name.split()[-1]
-        return Stadium(name=f"Estadio {core}", capacity=capacity)
+        # El nombre se arma sobre el toponimo del club (no sobre un descriptor),
+        # con varios formatos para dar variedad; rara vez un apodo generico.
+        core = club_core(club_name)
+        roll = self._rng.random()
+        if roll < 0.45:
+            name = f"Estadio {core}"
+        elif roll < 0.60:
+            name = f"Arena {core}"
+        elif roll < 0.72:
+            name = f"Coliseo {core}"
+        elif roll < 0.82:
+            name = f"Estadio Nuevo {core}"
+        elif roll < 0.90:
+            name = f"Estadio Monumental {core}"
+        elif roll < 0.96:
+            name = f"Parque {core}"
+        else:
+            name = self._rng.choice(_STADIUM_NICKS)
+        return Stadium(name=name, capacity=capacity)

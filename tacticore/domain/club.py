@@ -3,13 +3,14 @@
 from dataclasses import dataclass, field
 
 from .enums import LeagueTier
+from .manager import Manager
 from .player import Player
 from .stadium import Stadium
 
 
 @dataclass
 class Club:
-    """Un club: identidad, finanzas basicas, estadio y plantilla."""
+    """Un club: identidad, finanzas basicas, estadio, hinchada, DT y plantilla."""
 
     name: str
     short_name: str
@@ -18,6 +19,8 @@ class Club:
     stadium: Stadium
     capital: int = 0    # dinero inicial
     members: int = 0    # cantidad de asociados / socios
+    fans_name: str = ""             # nombre de la hinchada (ej. "La Furia Roja")
+    manager: Manager | None = None  # director tecnico que dirige al equipo
     players: list[Player] = field(default_factory=list)
 
     @property

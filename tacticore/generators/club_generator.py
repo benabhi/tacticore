@@ -5,6 +5,7 @@ from datetime import date
 
 from ..domain.club import Club
 from ..domain.enums import LeagueTier, Position
+from .manager_generator import ManagerGenerator
 from .name_generator import NameGenerator
 from .player_generator import PlayerGenerator
 from .stadium_generator import StadiumGenerator
@@ -38,6 +39,7 @@ class ClubGenerator:
         self._names = names or NameGenerator(self._rng)
         self._players = PlayerGenerator(self._rng, self._names)
         self._stadiums = StadiumGenerator(self._rng)
+        self._managers = ManagerGenerator(self._rng, self._names)
 
     def generate(
         self,
@@ -55,6 +57,8 @@ class ClubGenerator:
         # Nombre corto: las dos palabras reducidas a sus iniciales/nucleo.
         short_name = "".join(part[:3] for part in name.split()).upper()[:5]
         stadium = self._stadiums.generate(tier, name)
+        fans_name = self._names.fan_group_name()
+        manager = self._managers.generate(country_code, today)
 
         players = [
             self._players.generate(Position.GOALKEEPER, tier, country_code, today)
@@ -81,5 +85,7 @@ class ClubGenerator:
             stadium=stadium,
             capital=capital,
             members=members,
+            fans_name=fans_name,
+            manager=manager,
             players=players,
         )

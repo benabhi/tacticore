@@ -6,6 +6,7 @@ Cada generador recibe un `random.Random` para ser determinista: misma semilla
 """
 
 from .club_generator import ClubGenerator
+from .manager_generator import ManagerGenerator
 from .name_generator import NameGenerator
 from .player_generator import PlayerGenerator
 from .stadium_generator import StadiumGenerator
@@ -13,6 +14,7 @@ from .world_generator import WorldGenerator
 
 __all__ = [
     "ClubGenerator",
+    "ManagerGenerator",
     "NameGenerator",
     "PlayerGenerator",
     "StadiumGenerator",
