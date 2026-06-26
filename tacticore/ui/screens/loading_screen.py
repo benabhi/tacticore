@@ -17,7 +17,7 @@ from ...domain.country import Country
 from ...generators import WorldGenerator
 from ..widgets.progress_bar import ProgressBar
 from .base_screen import BaseScreen
-from .new_game_screen import NewGameScreen
+from .create_club_screen import CreateClubScreen
 
 
 class LoadingScreen(BaseScreen):
@@ -81,4 +81,4 @@ class LoadingScreen(BaseScreen):
 
     def _finish(self, world: list[Country]) -> None:
         self.app.world = world
-        self.app.switch_screen(NewGameScreen())
+        self.app.switch_screen(CreateClubScreen())

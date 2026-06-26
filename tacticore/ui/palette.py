@@ -41,6 +41,13 @@ if TRUECOLOR:
     REF = "#caa63a"
     # Texto secundario (ej. el reloj del relato): gris tenue.
     MUTED = "#8a8a8a"
+    # Colores de identidad de club (identicon, versus, listas). Hues bien distintos
+    # entre si; el de cada club sale de un hash de su nombre.
+    IDENTICON_COLORS = [
+        "#d64545", "#e0823a", "#d9b13a", "#9bbe3a", "#4fa84f", "#3aa98c",
+        "#3a9bd6", "#4a73d6", "#7a5ad0", "#a64fc0", "#c84c98", "#d65a7e",
+        "#b07a4a", "#5f93a8",
+    ]
 else:
     # Fallback ANSI 16: HUE distinto para cada rol, evitando depender del
     # contraste brillante/normal (que algunas terminales no muestran).
@@ -56,3 +63,11 @@ else:
     GK_BALL = "bright_magenta"
     REF = "yellow"
     MUTED = "bright_black"
+    # Identidad de club en ANSI: hues distintos (el dos-tonos del identicon lo dan
+    # los caracteres #/:, no el par brillante/normal). Si dos clubes caen en el
+    # mismo color, igual se distinguen por el glifo y el patron.
+    IDENTICON_COLORS = [
+        "red", "green", "yellow", "blue", "magenta", "cyan",
+        "bright_red", "bright_green", "bright_yellow", "bright_blue",
+        "bright_magenta", "bright_cyan",
+    ]

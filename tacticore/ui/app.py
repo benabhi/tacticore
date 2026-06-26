@@ -30,7 +30,11 @@ class TacticoreApp(App):
         # jugador va a poder elegirla en el menu de nuevo juego.
         self.seed: int = random.Random().randint(1, 999_999)
         self.world = None
+        # Datos del club del jugador (se cargan en "Crea tu club").
         self.club_name: str | None = None
+        self.club_fans: str | None = None
+        self.club_stadium: str | None = None
+        self.club_country: str | None = None
 
     def on_mount(self) -> None:
         self.push_screen(TitleScreen())
