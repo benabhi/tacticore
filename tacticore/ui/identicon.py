@@ -52,16 +52,21 @@ def _shade_of(color: str) -> str:
     return color
 
 
-def render_identicon(name: str) -> Text:
-    """Devuelve el identicon como `rich.Text` (con color), listo para un Static."""
-    width = _SIZE * 2
-    border = "+" + "-" * width + "+"
+def render_identicon(name: str, label: bool = False) -> Text:
+    """Devuelve el identicon como `rich.Text` (con color), listo para un Static.
+
+    Con `label=True` agrega debajo el nombre del club, en mayusculas y CENTRADO
+    sobre el ancho del emblema (no sobre la columna), en el color del club.
+    """
+    inner = _SIZE * 2
+    full = inner + 2  # ancho total con los bordes (para centrar el nombre)
+    border = "+" + "-" * inner + "+"
     if not name.strip():
         # Sin nombre todavia: marco vacio (placeholder).
         empty = Text()
         empty.append(border + "\n", style=MUTED)
         for _ in range(_SIZE):
-            empty.append("|" + " " * width + "|\n", style=MUTED)
+            empty.append("|" + " " * inner + "|\n", style=MUTED)
         empty.append(border, style=MUTED)
         return empty
 
@@ -81,4 +86,6 @@ def render_identicon(name: str) -> Text:
                 t.append(_CELL)
         t.append("|\n", style=MUTED)
     t.append(border, style=MUTED)
+    if label:
+        t.append("\n" + name.strip().upper().center(full), style=f"bold {color}")
     return t
