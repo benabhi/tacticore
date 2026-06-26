@@ -40,7 +40,12 @@ class CreateClubScreen(BaseScreen):
         text-align: center;
         color: green;
         text-style: bold;
-        padding: 1 0;
+        padding: 1 0 0 0;
+    }
+    #welcome {
+        width: 1fr;
+        text-align: center;
+        padding: 1 2;
     }
     #cols {
         width: 72;
@@ -83,6 +88,7 @@ class CreateClubScreen(BaseScreen):
 
     def compose_viewport(self) -> ComposeResult:
         yield Static("CREA TU CLUB", id="title")
+        yield Static(self._welcome_text(), id="welcome")
         with Horizontal(id="cols"):
             yield Static(self._form_text(), id="form")
             with Vertical(id="side"):
@@ -91,6 +97,19 @@ class CreateClubScreen(BaseScreen):
         yield Static(
             "Flechas: campo   Escribi: editar   Enter: elegir / crear", id="footer"
         )
+
+    def _welcome_text(self) -> Text:
+        w = Text(justify="center")
+        w.append("Bienvenido a TACTICORE, manager.\n", style="bold green")
+        w.append(
+            "Vas a fundar tu club y arrancar el camino desde abajo, en el ascenso.\n",
+            style="white",
+        )
+        w.append(
+            "Dale su identidad: nombre, hinchada, estadio y bandera.",
+            style="grey62",
+        )
+        return w
 
     # --- Render del formulario ---
     def _form_text(self) -> Text:
