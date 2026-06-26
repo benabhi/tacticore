@@ -389,7 +389,9 @@ def offside_line_x(state: MatchState, attacking_side: Side) -> float | None:
 _CROSS_WIDE_Y = 18.0     # a menos de esto de una banda, la pelota esta "abierta"
 _CROSS_DEPTH = 0.32      # fraccion del largo desde la linea de fondo: anticipa el centro
 _BOX_SPREAD = 10.0       # cuanto se abren los que llegan al area (primer/segundo palo)
-_DEEP_ATTACK = 26.0      # con la pelota a menos de esto del arco, punta y volante entran al area
+_DEEP_ATTACK = 28.0      # con la pelota cerca del arco, punta y volante se proyectan al area
+_SUPPORT_ZONE = 42.0     # con la pelota en ataque, los volantes apoyan cerca (combinaciones)
+_SUPPORT_DIST = 13.0     # a que distancia detras de la pelota se ofrece el volante de apoyo
 _COMPACT_GAP = 35.0      # la ultima linea se mantiene a ~esto detras de la pelota (bloque compacto)
 
 
@@ -501,8 +503,20 @@ def attacking_run_target(mp: MatchPlayer, state: MatchState) -> Vec2:
         else:
             tx = max(min(line_x, base.x), pitch.length * 0.40)
         target = Vec2(tx, base.y)
+    elif mp.role is Role.MIDFIELDER:
+        ball = state.ball.position
+        ball_depth = abs(goal.x - ball.x)
+        if ball_depth < _SUPPORT_ZONE:
+            # Equipo atacando: el volante APOYA cerca de la pelota (a _SUPPORT_DIST
+            # por detras, onside), corrido hacia su lado, para ofrecer la descarga y
+            # combinar por el medio (que el de arriba no quede sin apoyo).
+            sx = ball.x - toward * _SUPPORT_DIST
+            target = Vec2(onside(sx), _lerp(base.y, ball.y, 0.35))
+        else:
+            factor = _RUN_LINE_FACTOR[Role.MIDFIELDER]
+            advance = _lerp(_RUN_MIN_ADVANCE, _RUN_MAX_ADVANCE, mp.player.work_rate / 100.0) * factor
+            target = base + (goal - base).normalized() * advance
     else:
-        # Volantes y centrales: avanzan hacia el arco (en diagonal a su zona).
         factor = _RUN_LINE_FACTOR.get(mp.role, 1.0)
         advance = _lerp(_RUN_MIN_ADVANCE, _RUN_MAX_ADVANCE, mp.player.work_rate / 100.0) * factor
         target = base + (goal - base).normalized() * advance
