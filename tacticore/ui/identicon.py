@@ -52,44 +52,35 @@ def _shade_of(color: str) -> str:
     return color
 
 
-def render_identicon(name: str, label: bool = False) -> Text:
-    """Devuelve el identicon como `rich.Text` (con color), listo para un Static.
+def render_identicon(name: str) -> Text:
+    """Devuelve SOLO el emblema (sin nombre) como `rich.Text`, para un Static.
 
-    Con `label=True` agrega debajo el nombre del club, en mayusculas y CENTRADO
-    sobre el ancho del emblema (no sobre la columna), en el color del club.
+    El nombre del club se muestra aparte (otro Static centrado en la columna) para
+    que un nombre largo no corra el emblema: asi cada uno queda centrado por su
+    cuenta. Sin nombre todavia, devuelve el marco vacio (mismo tamano).
     """
     inner = _SIZE * 2
-    full = inner + 2  # ancho total con los bordes (para centrar el nombre)
     border = "+" + "-" * inner + "+"
     t = Text()
     if not name.strip():
-        # Sin nombre todavia: marco vacio (placeholder).
         t.append(border + "\n", style=MUTED)
         for _ in range(_SIZE):
             t.append("|" + " " * inner + "|\n", style=MUTED)
         t.append(border, style=MUTED)
-    else:
-        grid = identicon_grid(name)
-        color = identicon_color(name)
-        shade = _shade_of(color)
-        t.append(border + "\n", style=MUTED)
-        for row in grid:
-            t.append("|", style=MUTED)
-            for lvl in row:
-                if lvl == 2:
-                    t.append("##", style=color)
-                elif lvl == 1:
-                    t.append("::", style=shade)
-                else:
-                    t.append(_CELL)
-            t.append("|\n", style=MUTED)
-        t.append(border, style=MUTED)
-    if label:
-        # Linea del nombre SIEMPRE presente (en blanco si no hay nombre) para que
-        # la altura sea constante y no se corra lo de abajo al empezar a tipear.
-        if name.strip():
-            color = identicon_color(name)
-            t.append("\n" + name.strip().upper().center(full), style=f"bold {color}")
-        else:
-            t.append("\n" + " " * full)
+        return t
+    grid = identicon_grid(name)
+    color = identicon_color(name)
+    shade = _shade_of(color)
+    t.append(border + "\n", style=MUTED)
+    for row in grid:
+        t.append("|", style=MUTED)
+        for lvl in row:
+            if lvl == 2:
+                t.append("##", style=color)
+            elif lvl == 1:
+                t.append("::", style=shade)
+            else:
+                t.append(_CELL)
+        t.append("|\n", style=MUTED)
+    t.append(border, style=MUTED)
     return t

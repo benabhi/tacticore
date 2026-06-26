@@ -15,7 +15,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
-from ..identicon import render_identicon
+from ..identicon import identicon_color, render_identicon
 from .base_screen import BaseScreen
 from .country_select_screen import CountrySelectScreen
 
@@ -56,8 +56,16 @@ class CreateClubScreen(BaseScreen):
         align: center top;
     }
     #ident {
-        width: auto;
+        width: 24;
         height: auto;
+        text-align: center;
+    }
+    #ident_name {
+        width: 24;
+        height: 1;
+        text-align: center;
+        text-style: bold;
+        text-overflow: ellipsis;
     }
     #footer {
         width: 1fr;
@@ -78,7 +86,8 @@ class CreateClubScreen(BaseScreen):
         with Horizontal(id="cols"):
             yield Static(self._form_text(), id="form")
             with Vertical(id="side"):
-                yield Static(render_identicon("", label=True), id="ident")
+                yield Static(render_identicon(""), id="ident")
+                yield Static("", id="ident_name")
         yield Static(
             "Flechas: campo   Escribi: editar   Enter: elegir / crear", id="footer"
         )
@@ -106,9 +115,14 @@ class CreateClubScreen(BaseScreen):
         self.query_one("#form", Static).update(self._form_text())
 
     def _refresh_ident(self) -> None:
-        self.query_one("#ident", Static).update(
-            render_identicon(self._texts[_CLUB], label=True)
-        )
+        name = self._texts[_CLUB]
+        self.query_one("#ident", Static).update(render_identicon(name))
+        label = self.query_one("#ident_name", Static)
+        if name.strip():
+            label.update(name.strip().upper())
+            label.styles.color = identicon_color(name)
+        else:
+            label.update("")
 
     # --- Teclado: mover, editar, confirmar ---
     def on_key(self, event) -> None:
