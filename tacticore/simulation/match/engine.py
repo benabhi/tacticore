@@ -885,16 +885,34 @@ class MatchEngine:
             self._clear_ball(owner)
             return Vec2(0.0, 0.0)
 
-        # Extremo o lateral por la banda: si esta abierto y BIEN PROFUNDO (cerca de
-        # la linea de fondo), tira el CENTRO al area; si no, encara hacia el corner
-        # (profundiza pegado a la banda) para tirar el centro desde el fondo.
+        # Extremo o lateral por la banda. No se la queda siempre: si un companero
+        # esta mejor parado para definir (libre, adentro), se la DA (salvo que
+        # decida ir el solo). Si no, desborda al fondo y CENTRA, o CORTA hacia
+        # adentro al area si tiene la banda tapada (variedad de jugada).
         if owner.role in (Role.WINGER, Role.FULLBACK) and self._is_wide(owner):
+            # Bien profundo -> CENTRA (lo que mas rinde por banda).
             if self._in_crossing_zone(owner):
                 self._cross(owner)
                 return Vec2(0.0, 0.0)
             toward = 1.0 if owner.team is Side.HOME else -1.0
             w = state.pitch.width
-            touch_y = 5.0 if owner.position.y < w / 2 else w - 5.0  # se pega a la banda
+            if self._byline_blocked(owner):
+                # Banda tapada (no puede progresar): si un companero esta mejor
+                # parado para definir, se la DA (no se la queda); si no, corta
+                # hacia adentro al area a combinar por el medio.
+                assist = ai.better_finisher(owner, state, _MAX_PASS_DIST)
+                if (
+                    assist is not None
+                    and not self._goes_individual(owner)
+                    and not ai.is_offside(assist, owner, state)
+                ):
+                    self._pass(owner, assist, ai.is_long_pass(owner, assist))
+                    return Vec2(0.0, 0.0)
+                inward = 10.0 if owner.position.y < w / 2 else -10.0
+                inside = state.pitch.clamp(Vec2(owner.position.x + toward * 6.0, owner.position.y + inward))
+                return ai.arrive(owner.position, inside, ai.max_speed(owner.player) * _DRIBBLE_FACTOR)
+            # Banda libre -> desborda por la linea de fondo (despues centra).
+            touch_y = 5.0 if owner.position.y < w / 2 else w - 5.0
             corner = state.pitch.clamp(Vec2(owner.position.x + toward * 9.0, touch_y))
             return ai.arrive(owner.position, corner, ai.max_speed(owner.player) * _DRIBBLE_FACTOR)
 
@@ -1085,6 +1103,17 @@ class MatchEngine:
         """Si el jugador esta pegado a una banda."""
         w = self.state.pitch.width
         return mp.position.y < _WIDE_MARGIN or mp.position.y > w - _WIDE_MARGIN
+
+    def _byline_blocked(self, owner) -> bool:
+        """Si un rival le tapa el camino al fondo por la banda (para cortar adentro)."""
+        toward = 1.0 if owner.team is Side.HOME else -1.0
+        for r in self.state.team(_other(owner.team)):
+            if ai.is_goalkeeper(r):
+                continue
+            ahead = (r.position.x - owner.position.x) * toward  # cuanto mas cerca del fondo
+            if 0.0 < ahead < 6.0 and abs(r.position.y - owner.position.y) < 4.0:
+                return True
+        return False
 
     def _in_crossing_zone(self, mp) -> bool:
         """Si el que la lleva esta abierto Y cerca de la linea de fondo (profundo)."""
