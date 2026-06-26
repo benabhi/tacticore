@@ -41,7 +41,7 @@ _LONG_PASS_ERROR = 8.0    # desvio maximo de un pase largo con passing=0 (m)
 _SHOOT_SPEED = 25.0       # velocidad de un remate (m/s)
 _FREE_KICK_SHOOT_RANGE = 24.0  # desde mas cerca que esto, el tiro libre va al arco
 _KEEPER_DRIBBLE_RANGE = 16.0   # de mas cerca que esto, un 1v1 puede intentar gambetear al arquero
-_SAVE_BASE = 0.50         # ancla: nivel de atajadas de la liga (los atributos ajustan)
+_SAVE_BASE = 0.66         # ancla: nivel de atajadas de la liga (los atributos ajustan)
 _DRIBBLE_FACTOR = 0.85    # se gambetea un poco mas lento que corriendo libre
 _DRIBBLE_OFFSET = 0.5     # la pelota va esta distancia por delante del que lleva
 _GK_REACH = 1.7           # el arquero domina la pelota a este radio dentro del area (m)
@@ -61,6 +61,7 @@ _CROSS_FLIGHT_TIME = 3.0  # ventana del centro/rebote (gente al area, definicion
 _CORNER_WAIT_MAX = 7.0    # espera de armado del corner (la gente trota al area)
 _CORNER_BOX_READY = 4     # con esta cantidad de companeros en el area, ya saca el corner
 _WING_SEEK_CHANCE = 0.05  # prob. por tick de abrir el juego a un extremo libre
+_WING_PASS_CHANCE = 0.01  # prob. por tick de que el que va por la banda libre ceda a un companero adelante
 _RECEPTION_TIME = 1.6     # tras un saque, el que recibe va a buscar la pelota este rato (s)
 _SUPPORT_RUN_TIME = 1.2   # tras un pase corto, el que paso pica de apoyo este rato (s)
 _GOAL_KICK_DEPTH = 5.5    # el saque de arco sale desde el borde del area chica (m)
@@ -904,21 +905,26 @@ class MatchEngine:
             toward = 1.0 if owner.team is Side.HOME else -1.0
             w = state.pitch.width
             if self._byline_blocked(owner):
-                # Banda tapada (no puede progresar): si un companero esta mejor
-                # parado para definir, se la DA (no se la queda); si no, corta
+                # Banda tapada (no puede progresar): se la DA a un companero adelante
+                # libre / mejor parado para definir (no se la queda); si no, corta
                 # hacia adentro al area a combinar por el medio.
-                assist = ai.better_finisher(owner, state, _MAX_PASS_DIST)
+                target = self._open_ahead(owner) or ai.better_finisher(owner, state, _MAX_PASS_DIST)
                 if (
-                    assist is not None
+                    target is not None
                     and not self._goes_individual(owner)
-                    and not ai.is_offside(assist, owner, state)
+                    and not ai.is_offside(target, owner, state)
                 ):
-                    self._pass(owner, assist, ai.is_long_pass(owner, assist))
+                    self._pass(owner, target, ai.is_long_pass(owner, target))
                     return Vec2(0.0, 0.0)
                 inward = 10.0 if owner.position.y < w / 2 else -10.0
                 inside = state.pitch.clamp(Vec2(owner.position.x + toward * 6.0, owner.position.y + inward))
                 return ai.arrive(owner.position, inside, ai.max_speed(owner.player) * _DRIBBLE_FACTOR)
-            # Banda libre -> desborda por la linea de fondo (despues centra).
+            # Banda LIBRE -> casi siempre desborda y centra, pero CADA TANTO cede a un
+            # companero claramente adelante y libre (no se la queda siempre).
+            ahead = self._open_ahead(owner)
+            if ahead is not None and self._rng.random() < _WING_PASS_CHANCE:
+                self._pass(owner, ahead, ai.is_long_pass(owner, ahead))
+                return Vec2(0.0, 0.0)
             touch_y = 5.0 if owner.position.y < w / 2 else w - 5.0
             corner = state.pitch.clamp(Vec2(owner.position.x + toward * 9.0, touch_y))
             return ai.arrive(owner.position, corner, ai.max_speed(owner.player) * _DRIBBLE_FACTOR)
@@ -1110,6 +1116,29 @@ class MatchEngine:
         """Si el jugador esta pegado a una banda."""
         w = self.state.pitch.width
         return mp.position.y < _WIDE_MARGIN or mp.position.y > w - _WIDE_MARGIN
+
+    def _open_ahead(self, owner):
+        """Companero claramente ADELANTE (mas cerca del arco), libre y con la linea
+        de pase limpia, para progresar por la banda en vez de llevarla siempre el."""
+        state = self.state
+        goal = ai.attacking_goal(state, owner.team)
+        owner_to_goal = owner.position.distance_to(goal)
+        rivals = state.team(_other(owner.team))
+        best = None
+        best_open = 7.0
+        for m in state.team(owner.team):
+            if m is owner or ai.is_goalkeeper(m):
+                continue
+            if m.position.distance_to(owner.position) > _MAX_PASS_DIST:
+                continue
+            if m.position.distance_to(goal) > owner_to_goal - 4.0:  # claramente adelante
+                continue
+            if ai.is_offside(m, owner, state) or ai.pass_lane_blocked(owner, m, rivals):
+                continue
+            openness = min((o.position.distance_to(m.position) for o in rivals), default=999.0)
+            if openness > best_open:
+                best, best_open = m, openness
+        return best
 
     def _byline_blocked(self, owner) -> bool:
         """Si un rival le tapa el camino al fondo por la banda (para cortar adentro)."""
