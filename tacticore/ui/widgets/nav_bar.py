@@ -17,13 +17,13 @@ SECTIONS: list[tuple[str, str]] = [
 
 
 class NavBar(Static):
-    """Barra negra de una fila con las secciones navegables."""
+    """Barra verde de una fila con las secciones navegables."""
 
     DEFAULT_CSS = """
     NavBar {
         height: 1;
-        background: black;
-        color: white;
+        background: green;
+        color: black;
     }
     """
 
@@ -40,12 +40,17 @@ class NavBar(Static):
         self._render_nav()
 
     def _render_nav(self) -> None:
+        # Dos verdes nada mas: el fondo de la barra (CSS) y el bloque "on green"
+        # del seleccionado (que se ve mas brillante). Los no seleccionados son
+        # solo texto negro, sin fondo, asi se ve la barra debajo. El atajo lo
+        # indican los corchetes [X] (ASCII), no un color.
         text = Text(no_wrap=True)
         text.append(" ")
         for key, label in SECTIONS:
+            chunk = f"[{key}] {label} "
             if key == self._active:
-                text.append(f"[{key}]{label}", style="bold black on white")
+                text.append(chunk, style="bold black on green")
             else:
-                text.append(f"[{key}]{label}", style="white")
+                text.append(chunk, style="black")
             text.append("  ")
         self.update(text)
