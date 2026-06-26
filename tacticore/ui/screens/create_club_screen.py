@@ -16,6 +16,7 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
 from ..identicon import identicon_color, render_identicon
+from ..palette import MUTED
 from .base_screen import BaseScreen
 from .country_select_screen import CountrySelectScreen
 
@@ -120,17 +121,27 @@ class CreateClubScreen(BaseScreen):
 
     # --- Render del formulario ---
     def _form_text(self) -> Text:
+        # El LABEL va tenue y el VALOR (lo que escribis) en blanco/negrita, para
+        # distinguir que tipeaste vos. El campo activo ademas va resaltado.
         t = Text()
         for i, label in enumerate(_LABELS):
             if i == _NAT:
                 value = self._country[0] if self._country else "(Enter para elegir)"
             else:
                 value = self._texts[i] + ("_" if i == self._active else "")
-            line = label.ljust(_LBL_W) + value
+            cell = label.ljust(_LBL_W)
             if i == self._active:
-                t.append(("> " + line).ljust(_ROW_W) + "\n", style="bold black on green")
+                t.append("> ", style="bold black on green")
+                t.append(cell, style="black on green")            # label
+                t.append(value, style="bold black on green")      # valor (negrita)
+                used = 2 + len(cell) + len(value)
+                if used < _ROW_W:
+                    t.append(" " * (_ROW_W - used), style="on green")
+                t.append("\n")
             else:
-                t.append(("  " + line) + "\n", style="white")
+                t.append("  ")
+                t.append(cell, style=MUTED)                       # label tenue
+                t.append(value + "\n", style="bold white")        # valor claro
         # Lineas en blanco para que CREAR CLUB quede en la MISMA fila que el nombre
         # del club bajo el identicon (titulo 1 + emblema 7 -> el nombre va en la
         # fila 8; los campos son 5, asi que 3 en blanco dejan CREAR en la fila 8).
