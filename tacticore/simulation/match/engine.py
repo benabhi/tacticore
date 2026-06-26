@@ -46,6 +46,7 @@ _DRIBBLE_FACTOR = 0.85    # se gambetea un poco mas lento que corriendo libre
 _DRIBBLE_OFFSET = 0.5     # la pelota va esta distancia por delante del que lleva
 _GK_REACH = 1.7           # el arquero domina la pelota a este radio dentro del area (m)
 _CLEAR_SPEED = 24.0       # velocidad del despeje del arquero (m/s)
+_GK_LONG_SPEED = 31.0     # pelotazo largo del arquero (llega a 3/4 de cancha o mas)
 _GK_SHORT_SAFE = 24.0     # solo saca corto si el rival mas cercano esta a mas que esto (m)
 _GK_CARRY_TIME = 2.5      # el arquero camina el area buscando opcion antes de distribuir (s)
 _GK_CARRY_PRESSURE = 8.0  # si un rival se acerca mas que esto, distribuye ya (no camina)
@@ -278,11 +279,17 @@ class MatchEngine:
         """Saca del medio: el ejecutante, ya prendido a la pelota en el centro, le
         PASA a un companero cercano (el saque es un pase, no sale de la nada)."""
         state = self.state
+        mid = state.pitch.length / 2
+        is_home = kicker.team is Side.HOME
         mates = [mp for mp in state.team(kicker.team)
                  if mp is not kicker and not ai.is_goalkeeper(mp)]
         if not mates:
             mates = [mp for mp in state.team(kicker.team) if mp is not kicker]
-        target = min(mates, key=lambda mp: mp.position.distance_to(kicker.position))
+        # El saque del medio se juega a la PROPIA mitad (no para adelante al campo
+        # rival): se filtran los companeros que estan en su mitad.
+        own_half = [m for m in mates if (m.position.x <= mid if is_home else m.position.x >= mid)]
+        pool = own_half or mates
+        target = min(pool, key=lambda mp: mp.position.distance_to(kicker.position))
         self._restart_side = None
         self._restart_kind = None
         self._restart_taker = None
@@ -1276,11 +1283,16 @@ class MatchEngine:
             self._log("saque_corto", player=gk, target=short)
             self._kick(gk, aim, _PASS_SPEED)
         else:
-            target = ai.best_pass_target(gk, state, _MAX_PASS_DIST * 2.0)
-            dest = target.position if target is not None else ai.attacking_goal(state, gk.team)
-            dest = self._inbounds_target(dest)  # el saque/despeje no se va al lateral
+            # Pelotazo LARGO a los de arriba: a 3/4 de cancha (o mas), en el canal
+            # del companero mas adelantado, que va a correr a buscarlo.
+            mates = [m for m in state.team(gk.team) if not ai.is_goalkeeper(m)]
+            toward = 1.0 if gk.team is Side.HOME else -1.0
+            advanced = max(mates, key=lambda m: m.position.x * toward) if mates else gk
+            target_x = state.pitch.length * 0.75 if toward > 0 else state.pitch.length * 0.25
+            dest = self._inbounds_target(Vec2(target_x, advanced.position.y))
+            dest = dest + self._pass_error(p, is_long=True)
             self._log("despeje", player=gk)
-            self._kick(gk, dest, _CLEAR_SPEED)
+            self._kick(gk, self._inbounds_target(dest), _GK_LONG_SPEED)
 
     def _shoot(self, owner, goal: Vec2) -> None:
         """Remata al arco apuntando al palo mas lejos del arquero, con error.
