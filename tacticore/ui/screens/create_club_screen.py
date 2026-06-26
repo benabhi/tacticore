@@ -60,6 +60,12 @@ class CreateClubScreen(BaseScreen):
         height: auto;
         align: center top;
     }
+    #ident_title {
+        width: 24;
+        height: 1;
+        text-align: center;
+        color: $text-muted;
+    }
     #ident {
         width: 24;
         height: auto;
@@ -92,6 +98,7 @@ class CreateClubScreen(BaseScreen):
         with Horizontal(id="cols"):
             yield Static(self._form_text(), id="form")
             with Vertical(id="side"):
+                yield Static("Emblema del club", id="ident_title")
                 yield Static(render_identicon(""), id="ident")
                 yield Static("", id="ident_name")
         yield Static(
@@ -124,7 +131,10 @@ class CreateClubScreen(BaseScreen):
                 t.append(("> " + line).ljust(_ROW_W) + "\n", style="bold black on green")
             else:
                 t.append(("  " + line) + "\n", style="white")
-        t.append("\n")
+        # Lineas en blanco para que CREAR CLUB quede en la MISMA fila que el nombre
+        # del club bajo el identicon (titulo 1 + emblema 7 -> el nombre va en la
+        # fila 8; los campos son 5, asi que 3 en blanco dejan CREAR en la fila 8).
+        t.append("\n\n\n")
         crear = "> CREAR CLUB <" if self._active == _CREATE else "CREAR CLUB"
         style = "bold black on green" if self._active == _CREATE else "green"
         t.append(crear.center(_ROW_W), style=style)
