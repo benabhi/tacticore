@@ -1,6 +1,6 @@
 """Pantalla "Crea tu club": el arranque de la partida (estilo ncurses).
 
-Pide el nombre del manager (vos), del club, de la hinchada, del estadio y la
+Pide el nombre del presidente (vos), del club, de la hinchada, del estadio y la
 nacionalidad (que define en que liga se juega). Al costado se dibuja, EN VIVO
 mientras se tipea el nombre del club, su identicon ASCII (emblema + color,
 unicos por nombre).
@@ -15,12 +15,17 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
+from ... import config
+from ...core.rng import new_rng
+from ...domain.president import President
+from ...generators.club_generator import ClubGenerator
+from ...persistence import savegame
 from ..identicon import identicon_color, render_identicon
 from ..palette import MUTED
 from .base_screen import BaseScreen
 from .country_select_screen import CountrySelectScreen
 
-_LABELS = ["Manager", "Club", "Hinchada", "Estadio", "Nacionalidad"]
+_LABELS = ["Presidente", "Club", "Hinchada", "Estadio", "Nacionalidad"]
 _CLUB = 1          # indice del campo "Club" (el que alimenta el identicon)
 _NAT = 4           # indice del campo de nacionalidad (abre el selector)
 _CREATE = 5        # indice del boton "Crear club"
@@ -95,7 +100,7 @@ class CreateClubScreen(BaseScreen):
 
     def __init__(self) -> None:
         super().__init__()
-        self._texts = ["", "", "", ""]   # manager, club, hinchada, estadio
+        self._texts = ["", "", "", ""]   # presidente, club, hinchada, estadio
         self._country = None             # (nombre, codigo)
         self._active = 0
 
@@ -117,7 +122,7 @@ class CreateClubScreen(BaseScreen):
 
     def _welcome_text(self) -> Text:
         w = Text(justify="center")
-        w.append("Bienvenido a TACTICORE, manager.\n", style="bold green")
+        w.append("Bienvenido a TACTICORE, presidente.\n", style="bold green")
         w.append(
             "Vas a fundar tu club y arrancar el camino desde abajo, en el ascenso.\n",
             style="white",
@@ -228,7 +233,9 @@ class CreateClubScreen(BaseScreen):
 
     def _activate(self) -> None:
         if self._active == _NAT:
-            self.app.push_screen(CountrySelectScreen(), self._set_country)
+            # Solo se puede elegir un pais que exista en el mundo generado.
+            available = [(c.name, c.code) for c in self.app.game.countries]
+            self.app.push_screen(CountrySelectScreen(available), self._set_country)
         elif self._active == _CREATE:
             self._create()
 
@@ -248,10 +255,31 @@ class CreateClubScreen(BaseScreen):
         if missing:
             self._show_error(missing)
             return
+
         app = self.app
-        app.manager_name = self._texts[0].strip()
-        app.club_name = self._texts[1].strip()
-        app.club_fans = self._texts[2].strip()
-        app.club_stadium = self._texts[3].strip()
-        app.club_country = self._country[1]
+        game = app.game
+        president_name = self._texts[0].strip()
+        country_code = self._country[1]
+
+        # Presidente humano (sin edad: no se la pedimos).
+        first, _, last = president_name.partition(" ")
+        president = President(
+            first_name=first, last_name=last, nationality=country_code
+        )
+        # Construir el club humilde del jugador (liga E, 500 socios) e insertarlo
+        # en su pais reemplazando a un club IA.
+        club = ClubGenerator(new_rng(app.seed)).player_club(
+            name=self._texts[1].strip(),
+            fans_name=self._texts[2].strip(),
+            stadium_name=self._texts[3].strip(),
+            president=president,
+            country_code=country_code,
+            squad_size=config.SQUAD_SIZE,
+            today=game.calendar.current_date,
+        )
+        game.install_player_club(club)
+        game.president_name = president_name
+
+        # Guardar la partida (autosave) y entrar a la Oficina.
+        savegame.save_game(game)
         app.switch_screen(OfficeScreen())

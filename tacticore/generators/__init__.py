@@ -9,6 +9,7 @@ from .club_generator import ClubGenerator
 from .manager_generator import ManagerGenerator
 from .name_generator import NameGenerator
 from .player_generator import PlayerGenerator
+from .president_generator import PresidentGenerator
 from .stadium_generator import StadiumGenerator
 from .world_generator import WorldGenerator
 
@@ -17,6 +18,7 @@ __all__ = [
     "ManagerGenerator",
     "NameGenerator",
     "PlayerGenerator",
+    "PresidentGenerator",
     "StadiumGenerator",
     "WorldGenerator",
 ]

@@ -12,6 +12,7 @@ from textual.containers import Vertical
 from textual.widgets import Static
 
 from ... import config
+from ...core.game import GameState
 from ...core.rng import new_rng
 from ...domain.country import Country
 from ...generators import WorldGenerator
@@ -80,5 +81,11 @@ class LoadingScreen(BaseScreen):
         self.query_one(ProgressBar).update_progress(done, total)
 
     def _finish(self, world: list[Country]) -> None:
-        self.app.world = world
+        # El mundo generado se convierte en el estado raiz de la partida; el club
+        # del jugador se inserta despues, en "Crea tu club".
+        self.app.game = GameState.new(
+            seed=self.app.seed,
+            start_date=config.SEASON_START_DATE,
+            countries=world,
+        )
         self.app.switch_screen(CreateClubScreen())

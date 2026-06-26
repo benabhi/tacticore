@@ -5,8 +5,8 @@ dibuja en una grilla de caracteres (con color por celda) y se vuelca a un unico
 `Static`. Asi el titulo va arriba, el slogan debajo, el prompt parpadeante mas
 abajo, y al pie una fila de cesped ASCII con la pelota apoyada en un costado.
 
-Al presionar Enter: si todavia no hay mundo generado, va a la pantalla de carga;
-si ya existe, va directo a la Oficina.
+Al presionar Enter: si hay una partida guardada, la carga y va a la Oficina
+("Continuar"); si no, arranca una partida nueva (Carga -> Crea tu club).
 """
 
 import random
@@ -15,6 +15,7 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.widgets import Static
 
+from ...persistence import savegame
 from ..art import render_banner
 from ..palette import GRASS_DARK, GRASS_LIGHT, LINE, MUTED
 from .base_screen import BaseScreen
@@ -22,7 +23,8 @@ from .base_screen import BaseScreen
 _W, _H = 80, 25
 
 _SLOGAN = "Manager de futbol para nerds"
-_PROMPT = "Presiona <ENTER> para comenzar"
+_PROMPT_NEW = "Presiona <ENTER> para comenzar"
+_PROMPT_CONTINUE = "Presiona <ENTER> para continuar"
 
 # Pelota de futbol en ASCII. Los pentagonos (caracteres '@' y 'a') van en un
 # tono oscuro y el resto del contorno en blanco, asi se lee como pelota.
@@ -77,6 +79,8 @@ class TitleScreen(BaseScreen):
 
     def compose_viewport(self) -> ComposeResult:
         self._blink_on = True
+        # El prompt cambia segun haya o no una partida guardada.
+        self._prompt = _PROMPT_CONTINUE if savegame.save_exists() else _PROMPT_NEW
         yield Static(self._build_scene(self._blink_on), id="scene")
 
     def on_mount(self) -> None:
@@ -109,9 +113,9 @@ class TitleScreen(BaseScreen):
         # Slogan debajo del titulo.
         place(10, (_W - len(_SLOGAN)) // 2, [_SLOGAN], "grey62")
 
-        # Prompt parpadeante.
+        # Prompt parpadeante (su texto depende de si hay partida guardada).
         if blink_on:
-            place(13, (_W - len(_PROMPT)) // 2, [_PROMPT], "bold yellow")
+            place(13, (_W - len(self._prompt)) // 2, [self._prompt], "bold yellow")
 
         # Cesped: una unica fila densa abajo. Se dibuja ANTES que la pelota para
         # que su base quede apoyada encima.
@@ -148,11 +152,17 @@ class TitleScreen(BaseScreen):
 
     def action_start(self) -> None:
         # Import local para evitar imports circulares.
-        if self.app.world is None:
+        from .office_screen import OfficeScreen
+
+        if self.app.game is not None:
+            # Ya hay una partida en curso en memoria.
+            self.app.switch_screen(OfficeScreen())
+        elif savegame.save_exists():
+            # Continuar: cargar la partida guardada y entrar a la Oficina.
+            self.app.game = savegame.load_game()
+            self.app.switch_screen(OfficeScreen())
+        else:
+            # Partida nueva: generar el mundo.
             from .loading_screen import LoadingScreen
 
             self.app.switch_screen(LoadingScreen())
-        else:
-            from .office_screen import OfficeScreen
-
-            self.app.switch_screen(OfficeScreen())

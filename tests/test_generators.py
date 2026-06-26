@@ -20,6 +20,30 @@ def test_club_has_two_goalkeepers():
     assert len(keepers) >= 2
 
 
+def test_squad_meets_position_minimums():
+    from collections import Counter
+
+    from tacticore.domain.enums import LeagueTier, Position
+
+    club = ClubGenerator(new_rng(11)).generate(squad_size=16, tier=LeagueTier.C)
+    counts = Counter(p.position for p in club.players)
+    assert counts[Position.GOALKEEPER] >= 2
+    assert counts[Position.DEFENDER] >= 5
+    assert counts[Position.MIDFIELDER] >= 5
+    assert counts[Position.FORWARD] >= 3
+    assert club.squad_size == 16
+
+
+def test_generated_club_has_president():
+    from datetime import date
+
+    today = date(2025, 7, 1)
+    club = ClubGenerator(new_rng(5)).generate(country_code="AR", today=today)
+    assert club.president is not None
+    assert club.president.nationality == "AR"
+    assert club.president.age_on(today) >= 45
+
+
 def test_club_name_is_ascii_and_well_formed():
     g = NameGenerator(new_rng(11))
     for _ in range(200):

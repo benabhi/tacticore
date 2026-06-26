@@ -4,6 +4,14 @@ from tacticore import config
 from tacticore.core.rng import new_rng
 from tacticore.domain.enums import LeagueTier
 from tacticore.generators import WorldGenerator
+from tacticore.generators.data import country_data
+
+
+def _expected_country_count() -> int:
+    """Cuantos paises deberia generar el mundo segun la config (None = todos)."""
+    if config.WORLD_COUNTRY_COUNT is None:
+        return len(country_data.COUNTRIES)
+    return config.WORLD_COUNTRY_COUNT
 
 
 def test_world_is_deterministic():
@@ -15,7 +23,7 @@ def test_world_is_deterministic():
 
 def test_world_structure():
     world = WorldGenerator(new_rng(1)).generate()
-    assert len(world) == config.WORLD_COUNTRY_COUNT
+    assert len(world) == _expected_country_count()
     for country in world:
         # 5 ligas por pais, en orden A..E.
         assert [league.tier for league in country.leagues] == list(LeagueTier)
@@ -52,5 +60,5 @@ def test_progress_callback_reaches_total():
     # El ultimo aviso debe llegar al total (barra llena).
     assert calls[-1][0] == calls[-1][1]
     assert calls[-1][1] == (
-        config.WORLD_COUNTRY_COUNT * len(LeagueTier) * config.CLUBS_PER_LEAGUE
+        _expected_country_count() * len(LeagueTier) * config.CLUBS_PER_LEAGUE
     )

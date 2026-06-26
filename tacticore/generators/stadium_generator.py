@@ -28,6 +28,10 @@ class StadiumGenerator:
     def __init__(self, rng: random.Random | None = None) -> None:
         self._rng = rng or random.Random()
 
+    def capacity_range(self, tier: LeagueTier) -> tuple[int, int]:
+        """Rango (min, max) de capacidad para un club de la liga `tier`."""
+        return _TIER_CAPACITY[tier]
+
     def generate(self, tier: LeagueTier, club_name: str) -> Stadium:
         """Genera un estadio para un club de la liga `tier`."""
         low, high = _TIER_CAPACITY[tier]

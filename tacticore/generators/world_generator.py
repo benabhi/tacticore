@@ -40,7 +40,11 @@ class WorldGenerator:
         `today` (fecha de inicio de la partida) ancla las edades de los planteles.
         """
         today = today or config.SEASON_START_DATE
-        selected = country_data.COUNTRIES[: config.WORLD_COUNTRY_COUNT]
+        # None = todos los paises; un numero = solo los primeros N (util en dev/tests).
+        if config.WORLD_COUNTRY_COUNT is None:
+            selected = country_data.COUNTRIES
+        else:
+            selected = country_data.COUNTRIES[: config.WORLD_COUNTRY_COUNT]
         clubs_per_league = config.CLUBS_PER_LEAGUE
         total_clubs = len(selected) * len(LeagueTier) * clubs_per_league
 

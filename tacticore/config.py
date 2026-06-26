@@ -20,8 +20,10 @@ SCREEN_HEIGHT = 25
 # Altura reservada para la barra de menu inferior (HUD).
 MENU_BAR_HEIGHT = 1
 
-# --- Generacion del mundo (escala chica por ahora, se ira ampliando) ---
-WORLD_COUNTRY_COUNT = 6   # cuantos paises generar (de la lista disponible)
+# --- Generacion del mundo ---
+# Cuantos paises generar. None = TODOS los disponibles (58). El mundo completo
+# son ~2.320 clubes / ~37.000 jugadores: se genera en ~1.3s y el save pesa ~11MB.
+WORLD_COUNTRY_COUNT: int | None = None
 CLUBS_PER_LEAGUE = 8      # clubes en cada liga (mismo para los 5 niveles)
 SQUAD_SIZE = 16           # jugadores por club
 

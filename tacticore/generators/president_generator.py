@@ -1,25 +1,25 @@
-"""Generador de directores tecnicos (DT) de fantasia.
+"""Generador de presidentes de fantasia.
 
-Por ahora un DT tiene solo identidad: nombre y apellido (por nacionalidad, del
-mismo pool que los jugadores), nacionalidad y edad. La edad arranca siempre en
-40 o mas (un DT no es un pibe). Determinista: comparte el rng del juego.
+Un presidente tiene identidad: nombre y apellido (por nacionalidad, del mismo
+pool que los jugadores), nacionalidad y edad. Los presidentes son mayores: la
+edad arranca en 45 o mas. Determinista: comparte el rng del juego.
 """
 
 import random
 from datetime import date
 
 from .. import config
-from ..domain.manager import Manager
+from ..domain.president import President
 from ._people import birth_date_for_age
 from .name_generator import NameGenerator
 
-# Rango de edad de un DT al generarlo (siempre adulto mayor de 40).
-_MIN_AGE = 40
-_MAX_AGE = 65
+# Rango de edad de un presidente al generarlo (gente grande).
+_MIN_AGE = 45
+_MAX_AGE = 75
 
 
-class ManagerGenerator:
-    """Crea directores tecnicos con nombre, nacionalidad y edad (>= 40)."""
+class PresidentGenerator:
+    """Crea presidentes con nombre, nacionalidad y edad (>= 45)."""
 
     def __init__(
         self,
@@ -33,18 +33,13 @@ class ManagerGenerator:
         self,
         country_code: str | None = None,
         today: date | None = None,
-    ) -> Manager:
-        """Genera un DT de la nacionalidad `country_code`.
-
-        `today` (fecha del juego) ancla la fecha de nacimiento para que la edad
-        sea >= 40 al inicio y el DT envejezca al avanzar el calendario.
-        """
+    ) -> President:
+        """Genera un presidente de la nacionalidad `country_code`."""
         today = today or config.SEASON_START_DATE
         first, last = self._names.player_first_last(country_code)
-        # Edad EXACTA garantizada (>= 40), con cumpleanios repartidos en el anio.
         target_age = self._rng.randint(_MIN_AGE, _MAX_AGE)
         birth_date = birth_date_for_age(self._rng, today, target_age)
-        return Manager(
+        return President(
             first_name=first,
             last_name=last,
             nationality=country_code or "FAN",
