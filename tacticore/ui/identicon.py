@@ -61,31 +61,35 @@ def render_identicon(name: str, label: bool = False) -> Text:
     inner = _SIZE * 2
     full = inner + 2  # ancho total con los bordes (para centrar el nombre)
     border = "+" + "-" * inner + "+"
+    t = Text()
     if not name.strip():
         # Sin nombre todavia: marco vacio (placeholder).
-        empty = Text()
-        empty.append(border + "\n", style=MUTED)
+        t.append(border + "\n", style=MUTED)
         for _ in range(_SIZE):
-            empty.append("|" + " " * inner + "|\n", style=MUTED)
-        empty.append(border, style=MUTED)
-        return empty
-
-    grid = identicon_grid(name)
-    color = identicon_color(name)
-    shade = _shade_of(color)
-    t = Text()
-    t.append(border + "\n", style=MUTED)
-    for row in grid:
-        t.append("|", style=MUTED)
-        for lvl in row:
-            if lvl == 2:
-                t.append("##", style=color)
-            elif lvl == 1:
-                t.append("::", style=shade)
-            else:
-                t.append(_CELL)
-        t.append("|\n", style=MUTED)
-    t.append(border, style=MUTED)
+            t.append("|" + " " * inner + "|\n", style=MUTED)
+        t.append(border, style=MUTED)
+    else:
+        grid = identicon_grid(name)
+        color = identicon_color(name)
+        shade = _shade_of(color)
+        t.append(border + "\n", style=MUTED)
+        for row in grid:
+            t.append("|", style=MUTED)
+            for lvl in row:
+                if lvl == 2:
+                    t.append("##", style=color)
+                elif lvl == 1:
+                    t.append("::", style=shade)
+                else:
+                    t.append(_CELL)
+            t.append("|\n", style=MUTED)
+        t.append(border, style=MUTED)
     if label:
-        t.append("\n" + name.strip().upper().center(full), style=f"bold {color}")
+        # Linea del nombre SIEMPRE presente (en blanco si no hay nombre) para que
+        # la altura sea constante y no se corra lo de abajo al empezar a tipear.
+        if name.strip():
+            color = identicon_color(name)
+            t.append("\n" + name.strip().upper().center(full), style=f"bold {color}")
+        else:
+            t.append("\n" + " " * full)
     return t
