@@ -46,7 +46,13 @@ class CreateClubScreen(BaseScreen):
     #welcome {
         width: 1fr;
         text-align: center;
-        padding: 1 2;
+        padding: 1 2 0 2;
+    }
+    #status {
+        width: 1fr;
+        height: 1;
+        text-align: center;
+        margin: 1 0;
     }
     #cols {
         width: 72;
@@ -96,6 +102,9 @@ class CreateClubScreen(BaseScreen):
     def compose_viewport(self) -> ComposeResult:
         yield Static("CREA TU CLUB", id="title")
         yield Static(self._welcome_text(), id="welcome")
+        # Linea reservada (altura fija): guia por defecto, error en rojo si falta
+        # algun campo. Siempre ocupa 1 fila, asi el error no desplaza nada.
+        yield Static(self._status_help(), id="status")
         with Horizontal(id="cols"):
             yield Static(self._form_text(), id="form")
             with Vertical(id="side"):
@@ -118,6 +127,28 @@ class CreateClubScreen(BaseScreen):
             style="grey62",
         )
         return w
+
+    # --- Linea de estado: guia por defecto / error de validacion ---
+    def _status_help(self) -> Text:
+        return Text(
+            "Todos los campos son obligatorios.", style="grey50", justify="center"
+        )
+
+    def _missing_fields(self) -> list[str]:
+        """Etiquetas de los campos sin completar (texto vacio o sin pais)."""
+        missing = [_LABELS[i] for i in range(_NAT) if not self._texts[i].strip()]
+        if self._country is None:
+            missing.append(_LABELS[_NAT])
+        return missing
+
+    def _show_help(self) -> None:
+        self.query_one("#status", Static).update(self._status_help())
+
+    def _show_error(self, missing: list[str]) -> None:
+        msg = "Falta completar: " + ", ".join(missing)
+        self.query_one("#status", Static).update(
+            Text(msg, style="bold red", justify="center")
+        )
 
     # --- Render del formulario ---
     def _form_text(self) -> Text:
@@ -183,6 +214,7 @@ class CreateClubScreen(BaseScreen):
                 self._texts[self._active] = self._texts[self._active][:-1]
                 event.stop()
                 self._refresh()
+                self._show_help()
                 if self._active == _CLUB:
                     self._refresh_ident()
         elif event.character and event.character.isprintable() and len(event.character) == 1:
@@ -190,6 +222,7 @@ class CreateClubScreen(BaseScreen):
                 self._texts[self._active] += event.character
                 event.stop()
                 self._refresh()
+                self._show_help()
                 if self._active == _CLUB:
                     self._refresh_ident()
 
@@ -204,14 +237,21 @@ class CreateClubScreen(BaseScreen):
             return
         self._country = country
         self._refresh()
+        self._show_help()
 
     def _create(self) -> None:
         from .office_screen import OfficeScreen
 
+        # Todos los campos son obligatorios: si falta alguno, mostramos el error
+        # en la linea reservada y no avanzamos.
+        missing = self._missing_fields()
+        if missing:
+            self._show_error(missing)
+            return
         app = self.app
-        app.manager_name = self._texts[0].strip() or "Manager"
-        app.club_name = self._texts[1].strip() or "Mi Club"
-        app.club_fans = self._texts[2].strip() or "La Hinchada"
-        app.club_stadium = self._texts[3].strip() or "El Estadio"
-        app.club_country = self._country[1] if self._country else "ES"
+        app.manager_name = self._texts[0].strip()
+        app.club_name = self._texts[1].strip()
+        app.club_fans = self._texts[2].strip()
+        app.club_stadium = self._texts[3].strip()
+        app.club_country = self._country[1]
         app.switch_screen(OfficeScreen())
