@@ -52,7 +52,8 @@ def distill(code: str) -> dict | None:
     path = SRC / f"{code}.csv"
     if not path.exists():
         return None
-    first: Counter = Counter()
+    first_m: Counter = Counter()    # solo varones (cuando hay dato de genero)
+    first_any: Counter = Counter()  # todos (para paises sin columna de genero)
     last: Counter = Counter()
     with path.open(encoding="utf-8", errors="ignore", newline="") as fh:
         reader = csv.reader(fh)
@@ -61,12 +62,15 @@ def distill(code: str) -> dict | None:
                 break
             if len(row) < 4:
                 continue
-            fn, ln, gender = asciify(row[0]), asciify(row[1]), row[2]
-            # Nombres de pila: solo varones (jugadores de futbol).
-            if gender == "M" and is_valid(fn):
-                first[fn] += 1
+            fn, ln, gender = asciify(row[0]), asciify(row[1]), row[2].strip()
+            if is_valid(fn):
+                first_any[fn] += 1
+                if gender == "M":
+                    first_m[fn] += 1
             if is_valid(ln):
                 last[ln] += 1
+    # Si el pais trae genero, usamos solo varones; si no (p. ej. Turquia), todos.
+    first = first_m if len(first_m) >= 50 else first_any
     return {
         "first": [n for n, _ in first.most_common(TOP_N)],
         "last": [n for n, _ in last.most_common(TOP_N)],
@@ -75,20 +79,30 @@ def distill(code: str) -> dict | None:
 
 def main() -> None:
     sys.path.insert(0, str(ROOT))
-    from tacticore.generators.data.country_data import COUNTRIES
+    from tacticore.generators.data.country_data import COUNTRIES, pool_code
 
     OUT.mkdir(parents=True, exist_ok=True)
-    for name, code in COUNTRIES:
+    # Un JSON por POOL unico (varios paises pueden compartir pool via NAME_POOL).
+    pools = sorted({pool_code(code) for _name, code in COUNTRIES})
+    keep: set[str] = set()
+    for code in pools:
         data = distill(code)
         if not data or len(data["first"]) < 20 or len(data["last"]) < 20:
             n_first = len(data["first"]) if data else 0
             n_last = len(data["last"]) if data else 0
-            print(f"  {code} {name}: POCOS ({n_first}/{n_last}) -> se omite (usa fallback)")
+            print(f"  {code}: POCOS ({n_first}/{n_last}) -> se omite (usa fallback silabico)")
             continue
         (OUT / f"{code}.json").write_text(
             json.dumps(data, ensure_ascii=True), encoding="utf-8"
         )
-        print(f"  {code} {name}: first={len(data['first'])} last={len(data['last'])}")
+        keep.add(code)
+        print(f"  {code}: first={len(data['first'])} last={len(data['last'])}")
+
+    # Limpia JSON huerfanos (pools que ya no usa ningun pais).
+    for old in OUT.glob("*.json"):
+        if old.stem not in keep:
+            old.unlink()
+            print(f"  (borrado huerfano: {old.name})")
 
 
 if __name__ == "__main__":

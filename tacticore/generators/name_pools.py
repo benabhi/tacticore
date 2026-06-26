@@ -9,13 +9,19 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
+from .data.country_data import pool_code
+
 _NAMES_DIR = Path(__file__).resolve().parent / "data" / "names"
 
 
 @lru_cache(maxsize=None)
 def load_pool(country_code: str) -> tuple[list[str], list[str]] | None:
-    """Devuelve (nombres, apellidos) del pais, o None si no hay pool."""
-    path = _NAMES_DIR / f"{country_code}.json"
+    """Devuelve (nombres, apellidos) del pais, o None si no hay pool.
+
+    Resuelve el alias de pool (p. ej. Inglaterra/Escocia/... -> GB) antes de
+    cargar el JSON, asi varios paises comparten el mismo pool sin duplicarlo.
+    """
+    path = _NAMES_DIR / f"{pool_code(country_code)}.json"
     if not path.exists():
         return None
     data = json.loads(path.read_text(encoding="utf-8"))
