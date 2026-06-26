@@ -47,7 +47,7 @@ _DRIBBLE_OFFSET = 0.5     # la pelota va esta distancia por delante del que llev
 _GK_REACH = 1.7           # el arquero domina la pelota a este radio dentro del area (m)
 _CLEAR_SPEED = 24.0       # velocidad del despeje del arquero (m/s)
 _GK_LONG_SPEED = 31.0     # pelotazo largo del arquero (llega a 3/4 de cancha o mas)
-_GK_SHORT_SAFE = 24.0     # solo saca corto si el rival mas cercano esta a mas que esto (m)
+_GK_SHORT_SAFE = 7.0      # solo revienta largo si tiene un rival ENCIMA (a menos que esto); si no, juega corto a un companero libre
 _GK_CARRY_TIME = 2.5      # el arquero camina el area buscando opcion antes de distribuir (s)
 _GK_CARRY_PRESSURE = 8.0  # si un rival se acerca mas que esto, distribuye ya (no camina)
 _TAKER_FREEZE = 0.7       # el ejecutante de un saque queda quieto este rato tras jugarla (s)
@@ -1276,7 +1276,7 @@ class MatchEngine:
         plays_short = (
             safe
             and short is not None
-            and self._rng.random() < _clamp(0.2 + (p.passing + p.composure) / 400.0, 0.1, 0.85)
+            and self._rng.random() < _clamp(0.5 + (p.passing + p.composure) / 350.0, 0.35, 0.92)
         )
         if plays_short:
             aim = short.position + self._pass_error(p, is_long=False)
@@ -1288,7 +1288,7 @@ class MatchEngine:
             mates = [m for m in state.team(gk.team) if not ai.is_goalkeeper(m)]
             toward = 1.0 if gk.team is Side.HOME else -1.0
             advanced = max(mates, key=lambda m: m.position.x * toward) if mates else gk
-            target_x = state.pitch.length * 0.75 if toward > 0 else state.pitch.length * 0.25
+            target_x = state.pitch.length * 0.62 if toward > 0 else state.pitch.length * 0.38
             dest = self._inbounds_target(Vec2(target_x, advanced.position.y))
             dest = dest + self._pass_error(p, is_long=True)
             self._log("despeje", player=gk)
