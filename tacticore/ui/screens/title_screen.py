@@ -123,12 +123,11 @@ class TitleScreen(BaseScreen):
             grid[_H - 1][c] = _GRASS_CHARS[c]
             style[_H - 1][c] = _GRASS_STYLES[c]
 
-        # Pelota apoyada en el cesped, en el costado derecho. Baja hasta tocar el
-        # cesped: su ultima linea (la base) va en verde para fundirse con el pasto.
+        # Pelota apoyada en el cesped, en el costado derecho (posicion original).
+        # Se dibuja el cuerpo y la curva inferior `.a\___/a.', pero NO la base
+        # `'""""`: esa fila de mas abajo del dibujo es, justamente, el cesped.
         ball_color = lambda ch: MUTED if ch in "@a" else LINE
-        ball_row = _H - len(_BALL)
-        place(ball_row, 61, _BALL[:-1], ball_color)
-        place(_H - 1, 61, _BALL[-1:], GRASS_LIGHT)
+        place(_H - len(_BALL), 61, _BALL[:-1], ball_color)
 
         return self._grid_to_text(grid, style)
 
