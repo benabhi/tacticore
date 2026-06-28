@@ -25,7 +25,13 @@ from .base_screen import BaseScreen
 from .create_club_screen import CreateClubScreen
 
 _PROMPT = "Presiona <ENTER> para continuar"
-_COL_W = 36  # ancho de cada columna del resumen
+_VAL_W = 6   # ancho de la columna de valores (hasta "37,120")
+_LBL_W = 11  # ancho de cada columna de labels (hasta "Presidentes")
+# Ancho de la fila del bloque (valor + label + centro + label + valor) y el
+# padding para centrarlo en los 80 de pantalla (el align del viewport no alcanza
+# porque los demas widgets son 1fr).
+_ROW_W = 2 * _VAL_W + 2 * _LBL_W + 7
+_PAD = " " * ((config.SCREEN_WIDTH - _ROW_W) // 2)
 
 
 def _ceil_div(a: int, b: int) -> int:
@@ -58,7 +64,7 @@ class LoadingScreen(BaseScreen):
         margin-top: 1;
     }
     #stats {
-        width: 72;
+        width: 1fr;
         height: 8;
         margin-top: 2;
     }
@@ -145,36 +151,35 @@ class LoadingScreen(BaseScreen):
             ("Estadios", done),
             ("Hinchadas", done),
             ("Presidentes", done),
-            ("Directores tecnicos", done),
+            ("DTs", done),
             ("Jugadores", done * config.SQUAD_SIZE),
         ]
 
     def _stats_text(self) -> Text:
-        """Resumen en dos columnas con los contadores actuales."""
+        """Resumen centrado en 4 columnas: valor | label) (label | valor.
+
+        Las dos columnas de labels se alinean hacia el centro (la izquierda a la
+        derecha, la derecha a la izquierda) y los valores quedan en los extremos,
+        asi el bloque se ve centrado.
+        """
         stats = self._counts()
-        rows = (len(stats) + 1) // 2
+        half = len(stats) // 2
         t = Text()
-        for r in range(rows):
-            for idx in (r, r + rows):
-                t.append_text(self._cell(stats, idx))
+        for r in range(half):
+            l_label, l_value = stats[r]
+            r_label, r_value = stats[r + half]
+            t.append(_PAD)
+            t.append(f"{l_value:,}".rjust(_VAL_W), style="bold green")
+            t.append("  ")
+            t.append(l_label.rjust(_LBL_W), style="grey70")
+            t.append(" ")
+            t.append(":", style="bold yellow")   # espina central, un toque de color
+            t.append(" ")
+            t.append(r_label.ljust(_LBL_W), style="grey70")
+            t.append("  ")
+            t.append(f"{r_value:,}".ljust(_VAL_W), style="bold green")
             t.append("\n")
         return t
-
-    def _cell(self, stats: list, idx: int) -> Text:
-        if idx >= len(stats):
-            return Text(" " * _COL_W)
-        label, value = stats[idx]
-        head = "  * "                 # vineta
-        mid = f"{label}: "
-        number = f"{value:,}"
-        cell = Text()
-        cell.append(head, style="bold green")
-        cell.append(mid, style="grey70")
-        cell.append(number, style="bold green")
-        used = len(head) + len(mid) + len(number)
-        if used < _COL_W:
-            cell.append(" " * (_COL_W - used))
-        return cell
 
     def _toggle_blink(self) -> None:
         self._blink_on = not self._blink_on
