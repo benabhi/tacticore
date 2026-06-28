@@ -11,22 +11,23 @@ from datetime import date
 from .enums import Foot, Morale, Position, Specialty
 from .injury import Injury
 
-# Atributos agrupados (todos float 1-100). El orden es el que usa el generador.
-PHYSICAL_ATTRS = ("speed", "acceleration", "stamina", "strength", "agility", "jumping")
-TECHNICAL_ATTRS = ("passing", "shooting", "dribbling", "tackling", "heading")
+# Atributos agrupados en 3 categorias de 5 (todos float 1-100). Son GENERALES:
+# sirven para cualquier jugador. El arquero no tiene atributos propios; se apoya
+# en los generales (agilidad, posicion, anticipacion, temple, juego aereo).
+PHYSICAL_ATTRS = ("speed", "stamina", "strength", "agility", "aerial")
+TECHNICAL_ATTRS = ("passing", "shooting", "dribbling", "tackling", "crossing")
 MENTAL_ATTRS = ("vision", "positioning", "anticipation", "composure", "work_rate")
-GK_ATTRS = ("reflexes", "handling", "aerial_reach")
-ALL_ATTRS = PHYSICAL_ATTRS + TECHNICAL_ATTRS + MENTAL_ATTRS + GK_ATTRS
+ALL_ATTRS = PHYSICAL_ATTRS + TECHNICAL_ATTRS + MENTAL_ATTRS
 
 # Pesos por posicion para el overall: que atributos importan y cuanto. Es
 # provisional; la simulacion real usa los atributos crudos, no este promedio.
 _OVERALL_WEIGHTS: dict[Position, dict[str, int]] = {
     Position.GOALKEEPER: {
-        "reflexes": 3, "handling": 2, "aerial_reach": 2, "positioning": 1,
+        "agility": 3, "positioning": 2, "aerial": 2, "composure": 1,
         "anticipation": 1,
     },
     Position.DEFENDER: {
-        "tackling": 3, "positioning": 2, "strength": 1, "heading": 1,
+        "tackling": 3, "positioning": 2, "strength": 1, "aerial": 1,
         "anticipation": 1, "speed": 1, "passing": 1,
     },
     Position.MIDFIELDER: {
@@ -35,7 +36,7 @@ _OVERALL_WEIGHTS: dict[Position, dict[str, int]] = {
     },
     Position.FORWARD: {
         "shooting": 3, "dribbling": 2, "speed": 1, "positioning": 1,
-        "heading": 1, "passing": 1,
+        "aerial": 1, "passing": 1,
     },
 }
 
@@ -56,18 +57,17 @@ class Player:
 
     # --- Atributos fisicos (1-100) ---
     speed: float = 1.0
-    acceleration: float = 1.0
     stamina: float = 1.0
     strength: float = 1.0
     agility: float = 1.0
-    jumping: float = 1.0
+    aerial: float = 1.0      # juego aereo: saltar, ganar de cabeza, salir a cruces
 
     # --- Atributos tecnicos (1-100) ---
     passing: float = 1.0
     shooting: float = 1.0
     dribbling: float = 1.0
     tackling: float = 1.0
-    heading: float = 1.0
+    crossing: float = 1.0    # precision/peligro del centro
 
     # --- Atributos mentales (1-100) ---
     vision: float = 1.0
@@ -75,11 +75,6 @@ class Player:
     anticipation: float = 1.0
     composure: float = 1.0
     work_rate: float = 1.0
-
-    # --- Atributos de arquero (1-100; bajos en jugadores de campo) ---
-    reflexes: float = 1.0
-    handling: float = 1.0
-    aerial_reach: float = 1.0
 
     # --- Estado dinamico (cambia al pasar fechas / en el partido) ---
     form: float = 50.0        # estado de forma actual (1-100)

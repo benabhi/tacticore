@@ -51,9 +51,9 @@ def test_better_finisher_picks_open_closer_mate():
 def test_weaker_keeper_is_beaten_more_often():
     engine = MatchEngine(_state(), new_rng(1))
     gk = next(mp for mp in engine.state.home if ai.is_goalkeeper(mp))
-    gk.player.reflexes = gk.player.handling = 90.0
+    gk.player.agility = gk.player.composure = 90.0
     strong = engine._gk_beaten_chance(gk)
-    gk.player.reflexes = gk.player.handling = 20.0
+    gk.player.agility = gk.player.composure = 20.0
     weak = engine._gk_beaten_chance(gk)
     assert weak > strong
     assert 0.0 < strong < weak <= 0.28

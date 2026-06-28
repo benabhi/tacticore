@@ -15,7 +15,7 @@ from datetime import date
 
 from .. import config
 from ..domain.enums import Foot, LeagueTier, Morale, Position, Specialty
-from ..domain.player import ALL_ATTRS, GK_ATTRS, Player
+from ..domain.player import ALL_ATTRS, Player
 from .name_generator import NameGenerator
 
 # Nivel base de un atributo "neutro" segun el nivel de la liga (1-100).
@@ -27,32 +27,32 @@ _TIER_BASE: dict[LeagueTier, float] = {
     LeagueTier.E: 35.0,
 }
 
-# A los jugadores de campo, los atributos de arquero les quedan muy por debajo.
-_GK_PENALTY_OUTFIELD = -45.0
-
 # Offset por posicion: cuanto sube/baja cada atributo respecto del base. Lo no
-# listado queda en 0 (atributos "generales": fisico, etc.).
+# listado queda en 0. Los atributos son generales; el arquero se distingue
+# subiendo lo que el motor lee para atajar (agility, composure, aerial,
+# positioning) y bajando lo ofensivo, asi sigue siendo muy bueno bajo los palos.
 _ROLE_OFFSETS: dict[Position, dict[str, float]] = {
     Position.GOALKEEPER: {
-        "reflexes": 12, "handling": 12, "aerial_reach": 10, "positioning": 6,
-        "anticipation": 4, "jumping": 4, "composure": 3,
+        "agility": 14, "aerial": 12, "composure": 10, "positioning": 6,
+        "anticipation": 4,
         "passing": -12, "shooting": -35, "dribbling": -28, "tackling": -10,
-        "heading": -6, "speed": -6, "vision": -8, "work_rate": -6,
+        "crossing": -20, "speed": -6, "vision": -8, "work_rate": -6,
     },
     Position.DEFENDER: {
-        "tackling": 12, "positioning": 10, "strength": 8, "heading": 8,
-        "anticipation": 7, "jumping": 6, "composure": 2,
-        "shooting": -18, "dribbling": -10, "vision": -4, "passing": -2,
+        "tackling": 12, "positioning": 10, "strength": 8, "aerial": 10,
+        "anticipation": 7, "composure": 2,
+        "shooting": -18, "dribbling": -10, "crossing": -6, "vision": -4,
+        "passing": -2,
     },
     Position.MIDFIELDER: {
         "passing": 12, "vision": 12, "work_rate": 9, "dribbling": 7,
         "positioning": 5, "stamina": 7, "composure": 5, "tackling": 3,
-        "agility": 3, "heading": -5, "shooting": -2, "strength": -3,
-        "jumping": -4,
+        "agility": 3, "crossing": 3, "aerial": -6, "shooting": -2,
+        "strength": -3,
     },
     Position.FORWARD: {
-        "shooting": 14, "dribbling": 11, "speed": 9, "acceleration": 8,
-        "positioning": 5, "heading": 5, "agility": 5, "composure": 4,
+        "shooting": 14, "dribbling": 11, "speed": 12, "positioning": 5,
+        "aerial": 5, "agility": 5, "composure": 4, "crossing": 4,
         "tackling": -14, "vision": -2, "work_rate": -2, "strength": -2,
     },
 }
@@ -102,17 +102,13 @@ class PlayerGenerator:
         pos = position or rng.choice(list(Position))
         base = _TIER_BASE[tier]
         offsets = _ROLE_OFFSETS[pos]
-        is_gk = pos is Position.GOALKEEPER
         # Talento individual: corre todos los atributos del jugador hacia
         # arriba o abajo (cracks vs jugadores del monton dentro de su liga).
         talent = rng.uniform(-5, 10)
 
         attrs = {}
         for attr in ALL_ATTRS:
-            if attr in GK_ATTRS and not is_gk:
-                offset = _GK_PENALTY_OUTFIELD
-            else:
-                offset = offsets.get(attr, 0.0)
+            offset = offsets.get(attr, 0.0)
             attrs[attr] = _clamp(base + offset + talent + rng.uniform(-_NOISE, _NOISE))
 
         # Fecha de nacimiento: se elige una edad objetivo y se ancla a `today`

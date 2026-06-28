@@ -31,10 +31,21 @@ def test_attributes_are_floats_with_variety():
 
 
 def test_goalkeeper_profile():
-    # Un arquero debe tener reflejos altos y remate bajo.
+    # Un arquero se apoya en atributos generales: agilidad alta, remate bajo.
     gk = PlayerGenerator(new_rng(5)).generate(Position.GOALKEEPER, LeagueTier.A)
-    assert gk.reflexes > gk.shooting
-    assert gk.reflexes >= 70  # en liga A, reflejos de elite
+    assert gk.agility > gk.shooting
+    assert gk.agility >= 70  # en liga A, agilidad de elite bajo los palos
+
+
+def test_attribute_groups_are_three_of_five():
+    from tacticore.domain.player import (
+        MENTAL_ATTRS,
+        PHYSICAL_ATTRS,
+        TECHNICAL_ATTRS,
+    )
+
+    assert len(ALL_ATTRS) == 15
+    assert len(PHYSICAL_ATTRS) == len(TECHNICAL_ATTRS) == len(MENTAL_ATTRS) == 5
 
 
 def test_age_is_derived_from_birth_date_and_ages_over_time():

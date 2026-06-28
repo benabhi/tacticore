@@ -62,20 +62,18 @@ def show(club):
     print(f"| Cantera: {star.origin_club}   Especialidad: {esp}".ljust(76) + "|")
     print("+" + "-" * 76 + "+")
     cols = [
-        [_attr("Velocidad", star.speed), _attr("Aceleracion", star.acceleration),
-         _attr("Resistencia", star.stamina), _attr("Fuerza", star.strength),
-         _attr("Agilidad", star.agility), _attr("Salto", star.jumping)],
+        [_attr("Velocidad", star.speed), _attr("Resistencia", star.stamina),
+         _attr("Fuerza", star.strength), _attr("Agilidad", star.agility),
+         _attr("J. aereo", star.aerial)],
         [_attr("Pase", star.passing), _attr("Remate", star.shooting),
          _attr("Gambeta", star.dribbling), _attr("Quite", star.tackling),
-         _attr("Cabeceo", star.heading)],
+         _attr("Centro", star.crossing)],
         [_attr("Vision", star.vision), _attr("Posicion", star.positioning),
          _attr("Anticipacion", star.anticipation), _attr("Compostura", star.composure),
          _attr("Sacrificio", star.work_rate)],
-        [_attr("Reflejos", star.reflexes), _attr("Manos", star.handling),
-         _attr("J. aereo", star.aerial_reach)],
     ]
-    print("FISICO            TECNICO           MENTAL            ARQUERO")
-    for i in range(6):
+    print("FISICO            TECNICO           MENTAL")
+    for i in range(5):
         row = [(c[i] if i < len(c) else " " * 16) for c in cols]
         print("  ".join(row).rstrip())
 

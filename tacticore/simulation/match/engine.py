@@ -356,8 +356,8 @@ class MatchEngine:
                 self._gk_carry_timer = _GK_CARRY_TIME
 
     def _gk_beaten_chance(self, gk) -> float:
-        """Prob. de que al arquero se le escape un remate (peor reflejos/manos -> mas)."""
-        quality = (gk.player.reflexes + gk.player.handling) / 2.0
+        """Prob. de que al arquero se le escape un remate (peor agilidad/temple -> mas)."""
+        quality = (gk.player.agility + gk.player.composure) / 2.0
         return _clamp(0.28 - quality / 220.0, 0.02, 0.28)
 
     def _goalkeeper_save(self, gk) -> None:
@@ -365,14 +365,14 @@ class MatchEngine:
         ball = self.state.ball
         self.state.last_touch = gk.team
         own = ai.own_goal(self.state, gk.team)
-        # Manotazo al palo: la tira AL CORNER (mas probable con buenos reflejos).
-        p_corner = _clamp(0.12 + gk.player.reflexes / 500.0, 0.1, 0.30)
+        # Manotazo al palo: la tira AL CORNER (mas probable con buena agilidad).
+        p_corner = _clamp(0.12 + gk.player.agility / 500.0, 0.1, 0.30)
         if self._rng.random() < p_corner:
             self.state.last_event = "Atajada"
             self._log("atajada", player=gk)
             self._concede_corner(gk.team, ball.position.y)
             return
-        p_hold = _clamp(0.40 + gk.player.handling / 150.0, 0.2, 0.92)
+        p_hold = _clamp(0.40 + gk.player.composure / 150.0, 0.2, 0.92)
         if self._rng.random() < p_hold:
             # Atajada limpia: la retiene.
             ball.owner = gk
@@ -717,8 +717,8 @@ class MatchEngine:
                 if not ai.is_goalkeeper(m) and m is not taker and id(m) not in corner_short
             ]
             cbs = [m for m in mates if m.role is Role.CENTER_BACK]
-            if cbs:  # el central peor de cabeza se queda de resguardo, el resto sube
-                keep_back = min(cbs, key=lambda m: m.player.heading)
+            if cbs:  # el central peor por alto se queda de resguardo, el resto sube
+                keep_back = min(cbs, key=lambda m: m.player.aerial)
             corner_crash = {id(m) for m in mates if m is not keep_back}
 
         for mp in state.all_players():
@@ -1022,7 +1022,7 @@ class MatchEngine:
         if keeper is None:
             return ai.arrive(owner.position, goal, ai.max_speed(o) * _DRIBBLE_FACTOR)
         k = keeper.player
-        p = _clamp(0.30 + (o.dribbling - (k.reflexes + k.composure) / 2.0) / 200.0, 0.1, 0.85)
+        p = _clamp(0.30 + (o.dribbling - (k.agility + k.composure) / 2.0) / 200.0, 0.1, 0.85)
         if self._rng.random() < p:
             # Lo gambetea: el arquero queda frenado, sigue solo hacia el arco.
             self._log("gambeta", player=owner, target=keeper)
@@ -1365,10 +1365,10 @@ class MatchEngine:
     def _shot_save_chance(self, shooter, keeper, dist: float) -> float:
         """Prob. de que el arquero tape el remate: ancla de liga + atributos.
 
-        Sube con reflejos/posicionamiento del arquero, baja con el shooting del
+        Sube con agilidad/posicionamiento del arquero, baja con el shooting del
         tirador, y de lejos es mas atajable (mas tiempo de reaccion) que de cerca.
         """
-        gk = (keeper.player.reflexes + keeper.player.positioning) / 2.0
+        gk = (keeper.player.agility + keeper.player.positioning) / 2.0
         chance = (
             _SAVE_BASE
             + (gk - 55.0) / 250.0

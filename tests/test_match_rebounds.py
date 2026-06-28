@@ -37,7 +37,7 @@ def test_good_hands_hold_the_shot():
     engine._rng = _FakeRng([0.9, 0.0])  # no la tira al corner; random < p_hold -> retiene
     st = engine.state
     gk = _keeper(st, st.away)
-    gk.player.handling = 100.0
+    gk.player.composure = 100.0
     st.ball.position = gk.position
     st.ball.velocity = Vec2(-20.0, 0.0)
     st.ball.owner = None
@@ -66,7 +66,7 @@ def test_poor_hands_can_spill_a_rebound():
     engine._rng = _FakeRng([0.99])  # random >= p_hold -> rebote
     st = engine.state
     gk = _keeper(st, st.away)
-    gk.player.handling = 30.0
+    gk.player.composure = 30.0
     st.ball.position = gk.position
     st.ball.velocity = Vec2(-20.0, 0.0)
     st.ball.owner = None
@@ -81,7 +81,7 @@ def test_rebound_goes_away_from_own_goal():
     engine._rng = _FakeRng([0.99])
     st = engine.state
     gk = _keeper(st, st.away)  # AWAY defiende el arco en x = length
-    gk.player.handling = 20.0
+    gk.player.composure = 20.0
     st.ball.position = gk.position
     st.ball.velocity = Vec2(20.0, 0.0)
     st.ball.owner = None
@@ -90,14 +90,14 @@ def test_rebound_goes_away_from_own_goal():
     assert st.ball.velocity.x < 0.0
 
 
-def test_better_handling_holds_more():
-    def holds_with(handling):
+def test_better_composure_holds_more():
+    def holds_with(composure):
         held = 0
         for seed in range(60):
             engine = MatchEngine(_state(), new_rng(seed))
             st = engine.state
             gk = _keeper(st, st.away)
-            gk.player.handling = handling
+            gk.player.composure = composure
             st.ball.position = gk.position
             st.ball.velocity = Vec2(-20.0, 0.0)
             st.ball.owner = None
