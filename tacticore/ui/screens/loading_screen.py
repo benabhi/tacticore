@@ -1,10 +1,11 @@
 """Pantalla de carga: genera el mundo mostrando una barra de progreso.
 
-Estilo Caves of Qud: un texto que cuenta que se esta generando y una barra que
-se llena. La generacion corre en un hilo aparte (worker) para no congelar la UI.
-Al terminar, NO avanza solo: revela un resumen de lo generado (en dos columnas) y
-muestra un prompt parpadeante; el jugador lee las estadisticas y pulsa Enter para
-seguir a "Crea tu club".
+Estilo Caves of Qud: arriba el pais que se esta generando, la barra que se llena
+y, debajo, un resumen con contadores que SUBEN EN VIVO (paises, ligas, clubes,
+estadios, hinchadas, presidentes, DTs, jugadores). Como todo se genera junto por
+club, los contadores se derivan del avance (clubes hechos). La generacion corre
+en un hilo aparte; al terminar, no avanza solo: aparece un prompt parpadeante y
+el jugador pulsa Enter para seguir a "Crea tu club".
 """
 
 import time
@@ -17,18 +18,22 @@ from ... import config
 from ...core.game import GameState
 from ...core.rng import new_rng
 from ...domain.country import Country
+from ...domain.enums import LeagueTier
 from ...generators import WorldGenerator
 from ..widgets.progress_bar import ProgressBar
 from .base_screen import BaseScreen
 from .create_club_screen import CreateClubScreen
 
 _PROMPT = "Presiona <ENTER> para continuar"
-_COL_W = 36           # ancho de cada columna del resumen
-_REVEAL_STEP = 0.12   # segundos entre cada item del resumen que aparece
+_COL_W = 36  # ancho de cada columna del resumen
+
+
+def _ceil_div(a: int, b: int) -> int:
+    return -(-a // b)
 
 
 class LoadingScreen(BaseScreen):
-    """Genera el mundo, muestra el avance y un resumen final."""
+    """Genera el mundo, muestra el avance y los contadores en vivo."""
 
     BINDINGS = [("enter", "continue", "Continuar")]
 
@@ -67,16 +72,16 @@ class LoadingScreen(BaseScreen):
     """
 
     def compose_viewport(self) -> ComposeResult:
+        self._done = 0
+        self._total = 1
         yield Static("T A C T I C O R E", id="title")
         yield Static("Preparando el mundo...", id="label")
         yield ProgressBar(width=56, id="bar")
-        yield Static("", id="stats")
+        yield Static(self._stats_text(), id="stats")
         yield Static("", id="prompt")
 
     def on_mount(self) -> None:
         self._last_pct = -1
-        self._stats: list[tuple[str, int]] = []
-        self._revealed = 0
         self._ready = False
         self._blink_on = True
         # Genera en un hilo para no bloquear la UI.
@@ -99,8 +104,11 @@ class LoadingScreen(BaseScreen):
 
     # --- Estos corren en el hilo de la UI (via call_from_thread) ---
     def _update_ui(self, label: str, done: int, total: int) -> None:
+        self._done = done
+        self._total = total
         self.query_one("#label", Static).update(label)
         self.query_one(ProgressBar).update_progress(done, total)
+        self.query_one("#stats", Static).update(self._stats_text())
 
     def _finish(self, world: list[Country]) -> None:
         # El mundo generado pasa a ser el estado raiz; el club del jugador se
@@ -110,59 +118,62 @@ class LoadingScreen(BaseScreen):
             start_date=config.SEASON_START_DATE,
             countries=world,
         )
+        # Dejar los contadores en su valor final exacto.
+        self._done = sum(len(lg.clubs) for co in world for lg in co.leagues)
+        self._total = self._done
+        self.query_one("#stats", Static).update(self._stats_text())
+        self.query_one(ProgressBar).update_progress(self._done, self._done)
         self.query_one("#label", Static).update("Mundo generado.")
-        self._stats = self._compute_stats(world)
-        # Revela el resumen item por item, como un checklist que se va llenando.
-        self._reveal_timer = self.set_interval(_REVEAL_STEP, self._reveal_step)
+        # Listo: ahora se puede continuar y arranca el parpadeo del prompt.
+        self._ready = True
+        self.set_interval(0.5, self._toggle_blink)
 
-    def _compute_stats(self, world: list[Country]) -> list[tuple[str, int]]:
-        clubs = [cl for co in world for lg in co.leagues for cl in lg.clubs]
-        n_clubs = len(clubs)
-        n_players = sum(len(cl.players) for cl in clubs)
-        n_leagues = sum(len(co.leagues) for co in world)
+    # --- Contadores derivados del avance (todo crece junto con los clubes) ---
+    def _counts(self) -> list[tuple[str, int]]:
+        done, total = self._done, self._total
+        per_league = config.CLUBS_PER_LEAGUE
+        tiers = len(LeagueTier)
+        per_country = per_league * tiers
+        n_countries = max(1, total // per_country)
+        n_leagues = n_countries * tiers
+        paises = min(n_countries, _ceil_div(done, per_country))
+        ligas = min(n_leagues, _ceil_div(done, per_league))
         return [
-            ("Paises", len(world)),
-            ("Ligas", n_leagues),
-            ("Clubes", n_clubs),
-            ("Estadios", n_clubs),
-            ("Hinchadas", n_clubs),
-            ("Presidentes", n_clubs),
-            ("Directores tecnicos", n_clubs),
-            ("Jugadores", n_players),
+            ("Paises", paises),
+            ("Ligas", ligas),
+            ("Clubes", done),
+            ("Estadios", done),
+            ("Hinchadas", done),
+            ("Presidentes", done),
+            ("Directores tecnicos", done),
+            ("Jugadores", done * config.SQUAD_SIZE),
         ]
 
-    def _reveal_step(self) -> None:
-        self._revealed += 1
-        self.query_one("#stats", Static).update(self._stats_text())
-        if self._revealed >= len(self._stats):
-            self._reveal_timer.stop()
-            # Listo: ahora se puede continuar y arranca el parpadeo del prompt.
-            self._ready = True
-            self.set_interval(0.5, self._toggle_blink)
-
     def _stats_text(self) -> Text:
-        """Resumen en dos columnas (izquierda se llena primero, luego derecha)."""
-        rows = (len(self._stats) + 1) // 2
+        """Resumen en dos columnas con los contadores actuales."""
+        stats = self._counts()
+        rows = (len(stats) + 1) // 2
         t = Text()
         for r in range(rows):
             for idx in (r, r + rows):
-                t.append_text(self._cell(idx))
+                t.append_text(self._cell(stats, idx))
             t.append("\n")
         return t
 
-    def _cell(self, idx: int) -> Text:
-        """Una celda del resumen (vacia si todavia no se revelo, para no mover nada)."""
-        if idx >= len(self._stats) or idx >= self._revealed:
+    def _cell(self, stats: list, idx: int) -> Text:
+        if idx >= len(stats):
             return Text(" " * _COL_W)
-        label, value = self._stats[idx]
-        prefix = f"  {label}: "
+        label, value = stats[idx]
+        head = "  * "                 # vineta
+        mid = f"{label}: "
         number = f"{value:,}"
         cell = Text()
-        cell.append(prefix, style="grey70")
+        cell.append(head, style="bold green")
+        cell.append(mid, style="grey70")
         cell.append(number, style="bold green")
-        pad = _COL_W - len(prefix) - len(number)
-        if pad > 0:
-            cell.append(" " * pad)
+        used = len(head) + len(mid) + len(number)
+        if used < _COL_W:
+            cell.append(" " * (_COL_W - used))
         return cell
 
     def _toggle_blink(self) -> None:
@@ -170,6 +181,6 @@ class LoadingScreen(BaseScreen):
         self.query_one("#prompt", Static).update(_PROMPT if self._blink_on else "")
 
     def action_continue(self) -> None:
-        # Solo avanza una vez que termino la generacion y el resumen.
+        # Solo avanza una vez que termino la generacion.
         if self._ready:
             self.app.switch_screen(CreateClubScreen())

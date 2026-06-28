@@ -68,11 +68,7 @@ class WorldGenerator:
                     league.clubs.append(club)
                     done += 1
                     if progress is not None:
-                        progress(
-                            f"Generando clubes de {country_name} (Liga {tier.value})",
-                            done,
-                            total_clubs,
-                        )
+                        progress(f"Generando {country_name}...", done, total_clubs)
                 country.leagues.append(league)
             countries.append(country)
 
