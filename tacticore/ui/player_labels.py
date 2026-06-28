@@ -47,6 +47,22 @@ SPECIALTY_LABEL = {
     Specialty.LEADER: "Lider",
 }
 
+# Codigo corto de cada especialidad (para la tabla de plantilla).
+SPECIALTY_SHORT = {
+    Specialty.HEADER: "CAB",
+    Specialty.POWERFUL: "PWR",
+    Specialty.QUICK: "VEL",
+    Specialty.TECHNICAL: "TEC",
+    Specialty.UNPREDICTABLE: "IMP",
+    Specialty.POACHER: "CAZ",
+    Specialty.PLAYMAKER: "CER",
+    Specialty.DEAD_BALL: "CAN",
+    Specialty.ROCK: "MUR",
+    Specialty.CAT: "FEL",
+    Specialty.IRON: "HIE",
+    Specialty.LEADER: "LID",
+}
+
 # Nombre de cada atributo en pantalla.
 ATTR_LABEL = {
     "speed": "Velocidad",

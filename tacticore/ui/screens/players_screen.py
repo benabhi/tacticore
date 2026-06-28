@@ -2,7 +2,7 @@
 
 Muestra una fila por jugador con los datos esenciales (no todos: no entran). Se
 navega con las flechas (arriba/abajo entre filas, izquierda/derecha entre
-paginas) y con Enter se abre la ficha completa del jugador. Todo en 80x25.
+paginas) y con Enter se abre la ficha completa del jugador. Usa los 80 de ancho.
 """
 
 from collections.abc import Iterator
@@ -11,22 +11,37 @@ from rich.text import Text
 from textual.widget import Widget
 from textual.widgets import Static
 
-from ..player_labels import FOOT_SHORT, POSITION_SHORT
+from ..player_labels import FOOT_SHORT, POSITION_SHORT, SPECIALTY_SHORT
 from .section_screen import SectionScreen
 
-_PAGE_SIZE = 14  # filas de jugadores por pagina
+_WIDTH = 80       # ancho total de la tabla (toda la pantalla)
+_PAGE_SIZE = 14   # filas de jugadores por pagina
 
-# Columnas de la tabla: (titulo, ancho). El nombre se lleva el grueso del ancho.
+# Columnas: (titulo, ancho, alineacion). El nombre se calcula para llenar los 80.
+# Fijas (sin el nombre) suman 32; con marcador (2) y 11 separadores -> nombre = 35.
+_NAME_W = _WIDTH - 2 - 11 - 32
 _COLUMNS = [
-    ("#", 2), ("NOMBRE", 22), ("POS", 3), ("NAC", 3), ("ED", 3),
-    ("PIE", 3), ("OVR", 3), ("POT", 3), ("FOR", 3), ("FIT", 3),
+    ("#", 2, "r"), ("NOMBRE", _NAME_W, "l"), ("POS", 3, "l"), ("NAC", 3, "l"),
+    ("ED", 2, "r"), ("PIE", 3, "l"), ("OVR", 3, "r"), ("POT", 3, "r"),
+    ("FOR", 3, "r"), ("FIT", 3, "r"), ("MOR", 3, "r"), ("ESP", 4, "l"),
 ]
+_MOR_IDX = 10
+_ESP_IDX = 11
+
+# Color de la moral (1 peor -> 5 mejor): de rojo a verde, sin leyenda aparte.
+_MORALE_STYLE = {1: "bold red", 2: "red", 3: "yellow", 4: "green", 5: "bold green"}
 
 
 class PlayersScreen(SectionScreen):
-    """Plantilla del club: tabla paginada y navegable."""
+    """Plantilla del club: tabla paginada y navegable, a ancho completo."""
 
     section_key = "J"
+
+    CSS = """
+    #content {
+        padding: 1 0;
+    }
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -64,56 +79,68 @@ class PlayersScreen(SectionScreen):
 
         t = Text()
         t.append(f"PLANTILLA  {club.name}   ({total} jugadores)\n\n", style="bold green")
-        # Encabezado de columnas.
-        t.append("  " + self._row_cells(_COLUMNS) + "\n", style="bold green")
-        t.append("  " + "-" * (sum(w for _, w in _COLUMNS) + len(_COLUMNS) - 1) + "\n",
-                 style="grey50")
-        # Filas de jugadores.
+        self._append_header(t)
         for offset, player in enumerate(page_players):
-            idx = start + offset
-            line = self._player_cells(idx, player)
-            if idx == self._selected:
-                t.append("> ", style="bold black on green")
-                t.append(line + "\n", style="bold black on green")
-            else:
-                t.append("  ")
-                t.append(line + "\n", style="white")
+            self._append_row(t, player, start + offset == self._selected)
         # Relleno para que el pie quede en su lugar aunque la pagina este corta.
         for _ in range(_PAGE_SIZE - len(page_players)):
             t.append("\n")
-        # Pie: indicadores de teclas + paginacion.
         t.append("\n")
         t.append("Flechas: mover   Enter: ficha   <- ->: pagina", style="grey62")
         t.append(f"        Pagina {page + 1}/{pages}\n", style="grey62")
         return t
 
-    def _row_cells(self, cells) -> str:
-        """Une celdas (texto, ancho) con un espacio; numeros a la derecha."""
-        right = {"#", "ED", "OVR", "POT", "FOR", "FIT"}
-        parts = []
-        for title, width in cells:
-            text = str(title)[:width]
-            parts.append(text.rjust(width) if title in right else text.ljust(width))
-        return " ".join(parts)
+    @staticmethod
+    def _fmt(text, width: int, align: str) -> str:
+        text = str(text)[:width]
+        return text.rjust(width) if align == "r" else text.ljust(width)
 
-    def _player_cells(self, idx: int, p) -> str:
-        values = [
-            (str(p.shirt_number or "-"), 2, True),
-            (p.full_name, 22, False),
-            (POSITION_SHORT[p.position], 3, False),
-            (p.nationality, 3, False),
-            (str(p.age_on(self._today)), 3, True),
-            (FOOT_SHORT[p.foot], 3, False),
-            (str(round(p.overall)), 3, True),
-            (str(round(p.potential)), 3, True),
-            (str(round(p.form)), 3, True),
-            (str(round(p.fitness)), 3, True),
+    def _append_header(self, t: Text) -> None:
+        cells = [self._fmt(h, w, a) for h, w, a in _COLUMNS]
+        line = ("  " + " ".join(cells)).ljust(_WIDTH)
+        t.append(line + "\n", style="bold green")
+        t.append("-" * _WIDTH + "\n", style="grey50")
+
+    def _append_row(self, t: Text, p, selected: bool) -> None:
+        values = self._cell_values(p)
+        cells = [self._fmt(v, w, a) for v, (_, w, a) in zip(values, _COLUMNS)]
+        if selected:
+            # Fila resaltada: barra verde de ancho completo.
+            line = ("> " + " ".join(cells)).ljust(_WIDTH)
+            t.append(line + "\n", style="bold black on green")
+            return
+        t.append("  ")
+        for i, cell in enumerate(cells):
+            if i == _MOR_IDX:
+                style = _MORALE_STYLE.get(int(cell), "white")
+            elif i == _ESP_IDX:
+                style = "grey42" if cell.strip() == "-" else "bold cyan"
+            else:
+                style = "white"
+            t.append(cell, style=style)
+            if i < len(cells) - 1:
+                t.append(" ")
+        used = 2 + sum(len(c) for c in cells) + (len(cells) - 1)
+        if used < _WIDTH:
+            t.append(" " * (_WIDTH - used))
+        t.append("\n")
+
+    def _cell_values(self, p) -> list:
+        esp = SPECIALTY_SHORT[p.specialty] if p.specialty else "-"
+        return [
+            str(p.shirt_number or "-"),
+            p.full_name,
+            POSITION_SHORT[p.position],
+            p.nationality,
+            str(p.age_on(self._today)),
+            FOOT_SHORT[p.foot],
+            str(round(p.overall)),
+            str(round(p.potential)),
+            str(round(p.form)),
+            str(round(p.fitness)),
+            str(p.morale.value),
+            esp,
         ]
-        parts = []
-        for text, width, right in values:
-            text = text[:width]
-            parts.append(text.rjust(width) if right else text.ljust(width))
-        return " ".join(parts)
 
     def _refresh(self) -> None:
         self.query_one("#roster", Static).update(self._table_text())
