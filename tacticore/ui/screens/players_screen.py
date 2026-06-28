@@ -45,7 +45,9 @@ class PlayersScreen(SectionScreen):
 
     def __init__(self) -> None:
         super().__init__()
-        self._selected = 0  # indice global del jugador seleccionado
+        self._selected = 0    # indice del jugador seleccionado (sobre los visibles)
+        self._searching = False  # si esta activo el buscador (se escribe)
+        self._query = ""      # texto del filtro en vivo
 
     def content(self) -> Iterator[Widget]:
         yield Static(self._table_text(), id="roster")
@@ -62,33 +64,64 @@ class PlayersScreen(SectionScreen):
     def _today(self):
         return self.app.game.calendar.current_date
 
+    def _haystack(self, p) -> str:
+        """Todos los valores visibles del jugador, en minusculas, para buscar."""
+        return " ".join(self._cell_values(p)).lower()
+
+    def _visible(self) -> list:
+        """Jugadores que pasan el filtro de busqueda (todos si no hay filtro)."""
+        players = self._players
+        if not self._query:
+            return players
+        q = self._query.lower()
+        return [p for p in players if q in self._haystack(p)]
+
     # --- Render de la tabla ---
     def _table_text(self) -> Text:
-        players = self._players
         game = self.app.game
         club = game.player_club if game else None
-        if not players:
+        if not self._players:
             return Text("No hay jugadores para mostrar.", style="white")
 
-        total = len(players)
-        pages = (total + _PAGE_SIZE - 1) // _PAGE_SIZE
-        self._selected = max(0, min(total - 1, self._selected))
-        page = self._selected // _PAGE_SIZE
+        visible = self._visible()
+        total = len(visible)
+        pages = max(1, (total + _PAGE_SIZE - 1) // _PAGE_SIZE)
+        self._selected = max(0, min(total - 1, self._selected)) if total else 0
+        page = self._selected // _PAGE_SIZE if total else 0
         start = page * _PAGE_SIZE
-        page_players = players[start:start + _PAGE_SIZE]
+        page_players = visible[start:start + _PAGE_SIZE]
 
         t = Text()
-        t.append(f"PLANTILLA  {club.name}   ({total} jugadores)\n\n", style="bold green")
+        title = f"PLANTILLA  {club.name}   ({len(self._players)} jugadores)"
+        if self._query:
+            title += f"   [{total} coinciden]"
+        t.append(title + "\n\n", style="bold green")
         self._append_header(t)
-        for offset, player in enumerate(page_players):
-            self._append_row(t, player, start + offset == self._selected)
+        if total == 0:
+            t.append(f"  Sin resultados para \"{self._query}\".\n", style="grey62")
+            shown = 1
+        else:
+            for offset, player in enumerate(page_players):
+                self._append_row(t, player, start + offset == self._selected)
+            shown = len(page_players)
         # Relleno para que el pie quede en su lugar aunque la pagina este corta.
-        for _ in range(_PAGE_SIZE - len(page_players)):
+        for _ in range(_PAGE_SIZE - shown):
             t.append("\n")
         t.append("\n")
-        t.append("Flechas: mover   Enter: ficha   <- ->: pagina", style="grey62")
-        t.append(f"        Pagina {page + 1}/{pages}\n", style="grey62")
+        self._append_footer(t, page + 1, pages)
         return t
+
+    def _append_footer(self, t: Text, page: int, pages: int) -> None:
+        if self._searching:
+            t.append("Buscar: ", style="bold yellow")
+            t.append(self._query + "_", style="bold white")
+            t.append("   Enter: ficha   Esc: cancelar", style="grey62")
+            t.append(f"   Pag {page}/{pages}", style="grey62")
+        else:
+            t.append("Flechas: mover   Enter: ficha   /: buscar   <- ->: pagina",
+                     style="grey62")
+            t.append(f"   Pagina {page}/{pages}", style="grey62")
+        t.append("\n")
 
     @staticmethod
     def _fmt(text, width: int, align: str) -> str:
@@ -145,33 +178,64 @@ class PlayersScreen(SectionScreen):
     def _refresh(self) -> None:
         self.query_one("#roster", Static).update(self._table_text())
 
-    # --- Teclado: navegar y abrir ficha ---
+    def _open_detail(self) -> None:
+        visible = self._visible()
+        if not visible:
+            return
+        from .player_detail_screen import PlayerDetailScreen
+
+        self.app.push_screen(
+            PlayerDetailScreen(visible[self._selected], self._today)
+        )
+
+    def _move(self, delta: int) -> None:
+        total = len(self._visible())
+        if total:
+            self._selected = max(0, min(total - 1, self._selected + delta))
+        self._refresh()
+
+    # --- Teclado: navegar, buscar y abrir ficha ---
     def on_key(self, event) -> None:
-        players = self._players
-        if not players:
+        if not self._players:
             return
         key = event.key
-        total = len(players)
+        if self._searching:
+            self._on_key_search(event, key)
+            return
         if key == "up":
-            self._selected = max(0, self._selected - 1)
-            event.stop()
-            self._refresh()
+            event.stop(); self._move(-1)
         elif key == "down":
-            self._selected = min(total - 1, self._selected + 1)
-            event.stop()
-            self._refresh()
+            event.stop(); self._move(1)
         elif key in ("left", "pageup"):
-            self._selected = max(0, self._selected - _PAGE_SIZE)
-            event.stop()
-            self._refresh()
+            event.stop(); self._move(-_PAGE_SIZE)
         elif key in ("right", "pagedown"):
-            self._selected = min(total - 1, self._selected + _PAGE_SIZE)
-            event.stop()
-            self._refresh()
+            event.stop(); self._move(_PAGE_SIZE)
         elif key == "enter":
-            event.stop()
-            from .player_detail_screen import PlayerDetailScreen
+            event.stop(); self._open_detail()
+        elif event.character == "/":
+            # Entra al buscador en vivo.
+            self._searching = True
+            self._query = ""
+            self._selected = 0
+            event.stop(); self._refresh()
 
-            self.app.push_screen(
-                PlayerDetailScreen(players[self._selected], self._today)
-            )
+    def _on_key_search(self, event, key: str) -> None:
+        if key == "escape":
+            self._searching = False
+            self._query = ""
+            self._selected = 0
+            event.stop(); self._refresh()
+        elif key == "enter":
+            event.stop(); self._open_detail()
+        elif key == "backspace":
+            self._query = self._query[:-1]
+            self._selected = 0
+            event.stop(); self._refresh()
+        elif key in ("up", "down", "left", "right", "pageup", "pagedown"):
+            step = {"up": -1, "down": 1, "left": -_PAGE_SIZE, "right": _PAGE_SIZE,
+                    "pageup": -_PAGE_SIZE, "pagedown": _PAGE_SIZE}[key]
+            event.stop(); self._move(step)
+        elif event.character and event.character.isprintable() and len(event.character) == 1:
+            self._query += event.character
+            self._selected = 0
+            event.stop(); self._refresh()
