@@ -7,18 +7,20 @@ Lo usan la tabla de plantilla y la ficha del jugador.
 from ..domain.enums import Foot, Morale, Position, Specialty
 from ..domain.player import MENTAL_ATTRS, PHYSICAL_ATTRS, TECHNICAL_ATTRS
 
-# Posicion: nombre completo y sigla corta (para la tabla).
+# Posicion: nombre completo en espanol (la sigla es Position.value, ej. "LI").
 POSITION_LABEL = {
     Position.GOALKEEPER: "Arquero",
-    Position.DEFENDER: "Defensor",
-    Position.MIDFIELDER: "Mediocampista",
-    Position.FORWARD: "Delantero",
-}
-POSITION_SHORT = {
-    Position.GOALKEEPER: "ARQ",
-    Position.DEFENDER: "DEF",
-    Position.MIDFIELDER: "MED",
-    Position.FORWARD: "DEL",
+    Position.CENTER_BACK: "Defensor central",
+    Position.LEFT_BACK: "Lateral izquierdo",
+    Position.RIGHT_BACK: "Lateral derecho",
+    Position.DEF_MID: "Mediocampista defensivo",
+    Position.CENTER_MID: "Mediocampista central",
+    Position.ATT_MID: "Mediocampista ofensivo",
+    Position.LEFT_MID: "Volante izquierdo",
+    Position.RIGHT_MID: "Volante derecho",
+    Position.LEFT_WING: "Extremo izquierdo",
+    Position.RIGHT_WING: "Extremo derecho",
+    Position.STRIKER: "Delantero centro",
 }
 
 FOOT_LABEL = {Foot.LEFT: "Izquierdo", Foot.RIGHT: "Derecho", Foot.BOTH: "Ambidiestro"}

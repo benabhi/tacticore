@@ -17,11 +17,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from tacticore import config
 from tacticore.core.rng import new_rng
-from tacticore.domain.enums import Foot, LeagueTier, Position
+from tacticore.domain.enums import Foot, LeagueTier
 from tacticore.generators import ClubGenerator
 
-_POS = {Position.GOALKEEPER: "ARQ", Position.DEFENDER: "DEF",
-        Position.MIDFIELDER: "MED", Position.FORWARD: "DEL"}
 _FOOT = {Foot.LEFT: "Zurdo", Foot.RIGHT: "Diestro", Foot.BOTH: "Ambidiestro"}
 _MORALE = {1: "Destrozado", 2: "Bajoneado", 3: "Neutral", 4: "Contento", 5: "Encendido"}
 _TODAY = config.SEASON_START_DATE
@@ -43,7 +41,7 @@ def show(club):
     print("--- ---------------------- --- --- --- --- --- --- ---  ----------  ---------")
     for p in sorted(club.players, key=lambda p: p.shirt_number or 99):
         estado = "Lesionado" if p.is_injured else "Sano"
-        print(f"{p.shirt_number:>2}  {p.display_name:<22.22} {_POS[p.position]:<3} "
+        print(f"{p.shirt_number:>2}  {p.display_name:<22.22} {p.position.value:<3} "
               f"{p.nationality:<3} {p.age_on(_TODAY):>3} {_i(p.overall):>3} "
               f"{_i(p.potential):>3} {_i(p.form):>3} {_i(p.fitness):>3}  "
               f"{_MORALE[p.morale.value]:<10}  {estado}")
@@ -54,7 +52,7 @@ def show(club):
     print()
     print("+" + "-" * 76 + "+")
     print(f"| #{star.shirt_number:<3}{star.full_name}{alias}".ljust(50)
-          + f"{_POS[star.position]}  Pie: {_FOOT[star.foot]}".ljust(26) + "|")
+          + f"{star.position.value}  Pie: {_FOOT[star.foot]}".ljust(26) + "|")
     print(f"| Nac: {star.nationality}   Nac. {star.birth_date.strftime('%d/%m/%Y')}   "
           f"Edad {star.age_on(_TODAY)}   {star.height_cm}cm/{star.weight_kg}kg   "
           f"OVR {_i(star.overall)}  POT {_i(star.potential)}".ljust(74) + " |")

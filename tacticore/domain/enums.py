@@ -4,12 +4,27 @@ from enum import Enum
 
 
 class Position(Enum):
-    """Posicion natural de un jugador en el campo."""
+    """Posicion natural (preferida) de un jugador, al estandar del futbol.
 
-    GOALKEEPER = "GK"
-    DEFENDER = "DEF"
-    MIDFIELDER = "MID"
-    FORWARD = "FWD"
+    El nombre del miembro va en ingles (directiva 4); el valor es la sigla en
+    espanol que se muestra en pantalla (directiva 2/4). La agrupacion por linea
+    (arco/defensa/medio/ataque) y los atributos prioritarios de cada posicion
+    viven en `domain/positions.py`. El comportamiento en cancha lo define `Role`
+    (ver simulation/match/entities.py), no esta posicion.
+    """
+
+    GOALKEEPER = "ARQ"   # Arquero
+    CENTER_BACK = "DFC"  # Defensor central
+    LEFT_BACK = "LI"     # Lateral izquierdo
+    RIGHT_BACK = "LD"    # Lateral derecho
+    DEF_MID = "MCD"      # Mediocampista central defensivo
+    CENTER_MID = "MC"    # Mediocampista central
+    ATT_MID = "MCO"      # Mediocampista central ofensivo (enganche)
+    LEFT_MID = "MI"      # Volante izquierdo
+    RIGHT_MID = "MD"     # Volante derecho
+    LEFT_WING = "EI"     # Extremo izquierdo
+    RIGHT_WING = "ED"    # Extremo derecho
+    STRIKER = "DC"       # Delantero centro
 
 
 class Foot(Enum):

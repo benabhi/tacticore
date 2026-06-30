@@ -9,8 +9,8 @@ from tacticore.generators import PlayerGenerator
 
 
 def test_generated_player_is_deterministic():
-    a = PlayerGenerator(new_rng(1)).generate(Position.FORWARD)
-    b = PlayerGenerator(new_rng(1)).generate(Position.FORWARD)
+    a = PlayerGenerator(new_rng(1)).generate(Position.STRIKER)
+    b = PlayerGenerator(new_rng(1)).generate(Position.STRIKER)
     assert a == b
 
 
@@ -46,6 +46,32 @@ def test_attribute_groups_are_three_of_five():
 
     assert len(ALL_ATTRS) == 15
     assert len(PHYSICAL_ATTRS) == len(TECHNICAL_ATTRS) == len(MENTAL_ATTRS) == 5
+
+
+def test_position_priorities_cover_all_attributes():
+    # Las 12 posiciones existen, tienen 5 atributos validos cada una, y entre
+    # todas usan los 15 atributos (todos pesan en alguna posicion).
+    from tacticore.domain.enums import Position
+    from tacticore.domain.positions import POSITION_PRIORITIES
+
+    assert set(POSITION_PRIORITIES) == set(Position)
+    used = set()
+    for attrs in POSITION_PRIORITIES.values():
+        assert len(attrs) == 5
+        assert all(a in ALL_ATTRS for a in attrs)
+        used.update(attrs)
+    assert used == set(ALL_ATTRS)
+
+
+def test_experience_grows_with_age():
+    from tacticore.domain.enums import Position
+
+    gen = PlayerGenerator(new_rng(4))
+    young = [p for _ in range(200) if (p := gen.generate(Position.CENTER_MID)).age_on(date(2025, 7, 1)) <= 18]
+    veterans = [p for _ in range(200) if (p := gen.generate(Position.CENTER_MID)).age_on(date(2025, 7, 1)) >= 32]
+    avg_young = sum(p.experience for p in young) / len(young)
+    avg_vet = sum(p.experience for p in veterans) / len(veterans)
+    assert avg_vet > avg_young
 
 
 def test_age_is_derived_from_birth_date_and_ages_over_time():

@@ -25,8 +25,9 @@ SCHEMA_VERSION = 1
 # Columnas de jugador, separadas para construirlas una sola vez (DRY con ALL_ATTRS).
 _PLAYER_BASE_COLS = [
     "first_name", "last_name", "nationality", "position", "foot", "birth_date",
-    "height_cm", "weight_kg", "form", "fitness", "morale", "specialty",
-    "nickname", "shirt_number", "origin_club", "potential", "injury_proneness",
+    "height_cm", "weight_kg", "form", "fitness", "experience", "morale",
+    "specialty", "nickname", "shirt_number", "origin_club", "potential",
+    "injury_proneness",
 ]
 _PLAYER_COLS = _PLAYER_BASE_COLS + list(ALL_ATTRS)
 
@@ -93,6 +94,7 @@ CREATE TABLE players (
     weight_kg        INTEGER NOT NULL,
     form             REAL NOT NULL,
     fitness          REAL NOT NULL,
+    experience       REAL NOT NULL,
     morale           INTEGER NOT NULL,
     specialty        TEXT,
     nickname         TEXT,
@@ -217,8 +219,8 @@ def _player_row(club_id: int, p: Player) -> tuple:
     base = (
         p.first_name, p.last_name, p.nationality, p.position.value, p.foot.value,
         p.birth_date.isoformat(), p.height_cm, p.weight_kg, p.form, p.fitness,
-        p.morale.value, p.specialty.value if p.specialty else None, p.nickname,
-        p.shirt_number, p.origin_club, p.potential, p.injury_proneness,
+        p.experience, p.morale.value, p.specialty.value if p.specialty else None,
+        p.nickname, p.shirt_number, p.origin_club, p.potential, p.injury_proneness,
     )
     attrs = tuple(getattr(p, attr) for attr in ALL_ATTRS)
     return (club_id, *base, *attrs)
@@ -313,6 +315,7 @@ def _player_from_row(row: sqlite3.Row) -> Player:
         weight_kg=row["weight_kg"],
         form=row["form"],
         fitness=row["fitness"],
+        experience=row["experience"],
         morale=Morale(row["morale"]),
         specialty=Specialty(row["specialty"]) if row["specialty"] else None,
         nickname=row["nickname"],

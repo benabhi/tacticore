@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from ...domain.club import Club
 from ...domain.enums import Position
 from ...domain.player import Player
+from ...domain.positions import is_goalkeeper, line_of
 from .entities import Role, Side
 from .field import Pitch
 from .geometry import Vec2
@@ -52,12 +53,12 @@ FORMATION_7 = Formation(
     "1-2-3-1",
     (
         _slot(Position.GOALKEEPER, 0.05, 0.50, Role.GOALKEEPER),
-        _slot(Position.DEFENDER, 0.22, 0.30, Role.CENTER_BACK),
-        _slot(Position.DEFENDER, 0.22, 0.70, Role.CENTER_BACK),
-        _slot(Position.MIDFIELDER, 0.45, 0.25, Role.WINGER),
-        _slot(Position.MIDFIELDER, 0.45, 0.50, Role.MIDFIELDER),
-        _slot(Position.MIDFIELDER, 0.45, 0.75, Role.WINGER),
-        _slot(Position.FORWARD, 0.68, 0.50, Role.STRIKER),
+        _slot(Position.CENTER_BACK, 0.22, 0.30, Role.CENTER_BACK),
+        _slot(Position.CENTER_BACK, 0.22, 0.70, Role.CENTER_BACK),
+        _slot(Position.RIGHT_MID, 0.45, 0.25, Role.WINGER),
+        _slot(Position.CENTER_MID, 0.45, 0.50, Role.MIDFIELDER),
+        _slot(Position.LEFT_MID, 0.45, 0.75, Role.WINGER),
+        _slot(Position.STRIKER, 0.68, 0.50, Role.STRIKER),
     ),
 )
 
@@ -67,16 +68,16 @@ FORMATION_11 = Formation(
     "4-3-3",
     (
         _slot(Position.GOALKEEPER, 0.05, 0.50, Role.GOALKEEPER),
-        _slot(Position.DEFENDER, 0.20, 0.15, Role.FULLBACK),
-        _slot(Position.DEFENDER, 0.18, 0.38, Role.CENTER_BACK),
-        _slot(Position.DEFENDER, 0.18, 0.62, Role.CENTER_BACK),
-        _slot(Position.DEFENDER, 0.20, 0.85, Role.FULLBACK),
-        _slot(Position.MIDFIELDER, 0.45, 0.30, Role.MIDFIELDER),
-        _slot(Position.MIDFIELDER, 0.42, 0.50, Role.MIDFIELDER),
-        _slot(Position.MIDFIELDER, 0.45, 0.70, Role.MIDFIELDER),
-        _slot(Position.FORWARD, 0.72, 0.18, Role.WINGER),
-        _slot(Position.FORWARD, 0.70, 0.50, Role.STRIKER),
-        _slot(Position.FORWARD, 0.72, 0.82, Role.WINGER),
+        _slot(Position.RIGHT_BACK, 0.20, 0.15, Role.FULLBACK),
+        _slot(Position.CENTER_BACK, 0.18, 0.38, Role.CENTER_BACK),
+        _slot(Position.CENTER_BACK, 0.18, 0.62, Role.CENTER_BACK),
+        _slot(Position.LEFT_BACK, 0.20, 0.85, Role.FULLBACK),
+        _slot(Position.DEF_MID, 0.45, 0.30, Role.MIDFIELDER),
+        _slot(Position.CENTER_MID, 0.42, 0.50, Role.MIDFIELDER),
+        _slot(Position.ATT_MID, 0.45, 0.70, Role.MIDFIELDER),
+        _slot(Position.RIGHT_WING, 0.72, 0.18, Role.WINGER),
+        _slot(Position.STRIKER, 0.70, 0.50, Role.STRIKER),
+        _slot(Position.LEFT_WING, 0.72, 0.82, Role.WINGER),
     ),
 )
 
@@ -86,16 +87,16 @@ FORMATION_11_442 = Formation(
     "4-4-2",
     (
         _slot(Position.GOALKEEPER, 0.05, 0.50, Role.GOALKEEPER),
-        _slot(Position.DEFENDER, 0.20, 0.15, Role.FULLBACK),
-        _slot(Position.DEFENDER, 0.18, 0.40, Role.CENTER_BACK),
-        _slot(Position.DEFENDER, 0.18, 0.60, Role.CENTER_BACK),
-        _slot(Position.DEFENDER, 0.20, 0.85, Role.FULLBACK),
-        _slot(Position.MIDFIELDER, 0.48, 0.16, Role.WINGER),
-        _slot(Position.MIDFIELDER, 0.45, 0.40, Role.MIDFIELDER),
-        _slot(Position.MIDFIELDER, 0.45, 0.60, Role.MIDFIELDER),
-        _slot(Position.MIDFIELDER, 0.48, 0.84, Role.WINGER),
-        _slot(Position.FORWARD, 0.70, 0.40, Role.STRIKER),
-        _slot(Position.FORWARD, 0.70, 0.60, Role.STRIKER),
+        _slot(Position.RIGHT_BACK, 0.20, 0.15, Role.FULLBACK),
+        _slot(Position.CENTER_BACK, 0.18, 0.40, Role.CENTER_BACK),
+        _slot(Position.CENTER_BACK, 0.18, 0.60, Role.CENTER_BACK),
+        _slot(Position.LEFT_BACK, 0.20, 0.85, Role.FULLBACK),
+        _slot(Position.RIGHT_MID, 0.48, 0.16, Role.WINGER),
+        _slot(Position.CENTER_MID, 0.45, 0.40, Role.MIDFIELDER),
+        _slot(Position.CENTER_MID, 0.45, 0.60, Role.MIDFIELDER),
+        _slot(Position.LEFT_MID, 0.48, 0.84, Role.WINGER),
+        _slot(Position.STRIKER, 0.70, 0.40, Role.STRIKER),
+        _slot(Position.STRIKER, 0.70, 0.60, Role.STRIKER),
     ),
 )
 
@@ -117,29 +118,34 @@ def slot_to_meters(slot: FormationSlot, side: Side, pitch: Pitch) -> Vec2:
 
 
 def pick_lineup(club: Club, formation: Formation) -> list[Player]:
-    """Elige los titulares: el mejor disponible para la posicion de cada slot."""
-    by_position: dict[Position, list[Player]] = {}
-    for player in sorted(club.players, key=lambda p: p.overall, reverse=True):
-        by_position.setdefault(player.position, []).append(player)
+    """Elige los titulares: el mejor disponible para cada slot.
 
-    # Jugadores de campo ordenados por overall (para el fallback).
-    outfield = [
-        p
-        for p in sorted(club.players, key=lambda p: p.overall, reverse=True)
-        if p.position is not Position.GOALKEEPER
-    ]
+    Prioridad por slot: 1) jugador de esa posicion exacta; 2) de la misma linea
+    (un MCO falta -> otro mediocampista); 3) el mejor de campo libre; 4) lo que
+    quede (arquero suplente solo como ultimo recurso). Todo por overall.
+    """
+    ranked = sorted(club.players, key=lambda p: p.overall, reverse=True)
+    by_position: dict[Position, list[Player]] = {}
+    by_line: dict[object, list[Player]] = {}
+    for player in ranked:
+        by_position.setdefault(player.position, []).append(player)
+        by_line.setdefault(line_of(player.position), []).append(player)
+    outfield = [p for p in ranked if not is_goalkeeper(p.position)]
 
     used: set[int] = set()
     lineup: list[Player] = []
     for slot in formation.slots:
-        candidates = by_position.get(slot.position, [])
-        pick = next((p for p in candidates if id(p) not in used), None)
-        if pick is None:
-            # No hay de esa posicion: cae al mejor jugador de campo no usado;
-            # un arquero suplente solo como ultimo recurso.
-            pick = next((p for p in outfield if id(p) not in used), None)
-        if pick is None:
-            pick = next(p for p in club.players if id(p) not in used)
+        pools = (
+            by_position.get(slot.position, []),
+            by_line.get(line_of(slot.position), []),
+            outfield,
+            club.players,
+        )
+        pick = None
+        for pool in pools:
+            pick = next((p for p in pool if id(p) not in used), None)
+            if pick is not None:
+                break
         used.add(id(pick))
         lineup.append(pick)
     return lineup

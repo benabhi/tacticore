@@ -1,10 +1,11 @@
 """Tests de posesion y pase/remate (B3.2)."""
 
 from tacticore.core.rng import new_rng
-from tacticore.domain.enums import LeagueTier, Position
+from tacticore.domain.enums import LeagueTier
 from tacticore.generators import ClubGenerator
 from tacticore.simulation.match import DEFAULT_DT, MatchEngine, kickoff_state
 from tacticore.simulation.match import ai
+from tacticore.simulation.match.entities import Role
 
 
 def _fresh_state():
@@ -50,7 +51,7 @@ def test_owned_ball_follows_carrier():
 
 def test_pass_target_is_a_teammate():
     state = _fresh_state()
-    owner = next(p for p in state.home if p.player.position is Position.MIDFIELDER)
+    owner = next(p for p in state.home if p.role is Role.MIDFIELDER)
     target = ai.best_pass_target(owner, state, max_dist=60.0)
     if target is not None:
         assert target in state.home

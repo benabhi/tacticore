@@ -20,17 +20,19 @@ def test_club_has_two_goalkeepers():
     assert len(keepers) >= 2
 
 
-def test_squad_meets_position_minimums():
+def test_squad_covers_all_lines():
     from collections import Counter
 
     from tacticore.domain.enums import LeagueTier, Position
+    from tacticore.domain.positions import Line, line_of
 
     club = ClubGenerator(new_rng(11)).generate(squad_size=16, tier=LeagueTier.C)
-    counts = Counter(p.position for p in club.players)
-    assert counts[Position.GOALKEEPER] >= 2
-    assert counts[Position.DEFENDER] >= 5
-    assert counts[Position.MIDFIELDER] >= 5
-    assert counts[Position.FORWARD] >= 3
+    by_line = Counter(line_of(p.position) for p in club.players)
+    # Al menos 2 arqueros y cobertura de cada linea para armar una 4-3-3.
+    assert by_line[Line.GOALKEEPER] >= 2
+    assert by_line[Line.DEFENSE] >= 4
+    assert by_line[Line.MIDFIELD] >= 3
+    assert by_line[Line.ATTACK] >= 3
     assert club.squad_size == 16
 
 

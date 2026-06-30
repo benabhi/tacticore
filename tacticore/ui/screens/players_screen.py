@@ -11,7 +11,7 @@ from rich.text import Text
 from textual.widget import Widget
 from textual.widgets import Static
 
-from ..player_labels import FOOT_SHORT, POSITION_SHORT, SPECIALTY_SHORT
+from ..player_labels import FOOT_SHORT, SPECIALTY_SHORT
 from .section_screen import SectionScreen
 
 _WIDTH = 80       # ancho total de la tabla (toda la pantalla)
@@ -163,7 +163,7 @@ class PlayersScreen(SectionScreen):
         return [
             str(p.shirt_number or "-"),
             p.full_name,
-            POSITION_SHORT[p.position],
+            p.position.value,
             p.nationality,
             str(p.age_on(self._today)),
             FOOT_SHORT[p.foot],
@@ -185,8 +185,13 @@ class PlayersScreen(SectionScreen):
         from .player_detail_screen import PlayerDetailScreen
 
         self.app.push_screen(
-            PlayerDetailScreen(visible[self._selected], self._today)
+            PlayerDetailScreen(visible, self._selected, self._today, self._on_detail_close)
         )
+
+    def _on_detail_close(self, index: int) -> None:
+        # Al volver de la ficha, la tabla queda en el ultimo jugador visto.
+        self._selected = index
+        self._refresh()
 
     def _move(self, delta: int) -> None:
         total = len(self._visible())

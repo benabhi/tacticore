@@ -10,6 +10,7 @@ from datetime import date
 
 from .enums import Foot, Morale, Position, Specialty
 from .injury import Injury
+from .positions import POSITION_PRIORITIES
 
 # Atributos agrupados en 3 categorias de 5 (todos float 1-100). Son GENERALES:
 # sirven para cualquier jugador. El arquero no tiene atributos propios; se apoya
@@ -19,25 +20,13 @@ TECHNICAL_ATTRS = ("passing", "shooting", "dribbling", "tackling", "crossing")
 MENTAL_ATTRS = ("vision", "positioning", "anticipation", "composure", "work_rate")
 ALL_ATTRS = PHYSICAL_ATTRS + TECHNICAL_ATTRS + MENTAL_ATTRS
 
-# Pesos por posicion para el overall: que atributos importan y cuanto. Es
-# provisional; la simulacion real usa los atributos crudos, no este promedio.
+# Pesos por posicion para el overall: se derivan de los atributos prioritarios de
+# cada posicion (mas importante -> mas peso). Es provisional; la simulacion real
+# usa los atributos crudos, no este promedio.
+_RANK_WEIGHTS = (5, 4, 3, 2, 1)
 _OVERALL_WEIGHTS: dict[Position, dict[str, int]] = {
-    Position.GOALKEEPER: {
-        "agility": 3, "positioning": 2, "aerial": 2, "composure": 1,
-        "anticipation": 1,
-    },
-    Position.DEFENDER: {
-        "tackling": 3, "positioning": 2, "strength": 1, "aerial": 1,
-        "anticipation": 1, "speed": 1, "passing": 1,
-    },
-    Position.MIDFIELDER: {
-        "passing": 3, "vision": 2, "dribbling": 1, "work_rate": 1,
-        "positioning": 1, "stamina": 1, "tackling": 1,
-    },
-    Position.FORWARD: {
-        "shooting": 3, "dribbling": 2, "speed": 1, "positioning": 1,
-        "aerial": 1, "passing": 1,
-    },
+    position: {attr: _RANK_WEIGHTS[i] for i, attr in enumerate(attrs)}
+    for position, attrs in POSITION_PRIORITIES.items()
 }
 
 
@@ -79,6 +68,7 @@ class Player:
     # --- Estado dinamico (cambia al pasar fechas / en el partido) ---
     form: float = 50.0        # estado de forma actual (1-100)
     fitness: float = 100.0    # energia disponible (0-100)
+    experience: float = 1.0   # experiencia (1-100): sube con la edad y los partidos
     morale: Morale = Morale.NEUTRAL
     injury: Injury | None = None
 

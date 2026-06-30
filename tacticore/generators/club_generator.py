@@ -29,14 +29,17 @@ _TIER_MEMBERS: dict[LeagueTier, tuple[int, int]] = {
     LeagueTier.E: (500, 5_000),
 }
 
-# Minimos garantizados por posicion en una plantilla: alcanza para un 11 con un
-# suplente por linea. El resto del cupo son "comodines" de posicion al azar.
-_SQUAD_MINIMUMS: dict[Position, int] = {
-    Position.GOALKEEPER: 2,
-    Position.DEFENDER: 5,
-    Position.MIDFIELDER: 5,
-    Position.FORWARD: 3,
-}
+# Plan de plantilla (16): que posicion granular ocupa cada jugador generado.
+# Cubre una 4-3-3 con suplentes (2 arqueros, central de sobra, ambos laterales,
+# medios variados y los tres puestos de ataque). El orden no importa: se mezcla.
+_SQUAD_PLAN: tuple[Position, ...] = (
+    Position.GOALKEEPER, Position.GOALKEEPER,
+    Position.CENTER_BACK, Position.CENTER_BACK, Position.CENTER_BACK,
+    Position.LEFT_BACK, Position.RIGHT_BACK,
+    Position.DEF_MID, Position.CENTER_MID, Position.CENTER_MID, Position.ATT_MID,
+    Position.LEFT_MID, Position.RIGHT_MID,
+    Position.LEFT_WING, Position.RIGHT_WING, Position.STRIKER,
+)
 
 
 def _short_name(name: str) -> str:
@@ -134,18 +137,19 @@ class ClubGenerator:
         today: date | None,
         club_name: str,
     ) -> list:
-        """Arma la plantilla: minimos por posicion + comodines, con dorsales."""
-        players = []
-        for position, count in _SQUAD_MINIMUMS.items():
-            for _ in range(count):
-                players.append(
-                    self._players.generate(position, tier, country_code, today)
-                )
-        extra = max(0, squad_size - sum(_SQUAD_MINIMUMS.values()))
-        for _ in range(extra):
-            players.append(
-                self._players.generate(tier=tier, country_code=country_code, today=today)
-            )
+        """Arma la plantilla segun `_SQUAD_PLAN` (posicion por jugador), con dorsales."""
+        positions = list(_SQUAD_PLAN)
+        if squad_size <= len(positions):
+            positions = positions[:squad_size]
+        else:
+            # Comodines extra: posiciones de campo al azar (nunca arquero).
+            outfield = [p for p in _SQUAD_PLAN if p is not Position.GOALKEEPER]
+            positions += [
+                self._rng.choice(outfield) for _ in range(squad_size - len(positions))
+            ]
+        players = [
+            self._players.generate(pos, tier, country_code, today) for pos in positions
+        ]
         # Mezclar para que las posiciones no queden agrupadas al asignar dorsales.
         self._rng.shuffle(players)
         for number, player in enumerate(players, start=1):

@@ -16,6 +16,7 @@ from datetime import date
 from .. import config
 from ..domain.enums import Foot, LeagueTier, Morale, Position, Specialty
 from ..domain.player import ALL_ATTRS, Player
+from ..domain.positions import POSITION_PRIORITIES, Line, line_of
 from .name_generator import NameGenerator
 
 # Nivel base de un atributo "neutro" segun el nivel de la liga (1-100).
@@ -27,35 +28,30 @@ _TIER_BASE: dict[LeagueTier, float] = {
     LeagueTier.E: 35.0,
 }
 
-# Offset por posicion: cuanto sube/baja cada atributo respecto del base. Lo no
-# listado queda en 0. Los atributos son generales; el arquero se distingue
-# subiendo lo que el motor lee para atajar (agility, composure, aerial,
-# positioning) y bajando lo ofensivo, asi sigue siendo muy bueno bajo los palos.
-_ROLE_OFFSETS: dict[Position, dict[str, float]] = {
-    Position.GOALKEEPER: {
-        "agility": 14, "aerial": 12, "composure": 10, "positioning": 6,
-        "anticipation": 4,
-        "passing": -12, "shooting": -35, "dribbling": -28, "tackling": -10,
-        "crossing": -20, "speed": -6, "vision": -8, "work_rate": -6,
-    },
-    Position.DEFENDER: {
-        "tackling": 12, "positioning": 10, "strength": 8, "aerial": 10,
-        "anticipation": 7, "composure": 2,
-        "shooting": -18, "dribbling": -10, "crossing": -6, "vision": -4,
-        "passing": -2,
-    },
-    Position.MIDFIELDER: {
-        "passing": 12, "vision": 12, "work_rate": 9, "dribbling": 7,
-        "positioning": 5, "stamina": 7, "composure": 5, "tackling": 3,
-        "agility": 3, "crossing": 3, "aerial": -6, "shooting": -2,
-        "strength": -3,
-    },
-    Position.FORWARD: {
-        "shooting": 14, "dribbling": 11, "speed": 12, "positioning": 5,
-        "aerial": 5, "agility": 5, "composure": 4, "crossing": 4,
-        "tackling": -14, "vision": -2, "work_rate": -2, "strength": -2,
-    },
-}
+# Offset por posicion, derivado de los atributos prioritarios (domain/positions):
+# los prioritarios suben (por ranking), el resto baja un poco (especializacion).
+# El arquero ademas hunde las habilidades de jugador de campo, asi sigue siendo
+# muy bueno bajo los palos pero malo afuera.
+_PRIORITY_BOOST = (14, 10, 7, 5, 3)   # offset por ranking del atributo prioritario
+_OFF_PENALTY = -8.0                    # atributos no prioritarios: leve bajada
+_GK_OUTFIELD = ("shooting", "dribbling", "crossing", "passing", "tackling")
+_GK_OUTFIELD_PENALTY = -28.0
+
+
+def _build_role_offsets() -> dict[Position, dict[str, float]]:
+    table: dict[Position, dict[str, float]] = {}
+    for position, priorities in POSITION_PRIORITIES.items():
+        offsets = {attr: _OFF_PENALTY for attr in ALL_ATTRS}
+        for i, attr in enumerate(priorities):
+            offsets[attr] = float(_PRIORITY_BOOST[i])
+        if position is Position.GOALKEEPER:
+            for attr in _GK_OUTFIELD:
+                offsets[attr] = _GK_OUTFIELD_PENALTY
+        table[position] = offsets
+    return table
+
+
+_ROLE_OFFSETS = _build_role_offsets()
 
 _NOISE = 5.0  # ruido por atributo (+/-)
 
@@ -116,11 +112,13 @@ class PlayerGenerator:
         target_age = rng.randint(16, 36)
         birth_date = date(today.year - target_age, rng.randint(1, 12), rng.randint(1, 28))
         # Arqueros y defensores suelen ser mas altos.
-        if pos in (Position.GOALKEEPER, Position.DEFENDER):
+        if line_of(pos) in (Line.GOALKEEPER, Line.DEFENSE):
             height = rng.randint(180, 200)
         else:
             height = rng.randint(165, 190)
         weight = height - 100 + rng.randint(-5, 8)
+        # Experiencia: sube con la edad (un pibe arranca bajo, un veterano alto).
+        experience = _clamp((target_age - 15) * 4.5 + rng.uniform(-6, 6))
 
         first, last = self._names.player_first_last(country_code)
         specialty = (
@@ -143,6 +141,7 @@ class PlayerGenerator:
             **attrs,
             form=_clamp(rng.uniform(40, 80)),
             fitness=100.0,
+            experience=experience,
             morale=rng.choices(list(Morale), weights=[1, 2, 4, 3, 2])[0],
             specialty=specialty,
             nickname=nickname,
