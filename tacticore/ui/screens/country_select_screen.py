@@ -58,7 +58,8 @@ class CountrySelectScreen(BaseScreen):
 
     def __init__(self, countries: list[tuple[str, str]] | None = None) -> None:
         super().__init__()
-        self._countries = countries or list(COUNTRIES)
+        # Orden alfabetico por nombre para que sea facil encontrar el pais.
+        self._countries = sorted(countries or COUNTRIES, key=lambda c: c[0])
         # Filas por columna (layout column-major): se adapta a la cantidad de
         # paises manteniendo las 3 columnas. Con 6 paises son 2 filas; con 58, 20.
         self._rows = (len(self._countries) + _COLS - 1) // _COLS

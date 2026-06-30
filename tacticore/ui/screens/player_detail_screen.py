@@ -115,11 +115,13 @@ class PlayerDetailScreen(BaseScreen):
             f"  Posicion: {POSITION_LABEL[p.position]} ({p.position.value})\n",
             style="white",
         )
-        age = p.age_on(self._today)
+        years, days = p.age_parts_on(self._today)
+        born = p.birth_date.strftime("%d-%m-%Y")
         self._kv_rows(t, [
             ("Nacionalidad", p.nationality, "Pie", FOOT_LABEL[p.foot]),
-            ("Edad", f"{age} ({p.birth_date.isoformat()})", "Altura", f"{p.height_cm} cm"),
-            ("Peso", f"{p.weight_kg} kg", "Cantera", p.origin_club or "-"),
+            ("Edad", f"{years} anios {days} dias", "Nacimiento", born),
+            ("Altura", f"{p.height_cm} cm", "Peso", f"{p.weight_kg} kg"),
+            ("Cantera", p.origin_club or "-", "", ""),
         ])
         t.append("\n")
 
@@ -163,7 +165,8 @@ class PlayerDetailScreen(BaseScreen):
                 value = getattr(self._player, attr)
                 cell = (ATTR_LABEL[attr].ljust(13) + f"{value:.1f}".rjust(5)).ljust(col_w)
                 t.append(cell, style=self._attr_style(attr, value, priorities))
-            t.append("\n")
+            if i < rows - 1:  # sin salto final: evita una linea vacia que desborda
+                t.append("\n")
 
     def _attr_style(self, attr: str, value: float, priorities) -> str:
         if self._color_mode == 1:

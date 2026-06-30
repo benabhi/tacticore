@@ -2,7 +2,7 @@
 
 `GameState` es el contenedor de todo lo que define una partida en curso:
 semilla, calendario, el mundo (paises -> ligas -> clubes -> jugadores), cual es
-el club del jugador y el nombre del presidente humano. La UI lee de aca y las
+el club del jugador y el nombre del manager humano. La UI lee de aca y las
 acciones del jugador lo modifican (a traves de la simulacion), nunca al reves.
 Se serializa entero al guardar (ver persistence/savegame.py).
 """
@@ -24,7 +24,7 @@ class GameState:
     calendar: GameCalendar
     countries: list[Country] = field(default_factory=list)
     player_club: Club | None = None      # el club que dirige el jugador
-    president_name: str = ""              # nombre del presidente humano (el jugador)
+    manager_name: str = ""               # nombre del manager humano (el jugador)
 
     @classmethod
     def new(cls, seed: int, start_date: date, countries: list[Country] | None = None) -> "GameState":

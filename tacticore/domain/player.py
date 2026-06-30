@@ -94,6 +94,16 @@ class Player:
             years -= 1
         return years
 
+    def age_parts_on(self, today: date) -> tuple[int, int]:
+        """Edad como (anios cumplidos, dias desde el ultimo cumpleanios).
+
+        Para mostrar la edad fina en la ficha (ej. "28 anios 145 dias"). Los
+        dias salen de restar la fecha del ultimo aniversario ya cumplido.
+        """
+        years = self.age_on(today)
+        last_birthday = self.birth_date.replace(year=self.birth_date.year + years)
+        return years, (today - last_birthday).days
+
     @property
     def full_name(self) -> str:
         """Nombre y apellido."""

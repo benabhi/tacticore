@@ -1,16 +1,15 @@
-"""Generador de clubes de fantasia (con su plantilla, estadio, DT y presidente)."""
+"""Generador de clubes de fantasia (con su plantilla, estadio y manager)."""
 
 import random
 from datetime import date
 
 from ..domain.club import Club
 from ..domain.enums import LeagueTier, Position
-from ..domain.president import President
+from ..domain.manager import Manager
 from ..domain.stadium import Stadium
 from .manager_generator import ManagerGenerator
 from .name_generator import NameGenerator
 from .player_generator import PlayerGenerator
-from .president_generator import PresidentGenerator
 from .stadium_generator import StadiumGenerator
 
 # Capital inicial (en millones) y rango de asociados segun el nivel de la liga.
@@ -48,7 +47,7 @@ def _short_name(name: str) -> str:
 
 
 class ClubGenerator:
-    """Crea clubes con nombre, finanzas, estadio, hinchada, presidente, DT y plantilla."""
+    """Crea clubes con nombre, finanzas, estadio, hinchada, manager y plantilla."""
 
     def __init__(
         self,
@@ -60,7 +59,6 @@ class ClubGenerator:
         self._players = PlayerGenerator(self._rng, self._names)
         self._stadiums = StadiumGenerator(self._rng)
         self._managers = ManagerGenerator(self._rng, self._names)
-        self._presidents = PresidentGenerator(self._rng, self._names)
 
     def generate(
         self,
@@ -88,7 +86,6 @@ class ClubGenerator:
             capital=capital,
             members=members,
             fans_name=self._names.fan_group_name(),
-            president=self._presidents.generate(country_code, today),
             manager=self._managers.generate(country_code, today),
             players=players,
         )
@@ -98,7 +95,7 @@ class ClubGenerator:
         name: str,
         fans_name: str,
         stadium_name: str,
-        president: President,
+        manager: Manager,
         country_code: str,
         squad_size: int = 16,
         tier: LeagueTier = LeagueTier.E,
@@ -107,9 +104,9 @@ class ClubGenerator:
     ) -> Club:
         """Construye el club humilde del jugador con la identidad que eligio.
 
-        El nombre, la hinchada, el estadio y el presidente vienen del jugador; el
-        DT y la plantilla (en `tier`) se generan. Arranca con pocos socios y el
-        capital minimo de su nivel.
+        El nombre, la hinchada, el estadio y el manager (el propio jugador) vienen
+        del jugador; la plantilla (en `tier`) se genera. Arranca con pocos socios y
+        el capital minimo de su nivel.
         """
         players = self._build_squad(squad_size, tier, country_code, today, name)
         capacity = self._rng.randint(*self._stadiums.capacity_range(tier))
@@ -124,8 +121,7 @@ class ClubGenerator:
             capital=capital,
             members=members,
             fans_name=fans_name,
-            president=president,
-            manager=self._managers.generate(country_code, today),
+            manager=manager,
             players=players,
         )
 

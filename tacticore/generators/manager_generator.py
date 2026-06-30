@@ -1,8 +1,8 @@
-"""Generador de directores tecnicos (DT) de fantasia.
+"""Generador de managers de fantasia (los que dirigen los clubes IA).
 
-Por ahora un DT tiene solo identidad: nombre y apellido (por nacionalidad, del
-mismo pool que los jugadores), nacionalidad y edad. La edad arranca siempre en
-40 o mas (un DT no es un pibe). Determinista: comparte el rng del juego.
+Por ahora un manager tiene solo identidad: nombre y apellido (por nacionalidad,
+del mismo pool que los jugadores), nacionalidad y edad. La edad arranca siempre
+en 40 o mas (un manager no es un pibe). Determinista: comparte el rng del juego.
 """
 
 import random
@@ -13,13 +13,13 @@ from ..domain.manager import Manager
 from ._people import birth_date_for_age
 from .name_generator import NameGenerator
 
-# Rango de edad de un DT al generarlo (siempre adulto mayor de 40).
+# Rango de edad de un manager al generarlo (siempre adulto mayor de 40).
 _MIN_AGE = 40
 _MAX_AGE = 65
 
 
 class ManagerGenerator:
-    """Crea directores tecnicos con nombre, nacionalidad y edad (>= 40)."""
+    """Crea managers con nombre, nacionalidad y edad (>= 40)."""
 
     def __init__(
         self,
@@ -34,10 +34,10 @@ class ManagerGenerator:
         country_code: str | None = None,
         today: date | None = None,
     ) -> Manager:
-        """Genera un DT de la nacionalidad `country_code`.
+        """Genera un manager de la nacionalidad `country_code`.
 
         `today` (fecha del juego) ancla la fecha de nacimiento para que la edad
-        sea >= 40 al inicio y el DT envejezca al avanzar el calendario.
+        sea >= 40 al inicio y el manager envejezca al avanzar el calendario.
         """
         today = today or config.SEASON_START_DATE
         first, last = self._names.player_first_last(country_code)

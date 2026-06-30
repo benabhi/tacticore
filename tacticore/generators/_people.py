@@ -1,4 +1,4 @@
-"""Helpers compartidos para generar personas (DT, presidentes, ...).
+"""Helpers compartidos para generar personas (managers, ...).
 
 Aca vive la logica comun a varios generadores de "personas" para no duplicarla.
 """

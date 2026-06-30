@@ -2,8 +2,8 @@
 
 Estilo Caves of Qud: arriba el pais que se esta generando, la barra que se llena
 y, debajo, un resumen con contadores que SUBEN EN VIVO (paises, ligas, clubes,
-estadios, hinchadas, presidentes, DTs, jugadores). Como todo se genera junto por
-club, los contadores se derivan del avance (clubes hechos). La generacion corre
+estadios, hinchadas, managers, jugadores). Como todo se genera junto por club,
+los contadores se derivan del avance (clubes hechos). La generacion corre
 en un hilo aparte; al terminar, no avanza solo: aparece un prompt parpadeante y
 el jugador pulsa Enter para seguir a "Crea tu club".
 """
@@ -26,7 +26,7 @@ from .create_club_screen import CreateClubScreen
 
 _PROMPT = "Presiona <ENTER> para continuar"
 _VAL_W = 6   # ancho de la columna de valores (hasta "37,120")
-_LBL_W = 11  # ancho de cada columna de labels (hasta "Presidentes")
+_LBL_W = 9   # ancho de cada columna de labels (hasta "Jugadores"/"Hinchadas")
 # Ancho de la fila del bloque (valor + label + centro + label + valor) y el
 # padding para centrarlo en los 80 de pantalla (el align del viewport no alcanza
 # porque los demas widgets son 1fr).
@@ -150,8 +150,7 @@ class LoadingScreen(BaseScreen):
             ("Clubes", done),
             ("Estadios", done),
             ("Hinchadas", done),
-            ("Presidentes", done),
-            ("DTs", done),
+            ("Managers", done),
             ("Jugadores", done * config.SQUAD_SIZE),
         ]
 
@@ -162,12 +161,15 @@ class LoadingScreen(BaseScreen):
         derecha, la derecha a la izquierda) y los valores quedan en los extremos,
         asi el bloque se ve centrado.
         """
+        # Dos columnas que se adaptan a CUALQUIER cantidad de contadores: la
+        # izquierda toma el item de sobra si el total es impar (queda una celda
+        # derecha vacia en la ultima fila, sin romper el layout).
         stats = self._counts()
-        half = len(stats) // 2
+        rows = (len(stats) + 1) // 2
         t = Text()
-        for r in range(half):
+        for r in range(rows):
             l_label, l_value = stats[r]
-            r_label, r_value = stats[r + half]
+            right = stats[rows + r] if rows + r < len(stats) else None
             t.append(_PAD)
             t.append(f"{l_value:,}".rjust(_VAL_W), style="bold green")
             t.append("  ")
@@ -175,9 +177,11 @@ class LoadingScreen(BaseScreen):
             t.append(" ")
             t.append(":", style="bold yellow")   # espina central, un toque de color
             t.append(" ")
-            t.append(r_label.ljust(_LBL_W), style="grey70")
-            t.append("  ")
-            t.append(f"{r_value:,}".ljust(_VAL_W), style="bold green")
+            if right is not None:
+                r_label, r_value = right
+                t.append(r_label.ljust(_LBL_W), style="grey70")
+                t.append("  ")
+                t.append(f"{r_value:,}".ljust(_VAL_W), style="bold green")
             t.append("\n")
         return t
 

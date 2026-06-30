@@ -36,14 +36,14 @@ def test_squad_covers_all_lines():
     assert club.squad_size == 16
 
 
-def test_generated_club_has_president():
+def test_generated_club_has_manager():
     from datetime import date
 
     today = date(2025, 7, 1)
     club = ClubGenerator(new_rng(5)).generate(country_code="AR", today=today)
-    assert club.president is not None
-    assert club.president.nationality == "AR"
-    assert club.president.age_on(today) >= 45
+    assert club.manager is not None
+    assert club.manager.nationality == "AR"
+    assert club.manager.age_on(today) >= 40
 
 
 def test_club_name_is_ascii_and_well_formed():

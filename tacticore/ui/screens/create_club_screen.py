@@ -1,6 +1,6 @@
 """Pantalla "Crea tu club": el arranque de la partida (estilo ncurses).
 
-Pide el nombre del presidente (vos), del club, de la hinchada, del estadio y la
+Pide el nombre del manager (vos), del club, de la hinchada, del estadio y la
 nacionalidad (que define en que liga se juega). Al costado se dibuja, EN VIVO
 mientras se tipea el nombre del club, su identicon ASCII (emblema + color,
 unicos por nombre).
@@ -17,7 +17,7 @@ from textual.widgets import Static
 
 from ... import config
 from ...core.rng import new_rng
-from ...domain.president import President
+from ...domain.manager import Manager
 from ...generators.club_generator import ClubGenerator
 from ...persistence import savegame
 from ..identicon import identicon_color, render_identicon
@@ -25,7 +25,7 @@ from ..palette import MUTED
 from .base_screen import BaseScreen
 from .country_select_screen import CountrySelectScreen
 
-_LABELS = ["Presidente", "Club", "Hinchada", "Estadio", "Nacionalidad"]
+_LABELS = ["Manager", "Club", "Hinchada", "Estadio", "Nacionalidad"]
 _CLUB = 1          # indice del campo "Club" (el que alimenta el identicon)
 _NAT = 4           # indice del campo de nacionalidad (abre el selector)
 _CREATE = 5        # indice del boton "Crear club"
@@ -100,7 +100,7 @@ class CreateClubScreen(BaseScreen):
 
     def __init__(self) -> None:
         super().__init__()
-        self._texts = ["", "", "", ""]   # presidente, club, hinchada, estadio
+        self._texts = ["", "", "", ""]   # manager, club, hinchada, estadio
         self._country = None             # (nombre, codigo)
         self._active = 0
 
@@ -122,7 +122,7 @@ class CreateClubScreen(BaseScreen):
 
     def _welcome_text(self) -> Text:
         w = Text(justify="center")
-        w.append("Bienvenido a TACTICORE, presidente.\n", style="bold green")
+        w.append("Bienvenido a TACTICORE, manager.\n", style="bold green")
         w.append(
             "Vas a fundar tu club y arrancar el camino desde abajo, en el ascenso.\n",
             style="white",
@@ -258,12 +258,12 @@ class CreateClubScreen(BaseScreen):
 
         app = self.app
         game = app.game
-        president_name = self._texts[0].strip()
+        manager_name = self._texts[0].strip()
         country_code = self._country[1]
 
-        # Presidente humano (sin edad: no se la pedimos).
-        first, _, last = president_name.partition(" ")
-        president = President(
+        # Manager humano (sin edad: no se la pedimos).
+        first, _, last = manager_name.partition(" ")
+        manager = Manager(
             first_name=first, last_name=last, nationality=country_code
         )
         # Construir el club humilde del jugador (liga E, 500 socios) e insertarlo
@@ -272,13 +272,13 @@ class CreateClubScreen(BaseScreen):
             name=self._texts[1].strip(),
             fans_name=self._texts[2].strip(),
             stadium_name=self._texts[3].strip(),
-            president=president,
+            manager=manager,
             country_code=country_code,
             squad_size=config.SQUAD_SIZE,
             today=game.calendar.current_date,
         )
         game.install_player_club(club)
-        game.president_name = president_name
+        game.manager_name = manager_name
 
         # Guardar la partida (autosave) y entrar a la Oficina.
         savegame.save_game(game)

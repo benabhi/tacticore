@@ -1,9 +1,9 @@
 """Esquema SQLite y conversores fila <-> dataclass para el guardado.
 
 Detalle interno de `savegame.py`. El save es el grafo del juego volcado a tablas
-relacionales: countries -> leagues -> clubs -> players. El estadio, el DT y el
-presidente van inline en la fila del club (hoy son 1:1, asi evitamos joins). Los
-enums se guardan por su `.value` y las fechas en ISO (`YYYY-MM-DD`).
+relacionales: countries -> leagues -> clubs -> players. El estadio y el manager
+van inline en la fila del club (hoy son 1:1, asi evitamos joins). Los enums se
+guardan por su `.value` y las fechas en ISO (`YYYY-MM-DD`).
 """
 
 import sqlite3
@@ -17,10 +17,9 @@ from ..domain.enums import Foot, LeagueTier, Morale, Position, Specialty
 from ..domain.league import League
 from ..domain.manager import Manager
 from ..domain.player import ALL_ATTRS, Player
-from ..domain.president import President
 from ..domain.stadium import Stadium
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Columnas de jugador, separadas para construirlas una sola vez (DRY con ALL_ATTRS).
 _PLAYER_BASE_COLS = [
@@ -41,7 +40,7 @@ CREATE TABLE meta (
     schema_version INTEGER NOT NULL,
     seed           INTEGER NOT NULL,
     current_date   TEXT NOT NULL,
-    president_name TEXT NOT NULL,
+    manager_name   TEXT NOT NULL,
     player_club_id INTEGER
 );
 
@@ -74,11 +73,7 @@ CREATE TABLE clubs (
     manager_first    TEXT,
     manager_last     TEXT,
     manager_nat      TEXT,
-    manager_birth    TEXT,
-    president_first  TEXT,
-    president_last   TEXT,
-    president_nat    TEXT,
-    president_birth  TEXT
+    manager_birth    TEXT
 );
 
 CREATE TABLE players (
@@ -161,13 +156,13 @@ def write_game(conn: sqlite3.Connection, game: GameState) -> None:
                 _insert_players(conn, club_id, club.players)
 
     conn.execute(
-        "INSERT INTO meta (schema_version, seed, current_date, president_name, "
+        "INSERT INTO meta (schema_version, seed, current_date, manager_name, "
         "player_club_id) VALUES (?, ?, ?, ?, ?)",
         (
             SCHEMA_VERSION,
             game.seed,
             game.calendar.current_date.isoformat(),
-            game.president_name,
+            game.manager_name,
             player_club_id,
         ),
     )
@@ -178,15 +173,13 @@ def _insert_club(
     conn: sqlite3.Connection, league_id: int, club: Club, is_player: bool
 ) -> int:
     mgr = club.manager
-    pre = club.president
     return conn.execute(
         """
         INSERT INTO clubs (
             league_id, name, short_name, country_code, tier, capital, members,
             fans_name, is_player_club, stadium_name, stadium_capacity,
-            manager_first, manager_last, manager_nat, manager_birth,
-            president_first, president_last, president_nat, president_birth
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            manager_first, manager_last, manager_nat, manager_birth
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             league_id, club.name, club.short_name, club.country_code,
@@ -196,10 +189,6 @@ def _insert_club(
             mgr.last_name if mgr else None,
             mgr.nationality if mgr else None,
             _iso(mgr.birth_date) if mgr else None,
-            pre.first_name if pre else None,
-            pre.last_name if pre else None,
-            pre.nationality if pre else None,
-            _iso(pre.birth_date) if pre else None,
         ),
     ).lastrowid
 
@@ -261,7 +250,7 @@ def read_game(conn: sqlite3.Connection) -> GameState:
         calendar=GameCalendar(current_date=date.fromisoformat(meta["current_date"])),
         countries=countries,
         player_club=player_club,
-        president_name=meta["president_name"],
+        manager_name=meta["manager_name"],
     )
 
 
@@ -273,14 +262,6 @@ def _club_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Club:
             last_name=row["manager_last"],
             nationality=row["manager_nat"],
             birth_date=_date(row["manager_birth"]),
-        )
-    president = None
-    if row["president_first"] is not None:
-        president = President(
-            first_name=row["president_first"],
-            last_name=row["president_last"],
-            nationality=row["president_nat"],
-            birth_date=_date(row["president_birth"]),
         )
     players = [
         _player_from_row(prow)
@@ -297,7 +278,6 @@ def _club_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Club:
         capital=row["capital"],
         members=row["members"],
         fans_name=row["fans_name"],
-        president=president,
         manager=manager,
         players=players,
     )
