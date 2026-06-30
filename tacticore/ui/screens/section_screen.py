@@ -24,6 +24,7 @@ class SectionScreen(BaseScreen):
         ("o", "goto('O')", "Oficina"),
         ("c", "goto('C')", "Club"),
         ("j", "goto('J')", "Jugadores"),
+        ("l", "goto('L')", "Liga"),
     ]
 
     CSS = """
@@ -50,8 +51,14 @@ class SectionScreen(BaseScreen):
             return
         # Import local para evitar imports circulares entre secciones.
         from .club_screen import ClubScreen
+        from .league_screen import LeagueScreen
         from .office_screen import OfficeScreen
         from .players_screen import PlayersScreen
 
-        screens = {"O": OfficeScreen, "C": ClubScreen, "J": PlayersScreen}
+        screens = {
+            "O": OfficeScreen,
+            "C": ClubScreen,
+            "J": PlayersScreen,
+            "L": LeagueScreen,
+        }
         self.app.switch_screen(screens[key]())

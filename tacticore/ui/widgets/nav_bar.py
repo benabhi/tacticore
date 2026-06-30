@@ -13,6 +13,7 @@ SECTIONS: list[tuple[str, str]] = [
     ("O", "Oficina"),
     ("C", "Club"),
     ("J", "Jugadores"),
+    ("L", "Liga"),
 ]
 
 

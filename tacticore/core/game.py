@@ -13,6 +13,7 @@ from datetime import date
 from ..domain.club import Club
 from ..domain.country import Country
 from ..domain.enums import LeagueTier
+from ..domain.league import League
 from .calendar import GameCalendar
 
 
@@ -34,6 +35,17 @@ class GameState:
             calendar=GameCalendar(current_date=start_date),
             countries=countries or [],
         )
+
+    @property
+    def player_league(self) -> League | None:
+        """La liga en la que juega el club del jugador (o None si no hay club)."""
+        if self.player_club is None:
+            return None
+        for country in self.countries:
+            for league in country.leagues:
+                if any(club is self.player_club for club in league.clubs):
+                    return league
+        return None
 
     def install_player_club(self, club: Club) -> None:
         """Mete el club del jugador en la liga E de su pais (reemplaza un club IA).

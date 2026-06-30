@@ -280,6 +280,13 @@ class CreateClubScreen(BaseScreen):
         game.install_player_club(club)
         game.manager_name = manager_name
 
+        # Generar el fixture de la temporada de la liga del jugador (ya esta
+        # armada: todos los clubes definidos). Se usa la misma semilla para que
+        # sea reproducible al recargar.
+        from ...simulation.season import generate_league_fixture
+
+        generate_league_fixture(game.player_league, new_rng(app.seed))
+
         # Guardar la partida (autosave) y entrar a la Oficina.
         savegame.save_game(game)
         app.switch_screen(OfficeScreen())
