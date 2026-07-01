@@ -9,9 +9,17 @@ Pestañas:
 
 from rich.text import Text
 
-from ...simulation.economy import player_salary, squad_wage_bill
+from ...simulation.economy import (
+    membership_income,
+    player_salary,
+    squad_wage_bill,
+    stadium_upkeep,
+)
 from ..format import append_section, money
 from .section_screen import SectionScreen
+
+_COL = 30   # ancho de cada columna (etiqueta + monto) del resumen
+_LBL = 21   # ancho de la etiqueta dentro de la columna (el resto va al monto)
 
 
 class FinanceScreen(SectionScreen):
@@ -43,21 +51,65 @@ class FinanceScreen(SectionScreen):
         club = self._club
         if club is None:
             return Text("Sin club todavia.", style="white")
+
         wages = squad_wage_bill(club.players, self._today)
+        incomes = [
+            ("Cuota de socios", membership_income(club.members)),
+            ("Patrocinadores", 0),
+            ("Venta de jugadores", 0),
+            ("Otros", 0),
+        ]
+        expenses = [
+            ("Sueldos", wages),
+            ("Mantenimiento estadio", stadium_upkeep(club.stadium.capacity)),
+            ("Empleados", 0),
+            ("Otros", 0),
+        ]
+        total_in = sum(v for _, v in incomes)
+        total_out = sum(v for _, v in expenses)
+        net = total_in - total_out
+
         t = Text()
-        append_section(t, "BALANCE", [
-            (f"Caja actual:            {money(club.capital)}", "bold white"),
-            "",
-            (f"Masa salarial semanal:  -{money(wages)}", "red"),
-            (f"Ingresos de la semana:   {money(0)}   (proximamente)", "grey62"),
-            "-" * 40,
-            (f"Resultado semanal:      -{money(wages)}", "red"),
-        ])
+        t.append("Resumen semanal estimado\n\n", style="grey62")
+        # Encabezados de las dos columnas.
+        t.append("  ")
+        t.append("INGRESOS".ljust(_COL), style="bold green")
+        t.append("   ")
+        t.append("GASTOS", style="bold green")
         t.append("\n")
-        t.append("Los ingresos (entradas, patrocinadores, premios) llegan con\n",
-                 style="grey62")
-        t.append("el ciclo semanal y el mercado.", style="grey62")
+        t.append("  " + "-" * _COL + "   " + "-" * _COL + "\n", style="grey50")
+        for i in range(max(len(incomes), len(expenses))):
+            li = incomes[i] if i < len(incomes) else None
+            ri = expenses[i] if i < len(expenses) else None
+            self._fin_row(t, li, ri)
+        t.append("  " + "-" * _COL + "   " + "-" * _COL + "\n", style="grey50")
+        self._fin_row(t, ("Total ingresos", total_in), ("Total gastos", total_out),
+                      style="bold white")
+        t.append("\n")
+
+        # Resultado y proyeccion de caja.
+        sign = "+" if net >= 0 else "-"
+        res_style = "bold green" if net >= 0 else "bold red"
+        t.append("  Resultado semanal estimado:  ")
+        t.append(f"{sign}{money(abs(net))}\n", style=res_style)
+        t.append("  Caja actual: ")
+        t.append(money(club.capital), style="bold white")
+        t.append("     Proyectada (fin de semana): ")
+        t.append(money(club.capital + net) + "\n", style="bold white")
         return t
+
+    def _fin_row(self, t: Text, left, right, style: str = "white") -> None:
+        """Una fila del resumen: (etiqueta, monto) a la izquierda y a la derecha."""
+        def cell(pair):
+            if pair is None:
+                return " " * _COL
+            label, value = pair
+            return f"{label[:_LBL]:<{_LBL}}{money(value):>{_COL - _LBL}}"
+        t.append("  ")
+        t.append(cell(left), style=style)
+        t.append("   ")
+        t.append(cell(right), style=style)
+        t.append("\n")
 
     def _salaries_text(self) -> Text:
         club = self._club

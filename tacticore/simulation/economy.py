@@ -23,6 +23,10 @@ _SALARY_MIN = 400       # sueldo minimo (nadie cobra menos)
 # --- Valor de mercado ---
 _VALUE_K = 6            # escala general del valor
 
+# --- Ingresos/gastos semanales (primer tanteo, a escala chica) ---
+_MEMBER_DUES = 20       # ingreso semanal por socio (cuota)
+_STADIUM_UPKEEP = 0.8   # gasto semanal de mantenimiento por butaca del estadio
+
 
 def _age_salary_factor(age: int) -> float:
     """Los jugadores en su pico cobran un poco mas; jovenes y veteranos, menos."""
@@ -70,3 +74,13 @@ def player_value(player: Player, today: date | None = None) -> int:
 def squad_wage_bill(players: list[Player], today: date | None = None) -> int:
     """Masa salarial semanal: suma de los sueldos del plantel."""
     return sum(player_salary(p, today) for p in players)
+
+
+def membership_income(members: int) -> int:
+    """Ingreso semanal por la cuota de los socios."""
+    return round(members * _MEMBER_DUES)
+
+
+def stadium_upkeep(capacity: int) -> int:
+    """Gasto semanal de mantenimiento del estadio (segun su capacidad)."""
+    return round(capacity * _STADIUM_UPKEEP)
