@@ -1,14 +1,17 @@
 """Entidad Tactica: el planteo del equipo para UN partido.
 
-Se asigna por partido (cada encuentro tiene su propia tactica). Por ahora guarda
-la mentalidad y la tactica general; mas adelante sumara la formacion, los 11
-titulares, los suplentes y las instrucciones finas. La pantalla completa donde se
-arma (con la cancha) se trabaja aparte: es una pieza central del simulador.
+Se asigna por partido (cada encuentro tiene su propia tactica). Guarda la
+mentalidad, la tactica general, la formacion (por nombre) y la seleccion de
+jugadores: `lineup` son los 11 titulares alineados a los slots de la formacion
+(puede haber huecos = None) y `bench` los suplentes (banco general de extras).
+
+La pantalla donde se arma (con la cancha) es `ui/screens/lineup_screen.py`.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .enums import Mentality, TeamTactic
+from .player import Player
 
 
 @dataclass
@@ -17,4 +20,11 @@ class Tactic:
 
     mentality: Mentality = Mentality.NEUTRAL
     team_tactic: TeamTactic = TeamTactic.NORMAL
-    # Futuro: formacion, titulares, suplentes, instrucciones por jugador.
+    formation: str = "4-3-3"                            # nombre de la formacion
+    lineup: list[Player | None] = field(default_factory=list)  # titulares, por slot
+    bench: list[Player | None] = field(default_factory=list)   # suplentes (banco)
+
+    @property
+    def is_complete(self) -> bool:
+        """True si los 11 titulares estan cubiertos (sin huecos)."""
+        return bool(self.lineup) and all(p is not None for p in self.lineup)

@@ -106,6 +106,29 @@ FORMATIONS_11: tuple[Formation, ...] = (FORMATION_11, FORMATION_11_442)
 # Formaciones por tamano de equipo. El juego usa 11v11; 7v7 queda para pruebas.
 DEFAULT_FORMATIONS: dict[int, Formation] = {7: FORMATION_7, 11: FORMATION_11}
 
+# Formaciones por nombre (para resolver el nombre guardado en la tactica).
+FORMATIONS_BY_NAME: dict[str, Formation] = {f.name: f for f in FORMATIONS_11}
+
+
+def get_formation(name: str) -> Formation:
+    """Devuelve la formacion por nombre (4-3-3 por defecto si no existe)."""
+    return FORMATIONS_BY_NAME.get(name, FORMATION_11)
+
+
+def auto_select(
+    club: Club, formation: Formation, bench_size: int = 5
+) -> tuple[list[Player], list[Player]]:
+    """Alineacion automatica: 11 titulares (pick_lineup) + banco con los mejores.
+
+    Los titulares se eligen por posicion preferida y habilidad (ver pick_lineup);
+    el banco son los mejores del resto del plantel (por overall), hasta bench_size.
+    """
+    lineup = pick_lineup(club, formation)
+    used = {id(p) for p in lineup}
+    rest = [p for p in sorted(club.players, key=lambda p: p.overall, reverse=True)
+            if id(p) not in used]
+    return lineup, rest[:bench_size]
+
 
 def slot_to_meters(slot: FormationSlot, side: Side, pitch: Pitch) -> Vec2:
     """Ubicacion en metros de un slot para un equipo (espeja al visitante)."""

@@ -1,12 +1,12 @@
 """Pantalla de tactica de UN partido (se abre al elegir un partido en Partidos).
 
-La tactica es POR PARTIDO. Esta es una primera version: deja elegir la mentalidad
-y la tactica general y guardarlas en el partido. La parte grande (la cancha con
-los 11 titulares y suplentes) se trabaja aparte: es un punto central del
-simulador. Por eso aca queda como placeholder claramente marcado.
+La tactica es POR PARTIDO. Aca se define el planteo (mentalidad y tactica general)
+y se accede al editor de ALINEACION (la cancha con los 11 titulares y el banco),
+que es una pantalla aparte. Se trabaja sobre una copia de la tactica; con Enter se
+guarda en el partido y con Esc se descarta.
 
-Teclas: flechas arriba/abajo eligen el campo; izquierda/derecha cambian el valor;
-Enter guarda; Esc cancela.
+Teclas: flechas arriba/abajo eligen el campo del planteo; izquierda/derecha
+cambian el valor; F abre la alineacion; Enter guarda; Esc cancela.
 """
 
 from rich.text import Text
@@ -15,6 +15,7 @@ from textual.widgets import Static
 
 from ...domain.enums import Mentality, TeamTactic
 from ...domain.tactic import Tactic
+from ...simulation.match.formation import auto_select, get_formation
 from .base_screen import BaseScreen
 
 _W = 76
@@ -31,24 +32,14 @@ class TacticScreen(BaseScreen):
         ("down", "next_field", "Abajo"),
         ("left", "change(-1)", "Menos"),
         ("right", "change(1)", "Mas"),
+        ("f", "lineup", "Alineacion"),
         ("enter", "save", "Guardar"),
     ]
 
     CSS = """
-    #viewport {
-        align: center top;
-    }
-    #card {
-        width: 76;
-        height: auto;
-        margin-top: 1;
-    }
-    #hint {
-        width: 76;
-        text-align: center;
-        color: $text-muted;
-        margin-top: 1;
-    }
+    #viewport { align: center top; }
+    #card { width: 76; height: auto; margin-top: 1; }
+    #hint { width: 76; text-align: center; color: $text-muted; margin-top: 1; }
     """
 
     def __init__(self, match, club, on_close=None) -> None:
@@ -56,16 +47,24 @@ class TacticScreen(BaseScreen):
         self._match = match
         self._club = club
         self._on_close = on_close
-        # Estado local (no se guarda hasta Enter). Se prellena si ya habia tactica.
-        tactic = match.tactic or Tactic()
-        self._mentality = _MENTALITIES.index(tactic.mentality)
-        self._tactic = _TACTICS.index(tactic.team_tactic)
         self._field = 0  # 0 = mentalidad, 1 = tactica general
+        # Copia de trabajo (para poder cancelar). Si es nueva, se pre-arma la
+        # alineacion automatica asi arranca con un 11 valido.
+        src = match.tactic
+        if src is not None:
+            self._tactic = Tactic(src.mentality, src.team_tactic, src.formation,
+                                  list(src.lineup), list(src.bench))
+        else:
+            self._tactic = Tactic()
+        if not self._tactic.lineup:
+            lineup, bench = auto_select(self._club, get_formation(self._tactic.formation))
+            self._tactic.lineup = list(lineup)
+            self._tactic.bench = list(bench)
 
     def compose_viewport(self) -> ComposeResult:
         yield Static(self._card_text(), id="card")
         yield Static(
-            "Flechas: elegir / cambiar    Enter: guardar    Esc: cancelar",
+            "Flechas: planteo   F: alineacion   Enter: guardar   Esc: cancelar",
             id="hint",
         )
 
@@ -84,16 +83,20 @@ class TacticScreen(BaseScreen):
         t.append(f"  Jornada {m.matchday}  -  {when}  -  {m.kind.value}\n", style="white")
         t.append(f"  vs {rival.name}  ({sede})\n\n", style="bold white")
 
-        t.append("  CANCHA Y ALINEACION\n", style="bold green")
-        t.append("    Proximamente: colocar los 11 titulares y los suplentes en la\n",
+        # Alineacion (resumen + acceso al editor).
+        starters = sum(1 for p in self._tactic.lineup if p is not None)
+        bench = sum(1 for p in self._tactic.bench if p is not None)
+        t.append("  ALINEACION\n", style="bold green")
+        t.append(f"    Formacion {self._tactic.formation}   "
+                 f"{starters}/{len(self._tactic.lineup)} titulares, {bench} en el banco\n",
+                 style="white")
+        t.append("    F: abrir la cancha para elegir jugadores y suplentes\n\n",
                  style="grey62")
-        t.append("    cancha (arrastrando por posicion). Es la parte central que\n",
-                 style="grey62")
-        t.append("    vamos a trabajar aparte.\n\n", style="grey62")
 
+        # Planteo.
         t.append("  PLANTEO\n", style="bold green")
-        self._field_row(t, 0, "Mentalidad", _MENTALITIES[self._mentality].value)
-        self._field_row(t, 1, "Tactica general", _TACTICS[self._tactic].value)
+        self._field_row(t, 0, "Mentalidad", self._tactic.mentality.value)
+        self._field_row(t, 1, "Tactica general", self._tactic.team_tactic.value)
         return t
 
     def _field_row(self, t: Text, index: int, label: str, value: str) -> None:
@@ -114,16 +117,20 @@ class TacticScreen(BaseScreen):
 
     def action_change(self, delta: int) -> None:
         if self._field == 0:
-            self._mentality = (self._mentality + delta) % len(_MENTALITIES)
+            cur = _MENTALITIES.index(self._tactic.mentality)
+            self._tactic.mentality = _MENTALITIES[(cur + delta) % len(_MENTALITIES)]
         else:
-            self._tactic = (self._tactic + delta) % len(_TACTICS)
+            cur = _TACTICS.index(self._tactic.team_tactic)
+            self._tactic.team_tactic = _TACTICS[(cur + delta) % len(_TACTICS)]
         self._refresh()
 
+    def action_lineup(self) -> None:
+        from .lineup_screen import LineupScreen
+
+        self.app.push_screen(LineupScreen(self._tactic, self._club, on_close=self._refresh))
+
     def action_save(self) -> None:
-        self._match.tactic = Tactic(
-            mentality=_MENTALITIES[self._mentality],
-            team_tactic=_TACTICS[self._tactic],
-        )
+        self._match.tactic = self._tactic
         if self._on_close is not None:
             self._on_close()
         self.app.pop_screen()
