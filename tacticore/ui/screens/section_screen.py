@@ -59,10 +59,14 @@ class SectionScreen(BaseScreen):
     _active_tab = 0
 
     def compose_viewport(self) -> ComposeResult:
+        # Orden: HUD, separador, y la barra de pestañas DEBAJO del separador (solo
+        # si hay mas de una). Con una sola pestaña no se dibuja: esa fila queda
+        # para el contenido (las pestañas son opcionales).
         with Vertical():
             yield Static(id="topbar")
-            yield TabBar(self.tabs, id="tabbar")
             yield Static("=" * config.SCREEN_WIDTH, id="sep")
+            if len(self.tabs) > 1:
+                yield TabBar(self.tabs, id="tabbar")
             yield Static(id="content")
             yield NavBar(active=self.section_key)
 
@@ -120,7 +124,8 @@ class SectionScreen(BaseScreen):
         if index == self._active_tab or not (0 <= index < len(self.tabs)):
             return
         self._active_tab = index
-        self.query_one("#tabbar", TabBar).set_active(index)
+        if len(self.tabs) > 1:  # la barra solo existe con mas de una pestaña
+            self.query_one("#tabbar", TabBar).set_active(index)
         self._refresh_content()
 
     def _cycle_tab(self, delta: int) -> None:

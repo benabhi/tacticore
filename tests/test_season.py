@@ -93,6 +93,20 @@ def test_standings_empty_at_season_start():
     assert all(s.form == [] for s in table)
 
 
+def test_standings_upto_matchday_counts_only_up_to_n():
+    league = _league()
+    generate_league_fixture(league, new_rng(2))
+    # Jugar las jornadas 1 y 2 enteras con resultados cualquiera.
+    for m in league.matches:
+        if m.matchday <= 2:
+            m.home_goals, m.away_goals, m.played = 2, 1, True
+    full = {s.club.name: s.played for s in compute_standings(league)}
+    upto1 = {s.club.name: s.played for s in compute_standings(league, upto_matchday=1)}
+    # Con 2 jornadas jugadas cada club jugo 2; hasta la jornada 1, solo 1.
+    assert all(v == 2 for v in full.values())
+    assert all(v == 1 for v in upto1.values())
+
+
 def test_standings_count_points_and_order():
     league = _league()
     generate_league_fixture(league, new_rng(2))

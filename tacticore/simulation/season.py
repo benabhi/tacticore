@@ -113,12 +113,16 @@ class Standing:
         return self.goals_for - self.goals_against
 
 
-def compute_standings(league: League) -> list[Standing]:
+def compute_standings(league: League, upto_matchday: int | None = None) -> list[Standing]:
     """Tabla de posiciones derivada de los partidos jugados de la liga.
 
     Ordena por puntos, luego diferencia de gol, goles a favor y nombre. La
     `form` de cada club son sus resultados en orden de jornada (para mostrar los
     ultimos N). Al inicio de temporada (nada jugado) todo queda en cero.
+
+    Si se pasa `upto_matchday`, solo cuenta los partidos hasta esa jornada
+    (inclusive): sirve para reconstruir la tabla de una jornada anterior y
+    comparar posiciones (columna de movimiento).
     """
     # Club es un dataclass mutable (no hasheable): se indexa por id() del objeto.
     table = {id(club): Standing(club) for club in league.clubs}
@@ -127,6 +131,8 @@ def compute_standings(league: League) -> list[Standing]:
 
     for m in league.matches:
         if not m.played:
+            continue
+        if upto_matchday is not None and m.matchday > upto_matchday:
             continue
         home, away = table[id(m.home)], table[id(m.away)]
         home.played += 1
