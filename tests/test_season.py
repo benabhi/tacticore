@@ -1,6 +1,7 @@
 """Tests del fixture de liga (round-robin doble) y la tabla de posiciones."""
 
 from collections import Counter
+from datetime import timedelta
 
 from tacticore.core.rng import new_rng
 from tacticore.domain.enums import LeagueTier
@@ -67,6 +68,20 @@ def test_fixture_is_deterministic():
     b = build_fixture(league.clubs, new_rng(9))
     assert [(m.home.name, m.away.name, m.matchday) for m in a] == \
            [(m.home.name, m.away.name, m.matchday) for m in b]
+
+
+def test_fixture_dates_are_weekly_saturdays():
+    from datetime import date
+
+    league = _league()
+    matches = build_fixture(league.clubs, new_rng(5), start_date=date(2025, 7, 1))
+    by_round = {}
+    for m in matches:
+        assert m.match_date is not None
+        assert m.match_date.weekday() == 5  # sabado
+        by_round.setdefault(m.matchday, m.match_date)
+    # Jornadas consecutivas: una semana de diferencia.
+    assert by_round[2] - by_round[1] == timedelta(days=7)
 
 
 def test_standings_empty_at_season_start():

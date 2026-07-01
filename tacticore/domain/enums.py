@@ -77,6 +77,25 @@ class MatchKind(Enum):
     CUP = "Copa"
 
 
+class Mentality(Enum):
+    """Mentalidad del equipo para un partido. El valor es la etiqueta en pantalla."""
+
+    DEFENSIVE = "Defensiva"
+    NEUTRAL = "Neutral"
+    OFFENSIVE = "Ofensiva"
+
+
+class TeamTactic(Enum):
+    """Tactica general del equipo (al estilo Hattrick). Valor = etiqueta en pantalla."""
+
+    NORMAL = "Normal"
+    COUNTER = "Contraataque"
+    WINGS = "Ataque por bandas"
+    THROUGH_MIDDLE = "Juego por el medio"
+    LONG_BALL = "Pelotazo"
+    PRESSING = "Presion alta"
+
+
 class Morale(Enum):
     """Estado animico del jugador (de peor a mejor)."""
 

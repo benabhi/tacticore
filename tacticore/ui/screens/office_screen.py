@@ -69,10 +69,13 @@ class OfficeScreen(SectionScreen):
         else:
             rival = m.away if m.home is club else m.home
             sede = "Local" if m.home is club else "Visitante"
+            when = m.match_date.strftime("%d-%m-%Y") if m.match_date else f"J{m.matchday}"
+            tactic = "Si" if m.tactic is not None else "No"
             match_rows = [
-                (f"Jornada {m.matchday}  -  {m.kind.value}", "bold white"),
-                f"{club.name}  vs  {rival.name}",
-                (f"Condicion: {sede}", "grey62"),
+                (f"Jornada {m.matchday}  -  {when}  -  {m.kind.value}", "bold white"),
+                f"{club.name}  vs  {rival.name}   ({sede})",
+                (f"Tactica asignada: {tactic}",
+                 "green" if m.tactic is not None else "grey62"),
             ]
         append_section(t, "PROXIMO PARTIDO", match_rows)
 

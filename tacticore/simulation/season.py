@@ -11,7 +11,9 @@ se recorre el fixture y se cuentan puntos, goles y forma reciente.
 
 import random
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 
+from .. import config
 from ..domain.club import Club
 from ..domain.league import League
 from ..domain.match import Match
@@ -21,13 +23,24 @@ _WIN_POINTS = 3
 _DRAW_POINTS = 1
 
 
-def build_fixture(clubs: list[Club], rng: random.Random) -> list[Match]:
+def _matchday_date(start_date: date, matchday: int) -> date:
+    """Fecha de una jornada: se juega los sabados, una jornada por semana."""
+    days_to_saturday = (5 - start_date.weekday()) % 7  # 5 = sabado
+    first = start_date + timedelta(days=days_to_saturday or 7)  # el proximo sabado
+    return first + timedelta(weeks=matchday - 1)
+
+
+def build_fixture(
+    clubs: list[Club], rng: random.Random, start_date: date | None = None
+) -> list[Match]:
     """Arma el fixture de ida y vuelta de `clubs` (round-robin doble).
 
-    Devuelve todos los partidos con su numero de jornada (1..2*(N-1)). El orden
-    de los equipos se mezcla con `rng` para que cada liga tenga su propio
-    calendario (determinista por semilla).
+    Devuelve todos los partidos con su numero de jornada (1..2*(N-1)) y su fecha
+    (una jornada por semana, los sabados, desde `start_date`). El orden de los
+    equipos se mezcla con `rng` para que cada liga tenga su propio calendario
+    (determinista por semilla).
     """
+    start_date = start_date or config.SEASON_START_DATE
     teams: list[Club | None] = list(clubs)
     rng.shuffle(teams)
     # Con un numero impar de equipos, uno descansa cada jornada (BYE = None).
@@ -52,10 +65,16 @@ def build_fixture(clubs: list[Club], rng: random.Random) -> list[Match]:
             else:
                 home, away = b, a
             # Ida en la jornada r+1; vuelta en la jornada r+1+rounds_per_leg.
-            matches.append(Match(home=home, away=away, matchday=r + 1))
-            matches.append(
-                Match(home=away, away=home, matchday=r + 1 + rounds_per_leg)
-            )
+            md_ida = r + 1
+            md_vuelta = r + 1 + rounds_per_leg
+            matches.append(Match(
+                home=home, away=away, matchday=md_ida,
+                match_date=_matchday_date(start_date, md_ida),
+            ))
+            matches.append(Match(
+                home=away, away=home, matchday=md_vuelta,
+                match_date=_matchday_date(start_date, md_vuelta),
+            ))
         # Rotacion del circulo: se fija order[0] y rota el resto.
         order = [order[0]] + [order[-1]] + order[1:-1]
 
@@ -63,11 +82,13 @@ def build_fixture(clubs: list[Club], rng: random.Random) -> list[Match]:
     return matches
 
 
-def generate_league_fixture(league: League, rng: random.Random) -> None:
+def generate_league_fixture(
+    league: League, rng: random.Random, start_date: date | None = None
+) -> None:
     """Genera (in-place) el fixture de la temporada de `league` si no lo tiene."""
     if league.matches:
         return
-    league.matches = build_fixture(league.clubs, rng)
+    league.matches = build_fixture(league.clubs, rng, start_date)
 
 
 @dataclass
