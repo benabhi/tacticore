@@ -1,13 +1,35 @@
 """Tests de la alineacion automatica (auto_select sobre una formacion)."""
 
 from tacticore.core.rng import new_rng
-from tacticore.domain.enums import LeagueTier
+from tacticore.domain.enums import LeagueTier, Position
 from tacticore.generators import ClubGenerator
-from tacticore.simulation.match.formation import FORMATION_11, auto_select
+from tacticore.simulation.match.formation import (
+    FORMATION_11,
+    FORMATIONS,
+    auto_select,
+)
 
 
 def _club(seed: int = 1):
     return ClubGenerator(new_rng(seed)).generate(squad_size=16, tier=LeagueTier.E)
+
+
+def test_every_formation_is_valid_11v11():
+    # Las formaciones estandar tienen 11 puestos y exactamente un arquero.
+    assert len(FORMATIONS) >= 8
+    for formation in FORMATIONS:
+        assert formation.size == 11, formation.name
+        keepers = [s for s in formation.slots if s.position is Position.GOALKEEPER]
+        assert len(keepers) == 1, formation.name
+
+
+def test_auto_select_works_for_every_formation():
+    club = _club(4)
+    for formation in FORMATIONS:
+        lineup, bench = auto_select(club, formation, bench_size=5)
+        assert len(lineup) == 11 and all(p is not None for p in lineup), formation.name
+        ids = [id(p) for p in lineup + bench]
+        assert len(ids) == len(set(ids)), formation.name
 
 
 def test_auto_select_fills_starters_and_bench():

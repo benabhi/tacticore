@@ -15,12 +15,13 @@ from textual.widgets import Static
 
 from ...domain.enums import Mentality, TeamTactic
 from ...domain.tactic import Tactic
-from ...simulation.match.formation import auto_select, get_formation
+from ...simulation.match.formation import FORMATIONS, auto_select, get_formation
 from .base_screen import BaseScreen
 
 _W = 76
 _MENTALITIES = list(Mentality)
 _TACTICS = list(TeamTactic)
+_FORMATION_NAMES = [f.name for f in FORMATIONS]
 
 
 class TacticScreen(BaseScreen):
@@ -83,20 +84,21 @@ class TacticScreen(BaseScreen):
         t.append(f"  Jornada {m.matchday}  -  {when}  -  {m.kind.value}\n", style="white")
         t.append(f"  vs {rival.name}  ({sede})\n\n", style="bold white")
 
+        # Planteo (formacion, mentalidad, tactica general).
+        t.append("  PLANTEO\n", style="bold green")
+        self._field_row(t, 0, "Formacion", self._tactic.formation)
+        self._field_row(t, 1, "Mentalidad", self._tactic.mentality.value)
+        self._field_row(t, 2, "Tactica general", self._tactic.team_tactic.value)
+        t.append("\n")
+
         # Alineacion (resumen + acceso al editor).
         starters = sum(1 for p in self._tactic.lineup if p is not None)
         bench = sum(1 for p in self._tactic.bench if p is not None)
         t.append("  ALINEACION\n", style="bold green")
-        t.append(f"    Formacion {self._tactic.formation}   "
-                 f"{starters}/{len(self._tactic.lineup)} titulares, {bench} en el banco\n",
-                 style="white")
-        t.append("    F: abrir la cancha para elegir jugadores y suplentes\n\n",
+        t.append(f"    {starters}/{len(self._tactic.lineup)} titulares, "
+                 f"{bench} en el banco\n", style="white")
+        t.append("    F: abrir la cancha para elegir jugadores y suplentes\n",
                  style="grey62")
-
-        # Planteo.
-        t.append("  PLANTEO\n", style="bold green")
-        self._field_row(t, 0, "Mentalidad", self._tactic.mentality.value)
-        self._field_row(t, 1, "Tactica general", self._tactic.team_tactic.value)
         return t
 
     def _field_row(self, t: Text, index: int, label: str, value: str) -> None:
@@ -108,21 +110,33 @@ class TacticScreen(BaseScreen):
 
     # --- Acciones ---
     def action_prev_field(self) -> None:
-        self._field = (self._field - 1) % 2
+        self._field = (self._field - 1) % 3
         self._refresh()
 
     def action_next_field(self) -> None:
-        self._field = (self._field + 1) % 2
+        self._field = (self._field + 1) % 3
         self._refresh()
 
     def action_change(self, delta: int) -> None:
         if self._field == 0:
+            self._change_formation(delta)
+        elif self._field == 1:
             cur = _MENTALITIES.index(self._tactic.mentality)
             self._tactic.mentality = _MENTALITIES[(cur + delta) % len(_MENTALITIES)]
         else:
             cur = _TACTICS.index(self._tactic.team_tactic)
             self._tactic.team_tactic = _TACTICS[(cur + delta) % len(_TACTICS)]
         self._refresh()
+
+    def _change_formation(self, delta: int) -> None:
+        name = self._tactic.formation
+        cur = _FORMATION_NAMES.index(name) if name in _FORMATION_NAMES else 0
+        self._tactic.formation = _FORMATION_NAMES[(cur + delta) % len(_FORMATION_NAMES)]
+        # Cambiar de formacion re-arma la alineacion automatica para la nueva forma
+        # (los ajustes manuales previos se pierden: la cantidad de puestos cambia).
+        lineup, bench = auto_select(self._club, get_formation(self._tactic.formation))
+        self._tactic.lineup = list(lineup)
+        self._tactic.bench = list(bench)
 
     def action_lineup(self) -> None:
         from .lineup_screen import LineupScreen
