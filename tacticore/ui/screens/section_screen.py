@@ -1,49 +1,170 @@
-"""Pantalla base de seccion (menus full-screen estilo ADOM).
+"""Pantalla base de seccion con frame estandar (barra inferior + pestañas).
 
-Cada seccion del juego (Oficina, Club, Jugadores) es una pantalla completa que
-comparte la barra de navegacion inferior y las teclas para saltar entre
-secciones. Las subclases solo definen su contenido en `content()`.
+Cada seccion del juego (Oficina, Club, Jugadores, Liga, Partidos, Entreno,
+Finanzas) es una pantalla completa que comparte el mismo marco de 80x25:
+
+    Fila 0 : TITULO ....................................  fecha   caja   (HUD)
+    Fila 1 : [1] Pestaña  [2] Pestaña  ...                          (TabBar)
+    Fila 2 : ======================================================  (separador)
+    ...    : contenido de la pestaña activa
+    Fila 24: [O]ficina [C]lub ...                                   (NavBar)
+
+Las subclases declaran `section_key`, `title` y `tabs`, y devuelven el contenido
+de cada pestaña en `render_tab(index)`. La navegacion:
+- letras -> cambian de SECCION (barra inferior),
+- numeros 1..9 / Tab / Shift+Tab -> cambian de PESTAÑA (sub-seccion).
+
+Las pestañas interactivas (ej. la tabla de plantilla) reciben el resto del
+teclado en `on_content_key` y re-renderizan su `Text`.
 """
 
-from collections.abc import Iterator
-
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.widget import Widget
+from textual.widgets import Static
 
+from ... import config
+from ..format import money
+from ..palette import ACCENT
 from ..widgets.nav_bar import NavBar
+from ..widgets.tab_bar import TabBar
 from .base_screen import BaseScreen
+
+# Letra de atajo -> clave de seccion (para la barra inferior).
+_SECTION_KEYS = {"o": "O", "c": "C", "j": "J", "l": "L", "p": "P", "e": "E", "f": "F"}
 
 
 class SectionScreen(BaseScreen):
-    """Base de las pantallas de seccion. La subclase fija `section_key`."""
+    """Base de las secciones: frame con HUD, pestañas, contenido y barra inferior."""
 
     section_key = "O"
-
-    BINDINGS = [
-        ("o", "goto('O')", "Oficina"),
-        ("c", "goto('C')", "Club"),
-        ("j", "goto('J')", "Jugadores"),
-        ("l", "goto('L')", "Liga"),
-    ]
+    section_title = ""
+    tabs: tuple[str, ...] = ("Resumen",)
 
     CSS = """
+    #topbar {
+        height: 1;
+    }
+    #sep {
+        height: 1;
+        color: grey;
+    }
     #content {
         height: 1fr;
-        padding: 1 2;
+        padding: 1 0 0 0;
         color: white;
     }
     """
 
-    def compose_viewport(self) -> ComposeResult:
-        # Dentro del viewport de 80x25: contenido (resto) + barra abajo (fila 25).
-        with Vertical(id="content"):
-            yield from self.content()
-        yield NavBar(active=self.section_key)
+    _active_tab = 0
 
-    def content(self) -> Iterator[Widget]:
-        """Las subclases devuelven aca los widgets de su contenido."""
+    def compose_viewport(self) -> ComposeResult:
+        with Vertical():
+            yield Static(id="topbar")
+            yield TabBar(self.tabs, id="tabbar")
+            yield Static("=" * config.SCREEN_WIDTH, id="sep")
+            yield Static(id="content")
+            yield NavBar(active=self.section_key)
+
+    def on_mount(self) -> None:
+        self._refresh_topbar()
+        self._refresh_content()
+
+    # --- Contenido: lo provee la subclase ---
+    def render_tab(self, index: int) -> Text:
+        """Devuelve el contenido (Text) de la pestaña `index`. Override obligatorio."""
         raise NotImplementedError
+
+    def on_content_key(self, event) -> None:
+        """Teclas que no maneja el frame; las usa la pestaña interactiva activa."""
+
+    def content_captures_keys(self) -> bool:
+        """Si la pestaña activa quiere TODO el teclado (ej. un buscador abierto).
+
+        Cuando devuelve True, el frame no aplica sus atajos (secciones, pestañas,
+        avanzar dia) y le pasa la tecla directo a `on_content_key`.
+        """
+        return False
+
+    # --- HUD superior (titulo + control de avanzar dia + fecha + caja) ---
+    def _topbar_text(self) -> Text:
+        t = Text(no_wrap=True)
+        title = self.section_title.upper()
+        t.append(" " + title, style="bold green")
+        game = getattr(self.app, "game", None)
+        club = game.player_club if game else None
+        if club is not None:
+            date = game.calendar.current_date.strftime("%d-%m-%Y")
+            cash = money(club.capital)
+            # "[Espacio] Avanzar dia" es el control del game loop (avanza el tiempo).
+            hint_len = len("[Espacio] Avanzar dia")
+            used = 1 + len(title) + hint_len + 3 + len(date) + 3 + len(cash) + 1
+            t.append(" " * max(1, config.SCREEN_WIDTH - used))
+            t.append("[", style="grey62")
+            t.append("Espacio", style=f"bold {ACCENT}")
+            t.append("] Avanzar dia", style="white")
+            t.append("   ")
+            t.append(date, style="grey62")
+            t.append("   ")
+            t.append(cash, style="bold white")
+        return t
+
+    def _refresh_topbar(self) -> None:
+        self.query_one("#topbar", Static).update(self._topbar_text())
+
+    def _refresh_content(self) -> None:
+        self.query_one("#content", Static).update(self.render_tab(self._active_tab))
+
+    # --- Navegacion de pestañas ---
+    def _set_tab(self, index: int) -> None:
+        if index == self._active_tab or not (0 <= index < len(self.tabs)):
+            return
+        self._active_tab = index
+        self.query_one("#tabbar", TabBar).set_active(index)
+        self._refresh_content()
+
+    def _cycle_tab(self, delta: int) -> None:
+        if len(self.tabs) > 1:
+            self._set_tab((self._active_tab + delta) % len(self.tabs))
+
+    # --- Game loop: avanzar el tiempo ---
+    def _advance_day(self) -> None:
+        game = getattr(self.app, "game", None)
+        if game is None:
+            return
+        game.calendar.advance(1)
+        # Al avanzar cambia la fecha (y mas adelante se disparan eventos): se
+        # refresca el HUD y el contenido, que puede depender de la fecha.
+        self._refresh_topbar()
+        self._refresh_content()
+
+    # --- Teclado del frame ---
+    # OJO: no sobrescribir on_key en las subclases. Textual invoca el handler de
+    # CADA clase de la jerarquia (MRO), asi que un on_key en la subclase se
+    # sumaria a este y las teclas se procesarian dos veces. Las subclases usan
+    # on_content_key (y content_captures_keys) en su lugar.
+    def on_key(self, event) -> None:
+        if self.content_captures_keys():
+            self.on_content_key(event)
+            return
+        key = event.key
+        if key == "space":
+            event.stop()
+            self._advance_day()
+        elif len(key) == 1 and key.isdigit() and key != "0":
+            event.stop()
+            self._set_tab(int(key) - 1)
+        elif key == "tab":
+            event.stop()
+            self._cycle_tab(1)
+        elif key == "shift+tab":
+            event.stop()
+            self._cycle_tab(-1)
+        elif key in _SECTION_KEYS:
+            event.stop()
+            self.action_goto(_SECTION_KEYS[key])
+        else:
+            self.on_content_key(event)
 
     def action_goto(self, key: str) -> None:
         """Salta a otra seccion (si no es la actual)."""
@@ -51,14 +172,20 @@ class SectionScreen(BaseScreen):
             return
         # Import local para evitar imports circulares entre secciones.
         from .club_screen import ClubScreen
+        from .finance_screen import FinanceScreen
         from .league_screen import LeagueScreen
+        from .matches_screen import MatchesScreen
         from .office_screen import OfficeScreen
         from .players_screen import PlayersScreen
+        from .training_screen import TrainingScreen
 
         screens = {
             "O": OfficeScreen,
             "C": ClubScreen,
             "J": PlayersScreen,
             "L": LeagueScreen,
+            "P": MatchesScreen,
+            "E": TrainingScreen,
+            "F": FinanceScreen,
         }
         self.app.switch_screen(screens[key]())

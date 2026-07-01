@@ -8,6 +8,7 @@ partidos se generan sin jugar (`played=False`).
 from dataclasses import dataclass
 
 from .club import Club
+from .enums import MatchKind
 
 
 @dataclass
@@ -16,7 +17,8 @@ class Match:
 
     home: Club
     away: Club
-    matchday: int = 0         # numero de jornada (1..2*(N-1))
+    matchday: int = 0                    # numero de jornada (1..2*(N-1))
+    kind: MatchKind = MatchKind.LEAGUE   # tipo/competicion (liga, amistoso, copa)
     home_goals: int = 0
     away_goals: int = 0
     played: bool = False

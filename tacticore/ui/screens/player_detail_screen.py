@@ -1,10 +1,13 @@
-"""Ficha completa de un jugador: todos sus datos, bien formateados en 80x25.
+"""Ficha completa de un jugador, con pestañas, en 80x25.
 
-Se abre desde la tabla de plantilla (Enter sobre una fila). Permite:
-- volver con Esc / Enter / Backspace;
-- rotar al jugador anterior/siguiente con las flechas izquierda/derecha;
-- colorear los atributos con la tecla `c`, que cicla entre Normal, "por puesto"
-  (resalta los atributos clave de su posicion) y "por nivel" (gradiente por valor).
+Se abre desde la tabla de plantilla (Enter sobre una fila). Pestañas:
+- Datos: identidad, estado (incluye Valor y Sueldo) y atributos.
+- Historial: goles, tarjetas, lesiones (placeholder).
+- Trayectoria: clubes por los que paso (placeholder).
+
+Teclas: Esc/Enter volver; flechas izquierda/derecha rotan al jugador
+anterior/siguiente; 1/2/3 (o Tab) cambian de pestaña; `c` cicla el coloreo de los
+atributos (Normal / Por puesto / Por nivel) en la pestaña Datos.
 """
 
 from datetime import date
@@ -14,6 +17,8 @@ from textual.app import ComposeResult
 from textual.widgets import Static
 
 from ...domain.positions import POSITION_PRIORITIES
+from ...simulation.economy import player_salary, player_value
+from ..format import append_section, money
 from ..player_labels import (
     ATTR_GROUPS,
     ATTR_LABEL,
@@ -22,10 +27,12 @@ from ..player_labels import (
     POSITION_LABEL,
     specialty_label,
 )
+from ..widgets.tab_bar import TabBar
 from .base_screen import BaseScreen
 
 _W = 76  # ancho util dentro del viewport
 _MODE_NAMES = ("Normal", "Por puesto", "Por nivel")
+_TABS = ("Datos", "Historial", "Trayectoria")
 
 
 def _value_style(value: float) -> str:
@@ -42,7 +49,7 @@ def _value_style(value: float) -> str:
 
 
 class PlayerDetailScreen(BaseScreen):
-    """Ficha de un jugador con todos sus datos, navegable y con coloreo."""
+    """Ficha de un jugador con pestañas, navegable y con coloreo."""
 
     BINDINGS = [
         ("escape", "back", "Volver"),
@@ -57,10 +64,13 @@ class PlayerDetailScreen(BaseScreen):
     #viewport {
         align: center top;
     }
+    #dtabs {
+        width: 76;
+        margin-top: 1;
+    }
     #card {
         width: 76;
         height: auto;
-        margin-top: 1;
     }
     #hint {
         width: 76;
@@ -77,12 +87,14 @@ class PlayerDetailScreen(BaseScreen):
         self._today = today
         self._on_close = on_close
         self._color_mode = 0
+        self._tab = 0
 
     @property
     def _player(self):
         return self._players[self._index]
 
     def compose_viewport(self) -> ComposeResult:
+        yield TabBar(_TABS, id="dtabs")
         yield Static(self._card_text(), id="card")
         yield Static(self._hint_text(), id="hint")
 
@@ -92,15 +104,42 @@ class PlayerDetailScreen(BaseScreen):
 
     def _hint_text(self) -> str:
         return (
-            f"Esc/Enter: volver   <- ->: jugador   "
+            f"Esc: volver   <- ->: jugador   1-3: pestaña   "
             f"c: color ({_MODE_NAMES[self._color_mode]})"
         )
 
+    # --- Contenido segun pestaña ---
     def _card_text(self) -> Text:
+        if self._tab == 1:
+            return self._history_text()
+        if self._tab == 2:
+            return self._career_text()
+        return self._data_text()
+
+    def _history_text(self) -> Text:
+        t = Text()
+        append_section(t, "HISTORIAL", [
+            ("Todavia no hay eventos.", "grey62"),
+            "",
+            ("Aca vas a ver los hitos del jugador: goles, asistencias,", "grey62"),
+            ("tarjetas y lesiones, a medida que se jueguen los partidos.", "grey62"),
+        ])
+        return t
+
+    def _career_text(self) -> Text:
         p = self._player
         t = Text()
-        t.append("FICHA DEL JUGADOR\n\n", style="bold green")
+        append_section(t, "TRAYECTORIA", [
+            (f"Cantera: {p.origin_club or '-'}", "white"),
+            "",
+            ("El paso del jugador por distintos clubes (fichajes y cesiones)", "grey62"),
+            ("se registrara aca cuando exista el mercado de pases.", "grey62"),
+        ])
+        return t
 
+    def _data_text(self) -> Text:
+        p = self._player
+        t = Text()
         # Encabezado: nombre (+ alias) y dorsal.
         name = p.full_name
         if p.nickname:
@@ -110,7 +149,6 @@ class PlayerDetailScreen(BaseScreen):
         t.append(dorsal + "\n", style="yellow")
         t.append("-" * _W + "\n", style="grey50")
 
-        # Posicion en su propia linea (el nombre completo puede ser largo).
         t.append(
             f"  Posicion: {POSITION_LABEL[p.position]} ({p.position.value})\n",
             style="white",
@@ -125,11 +163,13 @@ class PlayerDetailScreen(BaseScreen):
         ])
         t.append("\n")
 
-        # Estado y rasgos (incluye Experiencia).
+        # Estado, economia y rasgos.
         self._kv_rows(t, [
             ("Media (OVR)", f"{p.overall:.1f}", "Potencial", f"{p.potential:.1f}"),
             ("Forma", f"{p.form:.1f}", "Fitness", f"{p.fitness:.1f}"),
             ("Experiencia", f"{p.experience:.0f}", "Moral", MORALE_LABEL[p.morale]),
+            ("Valor", money(player_value(p, self._today)),
+             "Sueldo", money(player_salary(p, self._today))),
             ("Especialidad", specialty_label(p.specialty),
              "Prop. lesion", f"{p.injury_proneness:.0f}"),
             ("Lesion", "Sano" if p.injury is None else "Lesionado", "", ""),
@@ -174,6 +214,26 @@ class PlayerDetailScreen(BaseScreen):
         if self._color_mode == 2:
             return _value_style(value)
         return "white"
+
+    # --- Navegacion ---
+    def _set_tab(self, index: int) -> None:
+        if index == self._tab or not (0 <= index < len(_TABS)):
+            return
+        self._tab = index
+        self.query_one("#dtabs", TabBar).set_active(index)
+        self._refresh()
+
+    def on_key(self, event) -> None:
+        key = event.key
+        if key in ("1", "2", "3"):
+            event.stop()
+            self._set_tab(int(key) - 1)
+        elif key == "tab":
+            event.stop()
+            self._set_tab((self._tab + 1) % len(_TABS))
+        elif key == "shift+tab":
+            event.stop()
+            self._set_tab((self._tab - 1) % len(_TABS))
 
     def action_prev(self) -> None:
         self._index = (self._index - 1) % len(self._players)

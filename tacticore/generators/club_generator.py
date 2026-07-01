@@ -110,7 +110,10 @@ class ClubGenerator:
         """
         players = self._build_squad(squad_size, tier, country_code, today, name)
         capacity = self._rng.randint(*self._stadiums.capacity_range(tier))
-        capital = _TIER_CAPITAL[tier][0] * 1_000_000
+        # Presupuesto inicial chico (estilo Hattrick), definido en economia.
+        from ..simulation.economy import STARTING_BUDGET
+
+        capital = STARTING_BUDGET
 
         return Club(
             name=name,

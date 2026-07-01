@@ -8,12 +8,17 @@ seccion activa queda resaltada. El cambio de seccion lo maneja la pantalla
 from rich.text import Text
 from textual.widgets import Static
 
+from ..palette import ACCENT
+
 # Secciones: (tecla, etiqueta). El orden es el de la barra.
 SECTIONS: list[tuple[str, str]] = [
     ("O", "Oficina"),
     ("C", "Club"),
     ("J", "Jugadores"),
     ("L", "Liga"),
+    ("P", "Partidos"),
+    ("E", "Entreno"),
+    ("F", "Finanzas"),
 ]
 
 
@@ -44,14 +49,21 @@ class NavBar(Static):
         # Dos verdes nada mas: el fondo de la barra (CSS) y el bloque "on green"
         # del seleccionado (que se ve mas brillante). Los no seleccionados son
         # solo texto negro, sin fondo, asi se ve la barra debajo. El atajo lo
-        # indican los corchetes [X] (ASCII), no un color.
+        # indican los corchetes [X] (ASCII), no un color. Separadores de 1 espacio
+        # para que las 7 secciones entren en 80 columnas.
         text = Text(no_wrap=True)
         text.append(" ")
-        for key, label in SECTIONS:
-            chunk = f"[{key}] {label} "
+        for i, (key, label) in enumerate(SECTIONS):
             if key == self._active:
-                text.append(chunk, style="bold black on green")
+                # Seccion activa: bloque negro sobre verde brillante (ya se destaca;
+                # no le ponemos acento para que no quede tenue sobre el fondo claro).
+                text.append(f"[{key}]{label}", style="bold black on green")
             else:
-                text.append(chunk, style="black")
-            text.append("  ")
+                # La letra del atajo va con el color de acento (resalta la tecla);
+                # los corchetes y la etiqueta, negros sobre el verde de la barra.
+                text.append("[", style="black")
+                text.append(key, style=f"bold {ACCENT}")
+                text.append("]" + label, style="black")
+            if i < len(SECTIONS) - 1:
+                text.append(" ")
         self.update(text)

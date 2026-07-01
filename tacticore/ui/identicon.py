@@ -52,6 +52,43 @@ def _shade_of(color: str) -> str:
     return color
 
 
+def emblem_lines(name: str) -> list[Text]:
+    """Devuelve el emblema como una lista de filas `Text` (7 filas, 12 columnas).
+
+    Util para componerlo al lado de otro contenido (el frame de una seccion es un
+    solo `Static`, asi que las filas se combinan a mano). Sin nombre, devuelve el
+    marco vacio del mismo tamaño.
+    """
+    inner = _SIZE * 2
+    border = "+" + "-" * inner + "+"
+    rows: list[Text] = []
+    if not name.strip():
+        rows.append(Text(border, style=MUTED))
+        for _ in range(_SIZE):
+            rows.append(Text("|" + " " * inner + "|", style=MUTED))
+        rows.append(Text(border, style=MUTED))
+        return rows
+
+    grid = identicon_grid(name)
+    color = identicon_color(name)
+    shade = _shade_of(color)
+    rows.append(Text(border, style=MUTED))
+    for grid_row in grid:
+        line = Text()
+        line.append("|", style=MUTED)
+        for lvl in grid_row:
+            if lvl == 2:
+                line.append("##", style=color)
+            elif lvl == 1:
+                line.append("::", style=shade)
+            else:
+                line.append(_CELL)
+        line.append("|", style=MUTED)
+        rows.append(line)
+    rows.append(Text(border, style=MUTED))
+    return rows
+
+
 def render_identicon(name: str) -> Text:
     """Devuelve SOLO el emblema (sin nombre) como `rich.Text`, para un Static.
 
@@ -59,28 +96,10 @@ def render_identicon(name: str) -> Text:
     que un nombre largo no corra el emblema: asi cada uno queda centrado por su
     cuenta. Sin nombre todavia, devuelve el marco vacio (mismo tamano).
     """
-    inner = _SIZE * 2
-    border = "+" + "-" * inner + "+"
     t = Text()
-    if not name.strip():
-        t.append(border + "\n", style=MUTED)
-        for _ in range(_SIZE):
-            t.append("|" + " " * inner + "|\n", style=MUTED)
-        t.append(border, style=MUTED)
-        return t
-    grid = identicon_grid(name)
-    color = identicon_color(name)
-    shade = _shade_of(color)
-    t.append(border + "\n", style=MUTED)
-    for row in grid:
-        t.append("|", style=MUTED)
-        for lvl in row:
-            if lvl == 2:
-                t.append("##", style=color)
-            elif lvl == 1:
-                t.append("::", style=shade)
-            else:
-                t.append(_CELL)
-        t.append("|\n", style=MUTED)
-    t.append(border, style=MUTED)
+    lines = emblem_lines(name)
+    for i, line in enumerate(lines):
+        t.append_text(line)
+        if i < len(lines) - 1:
+            t.append("\n")
     return t

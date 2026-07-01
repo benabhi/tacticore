@@ -69,6 +69,14 @@ class Specialty(Enum):
     LEADER = "leader"                # Lider: sube la moral del equipo
 
 
+class MatchKind(Enum):
+    """Tipo de partido (define la competicion). El valor es la etiqueta en pantalla."""
+
+    LEAGUE = "Liga"
+    FRIENDLY = "Amistoso"
+    CUP = "Copa"
+
+
 class Morale(Enum):
     """Estado animico del jugador (de peor a mejor)."""
 

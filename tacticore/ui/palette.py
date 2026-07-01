@@ -41,6 +41,9 @@ if TRUECOLOR:
     REF = "#caa63a"
     # Texto secundario (ej. el reloj del relato): gris tenue.
     MUTED = "#8a8a8a"
+    # Acento de UI: resalta atajos de teclado (la letra dentro de [X]) y detalles.
+    # Ambar que contrasta tanto sobre el verde de la barra como sobre el negro.
+    ACCENT = "#ffd24a"
     # Colores de identidad de club (identicon, versus, listas). Hues bien distintos
     # entre si; el de cada club sale de un hash de su nombre.
     IDENTICON_COLORS = [
@@ -63,6 +66,8 @@ else:
     GK_BALL = "bright_magenta"
     REF = "yellow"
     MUTED = "bright_black"
+    # Acento de UI: resalta atajos de teclado (la letra dentro de [X]) y detalles.
+    ACCENT = "yellow"
     # Identidad de club en ANSI: hues distintos (el dos-tonos del identicon lo dan
     # los caracteres #/:, no el par brillante/normal). Si dos clubes caen en el
     # mismo color, igual se distinguen por el glifo y el patron.
