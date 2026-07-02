@@ -34,6 +34,9 @@ _W = 76  # ancho util dentro del viewport
 _MODE_NAMES = ("Normal", "Por puesto", "Por nivel")
 _TABS = ("Datos", "Historial", "Trayectoria")
 
+# Color de la moral (1 peor -> 5 mejor): de rojo a verde.
+_MORALE_STYLE = {1: "bold red", 2: "red", 3: "yellow", 4: "green", 5: "bold green"}
+
 
 def _value_style(value: float) -> str:
     """Color de un atributo segun su valor (gradiente verde -> rojo)."""
@@ -140,53 +143,105 @@ class PlayerDetailScreen(BaseScreen):
     def _data_text(self) -> Text:
         p = self._player
         t = Text()
-        # Encabezado: nombre (+ alias) y dorsal.
+        # --- Encabezado: nombre (+ alias) a la izquierda; posicion y dorsal a la
+        # derecha (la posicion se pliega aca para ahorrar una fila). ---
         name = p.full_name
         if p.nickname:
             name += f'  "{p.nickname}"'
         dorsal = f"Dorsal {p.shirt_number}" if p.shirt_number else "Sin dorsal"
-        t.append(name.ljust(_W - len(dorsal)), style="bold white")
-        t.append(dorsal + "\n", style="yellow")
+        right = f"{POSITION_LABEL[p.position]} ({p.position.value})   {dorsal}"
+        t.append(name[: _W - len(right)].ljust(_W - len(right)), style="bold white")
+        t.append(right + "\n", style="yellow")
         t.append("-" * _W + "\n", style="grey50")
 
-        t.append(
-            f"  Posicion: {POSITION_LABEL[p.position]} ({p.position.value})\n",
-            style="white",
-        )
+        # --- Franja resumen: numeros clave, valor coloreado por nivel. ---
+        self._summary_strip(t, p)
+        t.append("-" * _W + "\n", style="grey50")
+        t.append("\n")
+
+        # --- Detalle en dos columnas con titulos, valores alineados. ---
         years, days = p.age_parts_on(self._today)
-        born = p.birth_date.strftime("%d-%m-%Y")
-        self._kv_rows(t, [
-            ("Nacionalidad", p.nationality, "Pie", FOOT_LABEL[p.foot]),
-            ("Edad", f"{years} anios {days} dias", "Nacimiento", born),
-            ("Altura", f"{p.height_cm} cm", "Peso", f"{p.weight_kg} kg"),
-            ("Cantera", p.origin_club or "-", "", ""),
-        ])
+        identidad = [
+            ("Nacionalidad", p.nationality),
+            ("Pie", FOOT_LABEL[p.foot]),
+            ("Edad", f"{years} anios {days} dias"),
+            ("Nacimiento", p.birth_date.strftime("%d-%m-%Y")),
+            ("Altura", f"{p.height_cm} cm"),
+            ("Peso", f"{p.weight_kg} kg"),
+            ("Cantera", p.origin_club or "-"),
+        ]
+        lesion = "Sano" if p.injury is None else "Lesionado"
+        ficha = [
+            ("Sueldo", money(player_salary(p, self._today)), "white"),
+            ("Experiencia", f"{p.experience:.0f}", "white"),
+            ("Moral", f"{MORALE_LABEL[p.morale]} ({p.morale.value})",
+             _MORALE_STYLE.get(p.morale.value, "white")),
+            ("Especialidad", specialty_label(p.specialty), "white"),
+            ("Prop. lesion", f"{p.injury_proneness:.0f}", "white"),
+            ("Lesion", lesion, "red" if p.injury is not None else "green"),
+        ]
+        self._two_columns(t, ("IDENTIDAD", identidad), ("FICHA", ficha))
         t.append("\n")
 
-        # Estado, economia y rasgos.
-        self._kv_rows(t, [
-            ("Media (OVR)", f"{p.overall:.1f}", "Potencial", f"{p.potential:.1f}"),
-            ("Forma", f"{p.form:.1f}", "Fitness", f"{p.fitness:.1f}"),
-            ("Experiencia", f"{p.experience:.0f}", "Moral", MORALE_LABEL[p.morale]),
-            ("Valor", money(player_value(p, self._today)),
-             "Sueldo", money(player_salary(p, self._today))),
-            ("Especialidad", specialty_label(p.specialty),
-             "Prop. lesion", f"{p.injury_proneness:.0f}"),
-            ("Lesion", "Sano" if p.injury is None else "Lesionado", "", ""),
-        ])
-        t.append("\n")
-
+        # --- Atributos (grilla de 3 columnas, sin cambios de fondo). ---
+        t.append("-" * _W + "\n", style="grey50")
         self._attributes(t)
         return t
 
-    def _kv_rows(self, t: Text, rows) -> None:
-        """Agrega filas con hasta dos pares 'Etiqueta: valor' por linea."""
-        half = _W // 2
-        for l1, v1, l2, v2 in rows:
-            left = f"{l1}: {v1}" if l1 else ""
-            right = f"{l2}: {v2}" if l2 else ""
-            t.append("  " + left.ljust(half - 2), style="white")
-            t.append(right + "\n", style="white")
+    def _summary_strip(self, t: Text, p) -> None:
+        """Franja de numeros clave: etiqueta en verde, valor coloreado por nivel."""
+        items = [
+            ("OVR", f"{p.overall:.1f}", _value_style(p.overall)),
+            ("POT", f"{p.potential:.1f}", _value_style(p.potential)),
+            ("FORMA", f"{p.form:.1f}", _value_style(p.form)),
+            ("FIT", f"{p.fitness:.0f}", _value_style(p.fitness)),
+            ("VALOR", money(player_value(p, self._today)), "bold white"),
+        ]
+        t.append("  ")
+        for i, (label, value, style) in enumerate(items):
+            if i:
+                t.append("    ")
+            t.append(f"{label} ", style="bold green")
+            t.append(value, style=style)
+        t.append("\n")
+
+    def _two_columns(self, t: Text, left, right) -> None:
+        """Dos columnas 'Etiqueta valor' con titulo verde y valor en columna fija.
+
+        `left`/`right` = (titulo, filas); cada fila es (label, value) o
+        (label, value, estilo) para colorear el valor.
+        """
+        half = _W // 2          # ancho de cada columna
+        label_w = 14            # los valores arrancan todos en la misma columna
+        ltitle, lrows = left
+        rtitle, rrows = right
+
+        def cell(row) -> Text:
+            label, value = row[0], row[1]
+            style = row[2] if len(row) > 2 else "white"
+            c = Text()
+            c.append(f"{label:<{label_w}}", style="grey62")
+            c.append(str(value), style=style)
+            return c
+
+        head = Text()
+        head.append(ltitle.ljust(half), style="bold green")
+        head.append(rtitle, style="bold green")
+        head.append("\n")
+        t.append_text(head)
+
+        for i in range(max(len(lrows), len(rrows))):
+            line = Text()
+            if i < len(lrows):
+                lc = cell(lrows[i])
+                line.append_text(lc)
+                line.append(" " * max(1, half - len(lc.plain)))
+            else:
+                line.append(" " * half)
+            if i < len(rrows):
+                line.append_text(cell(rrows[i]))
+            line.append("\n")
+            t.append_text(line)
 
     def _attributes(self, t: Text) -> None:
         col_w = 25  # 3 columnas x 25 = 75

@@ -27,6 +27,7 @@ class PlayerPickerScreen(BaseScreen):
         ("up", "move(-1)", "Arriba"),
         ("down", "move(1)", "Abajo"),
         ("enter", "pick", "Elegir"),
+        ("i", "info", "Info"),
         ("x", "clear", "Vaciar"),
     ]
 
@@ -58,8 +59,8 @@ class PlayerPickerScreen(BaseScreen):
     def compose_viewport(self) -> ComposeResult:
         yield Static(self._card_text(), id="card")
         yield Static(
-            hint(("Flechas", "mover"), ("Enter", "elegir"),
-                 ("X", "vaciar"), ("Esc", "cancelar"), sep="  "),
+            hint(("Flechas", "mover"), ("Enter", "elegir"), ("i", "info"),
+                 ("X", "vaciar"), ("Esc", "cancelar"), sep=" "),
             id="hint",
         )
 
@@ -86,6 +87,23 @@ class PlayerPickerScreen(BaseScreen):
 
     def action_move(self, delta: int) -> None:
         self._selected = max(0, min(len(self._players) - 1, self._selected + delta))
+        self._refresh()
+
+    def action_info(self) -> None:
+        """Abre la ficha del jugador seleccionado (misma vista que en Jugadores).
+
+        Al dar Esc en la ficha, `pop_screen` vuelve a este selector; se sincroniza
+        la seleccion con el jugador donde haya quedado navegando en la ficha.
+        """
+        if not self._players:
+            return
+        from .player_detail_screen import PlayerDetailScreen
+
+        self.app.push_screen(PlayerDetailScreen(
+            self._players, self._selected, self._today, self._on_info_close))
+
+    def _on_info_close(self, index: int) -> None:
+        self._selected = index
         self._refresh()
 
     def action_pick(self) -> None:
