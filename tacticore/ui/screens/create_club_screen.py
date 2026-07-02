@@ -235,7 +235,10 @@ class CreateClubScreen(BaseScreen):
         if self._active == _NAT:
             # Solo se puede elegir un pais que exista en el mundo generado.
             available = [(c.name, c.code) for c in self.app.game.countries]
-            self.app.push_screen(CountrySelectScreen(available), self._set_country)
+            self.app.push_screen(
+                CountrySelectScreen(available, title="ELEGI LA NACIONALIDAD DE TU CLUB"),
+                self._set_country,
+            )
         elif self._active == _CREATE:
             self._create()
 

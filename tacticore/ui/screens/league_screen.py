@@ -1,33 +1,38 @@
-"""Seccion Liga: la competicion del jugador, en una sola vista.
+"""Seccion Liga: la competicion, en una sola vista navegable.
 
 Muestra, de arriba a abajo:
-- la tabla de posiciones (con columna de MOVimiento: ^ subio, v bajo, - igual);
-- el fixture de una jornada (navegable con las flechas), con el partido propio
-  resaltado;
+- la tabla de posiciones de la division actual (con columna de MOVimiento:
+  ^ subio, v bajo, - igual), con un cursor para elegir equipo;
+- el fixture de una jornada (navegable), con el partido propio resaltado;
 - una franja de estadisticas de liga (disciplina, lesionados, mercado).
 
-El fixture se genera al crear/cargar la partida; aca, por las dudas, se genera si
-todavia no existe.
+Teclas: arriba/abajo eligen equipo (cursor); izquierda/derecha cambian de division
+(los 5 niveles A-E del pais); [ y ] cambian la jornada del fixture; Enter (mas
+adelante) abrira la info del equipo seleccionado.
 """
 
 from rich.text import Text
 
+from ... import config
 from ...core.rng import new_rng
+from ...domain.enums import LeagueTier
 from ...simulation.season import Standing, compute_standings, generate_league_fixture
 from .section_screen import SectionScreen
 
-_WIDTH = 76    # ancho util de la tabla
+_WIDTH = config.SCREEN_WIDTH  # la tabla ocupa TODO el ancho (80)
 _FORM_LEN = 5  # cuantos resultados recientes se muestran en "ULT5"
+_TIER_ORDER = list(LeagueTier)  # A, B, C, D, E (orden de calidad)
 
 # Columnas de la tabla: (titulo, ancho, alineacion). "M" = columna de movimiento.
+# ULT5 (ultima) va a la derecha para pegarse al borde y llenar el ancho.
 _FIXED = [
     ("PJ", 2, "r"), ("G", 2, "r"), ("E", 2, "r"), ("P", 2, "r"),
     ("GF", 2, "r"), ("GC", 2, "r"), ("DIF", 4, "r"), ("Pts", 3, "r"),
-    ("ULT5", _FORM_LEN, "l"),
+    ("ULT5", _FORM_LEN, "r"),
 ]
-# Ancho del nombre = total - marcador(2) - separadores - resto de columnas fijas.
+# Ancho del nombre = total - marcador(2) - separadores(cols-1) - resto de columnas.
 _HEAD_COLS = [("#", 2, "r"), ("M", 1, "l"), ("EQUIPO", 0, "l")] + _FIXED
-_NAME_W = _WIDTH - 2 - (len(_HEAD_COLS) + 1) - sum(w for _, w, _ in _HEAD_COLS)
+_NAME_W = _WIDTH - 2 - (len(_HEAD_COLS) - 1) - sum(w for _, w, _ in _HEAD_COLS)
 _COLUMNS = [("#", 2, "r"), ("M", 1, "l"), ("EQUIPO", _NAME_W, "l")] + _FIXED
 
 # Color de cada resultado en la forma reciente (ASCII: G/E/P, "-" sin jugar).
@@ -37,7 +42,7 @@ _MOVE_STYLE = {"^": "green", "v": "red", "-": "grey42"}
 
 
 class LeagueScreen(SectionScreen):
-    """Posiciones, fixture y estadisticas de la liga del jugador (una vista)."""
+    """Posiciones (ciclables por division), fixture y stats de la liga."""
 
     section_key = "L"
     section_title = "Liga"
@@ -45,25 +50,44 @@ class LeagueScreen(SectionScreen):
 
     def __init__(self) -> None:
         super().__init__()
-        self._round = None   # jornada mostrada en el fixture (None = auto)
+        self._country = None   # pais mostrado (None = el del jugador)
+        self._division = None  # indice de la division mostrada (None = la del jugador)
+        self._selected = 0     # equipo seleccionado en la tabla (cursor)
+        self._round = None     # jornada mostrada en el fixture (None = auto)
 
-    @property
-    def _league(self):
+    # --- Pais y divisiones ---
+    def _current_country(self):
         game = self.app.game
-        return game.player_league if game else None
+        return self._country or (game.player_country if game else None)
 
-    def _ensure_fixture(self):
-        game = self.app.game
-        league = self._league
+    def _divisions(self) -> list:
+        country = self._current_country()
+        if country is None:
+            return []
+        return sorted(country.leagues, key=lambda lg: _TIER_ORDER.index(lg.tier))
+
+    def _current_league(self):
+        divs = self._divisions()
+        if not divs:
+            return self.app.game.player_league if self.app.game else None
+        if self._division is None:  # arranca en la division del jugador
+            pl = self.app.game.player_league
+            self._division = next((i for i, lg in enumerate(divs) if lg is pl), 0)
+        self._division %= len(divs)
+        return divs[self._division]
+
+    def _ensure_fixture(self, league):
+        # El fixture de la liga vista se genera on-demand (idempotente). La liga
+        # del jugador ya viene generada; cada liga usa una semilla propia por tier.
         if league is not None and not league.matches:
-            generate_league_fixture(league, new_rng(game.seed))
+            seed = self.app.game.seed + _TIER_ORDER.index(league.tier)
+            generate_league_fixture(league, new_rng(seed))
         return league
 
     def _total_rounds(self, league) -> int:
         return max((m.matchday for m in league.matches), default=0)
 
     def _played_rounds(self, league) -> int:
-        """Cantidad de jornadas COMPLETAS (todos sus partidos jugados)."""
         total = self._total_rounds(league)
         return sum(
             1 for r in range(1, total + 1)
@@ -78,11 +102,10 @@ class LeagueScreen(SectionScreen):
 
     # --- Render ---
     def render_tab(self, index: int) -> Text:
-        league = self._ensure_fixture()
+        league = self._ensure_fixture(self._current_league())
         if league is None:
             return Text("No hay liga para mostrar.", style="white")
-        # La tabla cierra con su propia linea, asi el fixture va pegado; queda una
-        # linea de aire entre las estadisticas y la barra de menu inferior.
+        self._selected = max(0, min(len(league.clubs) - 1, self._selected))
         t = Text()
         self._append_standings(t, league)
         self._append_fixture(t, league)
@@ -90,7 +113,7 @@ class LeagueScreen(SectionScreen):
         self._append_stats(t, league)
         return t
 
-    # --- Tabla de posiciones (con movimiento) ---
+    # --- Tabla de posiciones (cursor + tu equipo) ---
     def _moves(self, league) -> dict:
         """id(club) -> '^' / 'v' / '-' comparando con la jornada anterior."""
         played = self._played_rounds(league)
@@ -108,15 +131,17 @@ class LeagueScreen(SectionScreen):
     def _append_standings(self, t: Text, league) -> None:
         standings = compute_standings(league)
         moves = self._moves(league)
-        total = self._total_rounds(league)
-        played = self._played_rounds(league)
         club = self.app.game.player_club
 
+        country = self._current_country()
+        cname = (country.name if country else "-")[:18]
         t.append("POSICIONES", style="bold green")
-        t.append(f"     Jornada {min(played + 1, total)}/{total}\n", style="grey62")
+        t.append(f"   {cname} - Liga {league.tier.value}   ", style="bold white")
+        t.append("(n: pais  izq/der: div  arr/aba: eq)\n", style="grey62")
         self._append_header(t)
         for pos, standing in enumerate(standings, start=1):
-            self._append_row(t, pos, standing, moves[id(standing.club)], club)
+            is_cursor = (pos - 1) == self._selected
+            self._append_row(t, pos, standing, moves[id(standing.club)], club, is_cursor)
         t.append("-" * _WIDTH + "\n", style="grey50")
 
     @staticmethod
@@ -144,12 +169,17 @@ class LeagueScreen(SectionScreen):
         recent = form[-_FORM_LEN:]
         return "-" * (_FORM_LEN - len(recent)) + "".join(recent)
 
-    def _append_row(self, t: Text, pos: int, s: Standing, move: str, player_club) -> None:
+    def _append_row(self, t, pos, s, move, player_club, is_cursor) -> None:
         values = self._row_values(pos, move, s)
         cells = [self._fmt(v, w, a) for v, (_, w, a) in zip(values, _COLUMNS)]
-        if s.club is player_club:
+        # Prioridad: cursor (barra verde) > tu equipo (blanco brillante) > normal.
+        if is_cursor:
             line = ("> " + " ".join(cells)).ljust(_WIDTH)
             t.append(line + "\n", style="bold black on green")
+            return
+        if s.club is player_club:
+            line = ("  " + " ".join(cells)).ljust(_WIDTH)
+            t.append(line + "\n", style="bold white")
             return
         t.append("  ")
         for i, cell in enumerate(cells):
@@ -168,7 +198,7 @@ class LeagueScreen(SectionScreen):
             t.append(" " * (_WIDTH - used))
         t.append("\n")
 
-    # --- Fixture (una jornada, navegable) ---
+    # --- Fixture (una jornada, navegable con [ ]) ---
     def _append_fixture(self, t: Text, league) -> None:
         total = self._total_rounds(league)
         rnd = self._round if self._round is not None else self._next_round(league)
@@ -180,7 +210,7 @@ class LeagueScreen(SectionScreen):
         if matches and matches[0].match_date:
             when = "  -  " + matches[0].match_date.strftime("%d-%m-%Y")
         t.append(f"FIXTURE  Jornada {rnd}/{total}{when}", style="bold green")
-        t.append("     (flechas: cambiar jornada)\n", style="grey62")
+        t.append("     ([ ] jornada)\n", style="grey62")
         for m in matches:
             mine = m.home is club or m.away is club
             score = f"{m.home_goals} - {m.away_goals}" if m.played else "  vs "
@@ -189,9 +219,7 @@ class LeagueScreen(SectionScreen):
 
     # --- Franja de estadisticas de liga ---
     def _append_stats(self, t: Text, league) -> None:
-        injured = sum(
-            1 for club in league.clubs for p in club.players if p.is_injured
-        )
+        injured = sum(1 for cl in league.clubs for p in cl.players if p.is_injured)
         t.append("ESTADISTICAS DE LIGA\n", style="bold green")
         # Disciplina y mercado: 0 hasta que existan el motor de partido y el mercado.
         parts = [
@@ -206,15 +234,65 @@ class LeagueScreen(SectionScreen):
                 t.append("   ")
         t.append("\n")
 
-    # --- Navegacion del fixture ---
-    def on_content_key(self, event) -> None:
-        league = self._league
-        if league is None:
-            return
+    # --- Teclado ---
+    def _change_round(self, delta: int) -> None:
+        league = self._current_league()
         total = self._total_rounds(league)
         current = self._round if self._round is not None else self._next_round(league)
-        key = event.key
-        if key in ("left", "up", "pageup"):
-            event.stop(); self._round = max(1, current - 1); self._refresh_content()
-        elif key in ("right", "down", "pagedown"):
-            event.stop(); self._round = min(total, current + 1); self._refresh_content()
+        self._round = max(1, min(total, current + delta))
+        self._refresh_content()
+
+    def _change_division(self, delta: int) -> None:
+        divs = self._divisions()
+        if not divs:
+            return
+        self._current_league()  # asegura que _division este inicializado
+        self._division = (self._division + delta) % len(divs)
+        self._round = None
+        self._selected = 0
+        self._refresh_content()
+
+    def _open_country_picker(self) -> None:
+        from .country_select_screen import CountrySelectScreen
+
+        game = self.app.game
+        available = [(c.name, c.code) for c in game.countries]
+        self.app.push_screen(
+            CountrySelectScreen(available, title="ELEGI UN PAIS"),
+            self._on_country_picked,
+        )
+
+    def _on_country_picked(self, choice) -> None:
+        if choice is None:  # cancelo la seleccion
+            return
+        _, code = choice
+        game = self.app.game
+        country = next((c for c in game.countries if c.code == code), None)
+        if country is None:
+            return
+        # Cambia de pais manteniendo la division (mismo tier); resetea cursor y jornada.
+        self._country = country
+        self._selected = 0
+        self._round = None
+        self._refresh_content()
+
+    def on_content_key(self, event) -> None:
+        league = self._current_league()
+        if league is None:
+            return
+        key, ch = event.key, event.character
+        if key == "up":
+            event.stop(); self._selected = max(0, self._selected - 1); self._refresh_content()
+        elif key == "down":
+            n = len(league.clubs)
+            event.stop(); self._selected = min(n - 1, self._selected + 1); self._refresh_content()
+        elif key == "left":
+            event.stop(); self._change_division(-1)
+        elif key == "right":
+            event.stop(); self._change_division(1)
+        elif key == "n":
+            event.stop(); self._open_country_picker()
+        elif ch == "[":
+            event.stop(); self._change_round(-1)
+        elif ch == "]":
+            event.stop(); self._change_round(1)

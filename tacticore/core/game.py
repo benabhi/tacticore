@@ -47,6 +47,16 @@ class GameState:
                     return league
         return None
 
+    @property
+    def player_country(self) -> Country | None:
+        """El pais del club del jugador (con sus 5 ligas), o None si no hay club."""
+        if self.player_club is None:
+            return None
+        for country in self.countries:
+            if country.code == self.player_club.country_code:
+                return country
+        return None
+
     def install_player_club(self, club: Club) -> None:
         """Mete el club del jugador en la liga E de su pais (reemplaza un club IA).
 

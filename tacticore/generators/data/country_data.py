@@ -59,7 +59,6 @@ COUNTRIES = [
     ("Letonia", "LV"),
     ("Lituania", "LT"),
     ("Israel", "IL"),
-    ("Gibraltar", "GI"),
     # Asia / Oceania.
     ("Japon", "JP"),
     ("Corea del Sur", "KR"),
@@ -90,7 +89,6 @@ NAME_POOL = {
     "SC": "GB",  # Escocia
     "WA": "GB",  # Gales
     "NI": "GB",  # Irlanda del Norte
-    "GI": "GB",  # Gibraltar (territorio britanico)
     "AU": "GB",  # Australia (nombres ingleses)
     "BY": "RU",  # Bielorrusia
     "UA": "RU",  # Ucrania
