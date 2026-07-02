@@ -44,6 +44,15 @@ _FORM_STYLE = {"G": "green", "E": "yellow", "P": "red", "-": "grey42"}
 _MOVE_STYLE = {"^": "green", "v": "red", "-": "grey42"}
 
 
+def _goal_style(a: int, b: int) -> str:
+    """Verde si `a` gana, rojo si pierde, blanco si empatan."""
+    if a > b:
+        return "bold green"
+    if a < b:
+        return "bold red"
+    return "white"
+
+
 class LeagueScreen(SectionScreen):
     """Posiciones (ciclables por division), fixture y stats de la liga."""
 
@@ -236,13 +245,30 @@ class LeagueScreen(SectionScreen):
         head.append(")", style="grey62")
         lines = [head]
         for m in matches:
-            mine = m.home is club or m.away is club
-            score = f"{m.home_goals}-{m.away_goals}" if m.played else "vs"
-            lines.append(Text(
-                f"{m.home.name:>16.16} {score:^5} {m.away.name:<16.16}",
-                style="bold white" if mine else "white",
-            ))
+            lines.append(self._match_line(m, club))
         return lines
+
+    def _match_line(self, m, club) -> Text:
+        """Una fila del fixture: 'local   G vs G   visitante' con goles coloreados.
+
+        Sin jugar, los goles son un '_' gris; jugado, el que va ganando en verde y
+        el que pierde en rojo (empate en blanco). Tres espacios a cada lado del vs.
+        """
+        mine = m.home is club or m.away is club
+        name_style = "bold white" if mine else "white"
+        t = Text()
+        t.append(f"{m.home.name:>18.18} ", style=name_style)
+        if m.played:
+            gh, ga = m.home_goals, m.away_goals
+            t.append(str(gh), style=_goal_style(gh, ga))
+            t.append(" vs ", style="grey62")
+            t.append(str(ga), style=_goal_style(ga, gh))
+        else:
+            t.append("_", style="grey50")
+            t.append(" vs ", style="grey62")
+            t.append("_", style="grey50")
+        t.append(f" {m.away.name:<18.18}", style=name_style)
+        return t
 
     def _team_snapshot_lines(self) -> list[Text]:
         # Snapshot de TU equipo (independiente de la division que estes mirando):
