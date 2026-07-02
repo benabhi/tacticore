@@ -21,8 +21,29 @@ def default_save_path() -> Path:
 
 
 def save_exists(path: Path | None = None) -> bool:
-    """Indica si hay una partida guardada."""
+    """Indica si hay un archivo de partida guardada."""
     return (path or default_save_path()).exists()
+
+
+def compatible_save_exists(path: Path | None = None) -> bool:
+    """True si hay un save y su schema coincide con el actual (se puede cargar).
+
+    Un save de una version vieja (ej. antes de que existieran los directores
+    tecnicos) NO es compatible: se ignora para arrancar una partida nueva en vez
+    de romper al intentar leerlo.
+    """
+    path = path or default_save_path()
+    if not path.exists():
+        return False
+    try:
+        conn = sqlite3.connect(path)
+        try:
+            row = conn.execute("SELECT schema_version FROM meta").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
+    return bool(row) and row[0] == _db.SCHEMA_VERSION
 
 
 def save_game(state: GameState, path: Path | None = None) -> None:

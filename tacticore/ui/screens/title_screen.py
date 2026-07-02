@@ -79,8 +79,11 @@ class TitleScreen(BaseScreen):
 
     def compose_viewport(self) -> ComposeResult:
         self._blink_on = True
-        # El prompt cambia segun haya o no una partida guardada.
-        self._prompt = _PROMPT_CONTINUE if savegame.save_exists() else _PROMPT_NEW
+        # El prompt cambia segun haya o no una partida guardada COMPATIBLE (un save
+        # viejo de otra version se ignora: arranca partida nueva).
+        self._prompt = (
+            _PROMPT_CONTINUE if savegame.compatible_save_exists() else _PROMPT_NEW
+        )
         yield Static(self._build_scene(self._blink_on), id="scene")
 
     def on_mount(self) -> None:
@@ -156,7 +159,7 @@ class TitleScreen(BaseScreen):
         if self.app.game is not None:
             # Ya hay una partida en curso en memoria.
             self.app.switch_screen(OfficeScreen())
-        elif savegame.save_exists():
+        elif savegame.compatible_save_exists():
             # Continuar: cargar la partida guardada y entrar a la Oficina.
             self.app.game = savegame.load_game()
             # El fixture no se persiste todavia: se regenera (determinista por
