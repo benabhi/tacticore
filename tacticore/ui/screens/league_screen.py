@@ -22,6 +22,7 @@ from .section_screen import SectionScreen
 
 _WIDTH = config.SCREEN_WIDTH  # la tabla ocupa TODO el ancho (80)
 _FORM_LEN = 5  # cuantos resultados recientes se muestran en "ULT5"
+_LEFT_W = 46   # ancho de la columna izquierda (fixture) en la zona de dos columnas
 _TIER_ORDER = list(LeagueTier)  # A, B, C, D, E (orden de calidad)
 
 # Columnas de la tabla: (titulo, ancho, alineacion). "M" = columna de movimiento.
@@ -201,26 +202,75 @@ class LeagueScreen(SectionScreen):
             t.append(" " * (_WIDTH - used))
         t.append("\n")
 
-    # --- Fixture (una jornada, navegable con [ ]) ---
+    # --- Fixture (dos columnas: la jornada + snapshot de tu equipo) ---
     def _append_fixture(self, t: Text, league) -> None:
+        left = self._fixture_lines(league)
+        right = self._team_snapshot_lines()
+        for i in range(max(len(left), len(right))):
+            lline = left[i] if i < len(left) else Text("")
+            rline = right[i] if i < len(right) else Text("")
+            t.append_text(lline)
+            t.append(" " * max(2, _LEFT_W - len(lline.plain) + 2))
+            t.append_text(rline)
+            t.append("\n")
+
+    def _fixture_lines(self, league) -> list[Text]:
         total = self._total_rounds(league)
         rnd = self._round if self._round is not None else self._next_round(league)
         rnd = max(1, min(total, rnd))
         club = self.app.game.player_club
 
         matches = [m for m in league.matches if m.matchday == rnd]
-        when = ""
-        if matches and matches[0].match_date:
-            when = "  -  " + matches[0].match_date.strftime("%d-%m-%Y")
-        t.append(f"FIXTURE  Jornada {rnd}/{total}{when}", style="bold green")
-        t.append("     (", style="grey62")
-        t.append_text(hint(("[ ]", "jornada")))
-        t.append(")\n", style="grey62")
+        when = matches[0].match_date.strftime("%d-%m") if (matches and matches[0].match_date) else ""
+        head = Text()
+        head.append(f"FIXTURE  J.{rnd}/{total}  {when}  ", style="bold green")
+        head.append("(", style="grey62")
+        head.append_text(hint(("[ ]", "jornada")))
+        head.append(")", style="grey62")
+        lines = [head]
         for m in matches:
             mine = m.home is club or m.away is club
-            score = f"{m.home_goals} - {m.away_goals}" if m.played else "  vs "
-            line = f"  {m.home.name:>28.28}  {score:^7}  {m.away.name:<28.28}"
-            t.append(line + "\n", style="bold white" if mine else "white")
+            score = f"{m.home_goals}-{m.away_goals}" if m.played else "vs"
+            lines.append(Text(
+                f"{m.home.name:>16.16} {score:^5} {m.away.name:<16.16}",
+                style="bold white" if mine else "white",
+            ))
+        return lines
+
+    def _team_snapshot_lines(self) -> list[Text]:
+        # Snapshot de TU equipo (independiente de la division que estes mirando):
+        # partido anterior con resultado y proximo partido con la prevision del clima.
+        from ...simulation.weather import forecast
+
+        game = self.app.game
+        pl = game.player_league
+        club = game.player_club
+        mine = sorted(
+            (m for m in pl.matches if m.home is club or m.away is club),
+            key=lambda m: m.matchday,
+        ) if pl else []
+        prev = next((m for m in reversed(mine) if m.played), None)
+        nxt = next((m for m in mine if not m.played), None)
+
+        lines = [Text("PARTIDO ANTERIOR", style="bold green")]
+        if prev is None:
+            lines.append(Text("  sin jugar aun", style="grey62"))
+        else:
+            rival = prev.away if prev.home is club else prev.home
+            gf = prev.home_goals if prev.home is club else prev.away_goals
+            gc = prev.away_goals if prev.home is club else prev.home_goals
+            res = "G" if gf > gc else "P" if gf < gc else "E"
+            lines.append(Text(f"  vs {rival.name:.14}  {gf}-{gc} {res}", style="white"))
+
+        lines.append(Text("PARTIDO PROXIMO", style="bold green"))
+        if nxt is None:
+            lines.append(Text("  -", style="grey62"))
+        else:
+            rival = nxt.away if nxt.home is club else nxt.home
+            sede = "Local" if nxt.home is club else "Visita"
+            lines.append(Text(f"  vs {rival.name:.14} ({sede})", style="bold white"))
+            lines.append(Text(f"  Clima: {forecast(nxt, game.seed)}", style="grey70"))
+        return lines
 
     # --- Franja de estadisticas de liga ---
     def _append_stats(self, t: Text, league) -> None:
