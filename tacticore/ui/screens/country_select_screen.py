@@ -14,6 +14,7 @@ from textual.app import ComposeResult
 from textual.widgets import Static
 
 from ...generators.data.country_data import COUNTRIES
+from ..format import hint
 from .base_screen import BaseScreen
 
 _COLS = 3
@@ -97,8 +98,9 @@ class CountrySelectScreen(BaseScreen):
 
     def _footer_text(self) -> Text:
         if self._searching:
-            return Text("Enter: elegir   Esc: salir del filtro")
-        return Text("Flechas: mover   Enter: elegir   /: buscar   Esc: cancelar")
+            return hint(("Enter", "elegir"), ("Esc", "salir del filtro"))
+        return hint(("Flechas", "mover"), ("Enter", "elegir"),
+                    ("/", "buscar"), ("Esc", "cancelar"))
 
     def _grid_text(self) -> Text:
         visible = self._visible()

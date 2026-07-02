@@ -17,6 +17,7 @@ from ... import config
 from ...core.rng import new_rng
 from ...domain.enums import LeagueTier
 from ...simulation.season import Standing, compute_standings, generate_league_fixture
+from ..format import hint
 from .section_screen import SectionScreen
 
 _WIDTH = config.SCREEN_WIDTH  # la tabla ocupa TODO el ancho (80)
@@ -137,7 +138,9 @@ class LeagueScreen(SectionScreen):
         cname = (country.name if country else "-")[:18]
         t.append("POSICIONES", style="bold green")
         t.append(f"   {cname} - Liga {league.tier.value}   ", style="bold white")
-        t.append("(n: pais  izq/der: div  arr/aba: eq)\n", style="grey62")
+        t.append("(", style="grey62")
+        t.append_text(hint(("n", "pais"), ("izq/der", "div"), ("arr/aba", "eq"), sep="  "))
+        t.append(")\n", style="grey62")
         self._append_header(t)
         for pos, standing in enumerate(standings, start=1):
             is_cursor = (pos - 1) == self._selected
@@ -210,7 +213,9 @@ class LeagueScreen(SectionScreen):
         if matches and matches[0].match_date:
             when = "  -  " + matches[0].match_date.strftime("%d-%m-%Y")
         t.append(f"FIXTURE  Jornada {rnd}/{total}{when}", style="bold green")
-        t.append("     ([ ] jornada)\n", style="grey62")
+        t.append("     (", style="grey62")
+        t.append_text(hint(("[ ]", "jornada")))
+        t.append(")\n", style="grey62")
         for m in matches:
             mine = m.home is club or m.away is club
             score = f"{m.home_goals} - {m.away_goals}" if m.played else "  vs "

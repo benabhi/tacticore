@@ -2,10 +2,33 @@
 
 from rich.text import Text
 
+from .palette import ACCENT
+
 
 def money(amount: int) -> str:
     """Formatea un monto como '$1.234.567' (separador de miles con punto)."""
     return "$" + f"{amount:,}".replace(",", ".")
+
+
+def hint(*items, sep: str = "   ") -> Text:
+    """Linea de ayuda con la TECLA en amarillo (acento) y la descripcion en gris.
+
+    Estandar de atajos: cada item es `(tecla, descripcion)` -> se ve
+    `tecla: descripcion` con la tecla resaltada; o un string suelto (texto gris).
+    Ej: `hint(("Enter", "elegir"), ("Esc", "cancelar"))`.
+    """
+    t = Text(no_wrap=True)
+    for i, item in enumerate(items):
+        if i:
+            t.append(sep)
+        if isinstance(item, tuple):
+            key, label = item
+            t.append(key, style=f"bold {ACCENT}")
+            if label:
+                t.append(": " + label, style="grey62")
+        else:
+            t.append(item, style="grey62")
+    return t
 
 
 def append_section(

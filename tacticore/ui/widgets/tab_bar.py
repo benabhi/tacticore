@@ -9,6 +9,8 @@ Tab/Shift+Tab para ciclar.
 from rich.text import Text
 from textual.widgets import Static
 
+from ..palette import ACCENT
+
 
 class TabBar(Static):
     """Fila superior con las pestañas de la seccion; la activa resaltada."""
@@ -39,10 +41,16 @@ class TabBar(Static):
         text = Text(no_wrap=True)
         text.append(" ")
         for i, label in enumerate(self._tabs):
-            chunk = f"[{i + 1}] {label} " if len(self._tabs) > 1 else f"{label} "
+            numbered = len(self._tabs) > 1
             if i == self._active:
+                chunk = f"[{i + 1}] {label} " if numbered else f"{label} "
                 text.append(chunk, style="bold black on green")
+            elif numbered:
+                # El numero del atajo va en amarillo (acento), como en la barra.
+                text.append("[", style="grey70")
+                text.append(str(i + 1), style=f"bold {ACCENT}")
+                text.append(f"] {label} ", style="grey70")
             else:
-                text.append(chunk, style="grey70")
+                text.append(f"{label} ", style="grey70")
             text.append("  ")
         self.update(text)

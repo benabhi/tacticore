@@ -16,6 +16,7 @@ from textual.widgets import Static
 
 from ...domain.enums import Position
 from ...simulation.match.formation import auto_select, get_formation
+from ..format import hint
 from ..player_labels import POSITION_LABEL
 from .base_screen import BaseScreen
 
@@ -92,7 +93,8 @@ class LineupScreen(BaseScreen):
     def compose_viewport(self) -> ComposeResult:
         yield Static(self._card_text(), id="card")
         yield Static(
-            "Flechas: mover   Enter: elegir   X: quitar   A: automatica   Esc: volver",
+            hint(("Flechas", "mover"), ("Enter", "elegir"), ("X", "quitar"),
+                 ("A", "automatica"), ("Esc", "volver")),
             id="hint",
         )
 

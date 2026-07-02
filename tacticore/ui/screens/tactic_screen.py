@@ -15,6 +15,7 @@ from textual.widgets import Static
 
 from ...domain.enums import Mentality, TeamTactic
 from ...domain.tactic import Tactic
+from ..format import hint
 from ...simulation.match.formation import FORMATIONS, auto_select, get_formation
 from .base_screen import BaseScreen
 
@@ -65,7 +66,8 @@ class TacticScreen(BaseScreen):
     def compose_viewport(self) -> ComposeResult:
         yield Static(self._card_text(), id="card")
         yield Static(
-            "Flechas: planteo   F: alineacion   Enter: guardar   Esc: cancelar",
+            hint(("Flechas", "planteo"), ("F", "alineacion"),
+                 ("Enter", "guardar"), ("Esc", "cancelar")),
             id="hint",
         )
 

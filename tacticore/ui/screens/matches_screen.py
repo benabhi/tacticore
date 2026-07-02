@@ -9,6 +9,7 @@ Pestañas:
 
 from rich.text import Text
 
+from ..format import hint
 from .section_screen import SectionScreen
 
 _WIDTH = 78
@@ -72,8 +73,8 @@ class MatchesScreen(SectionScreen):
 
         self._selected = max(0, min(len(upcoming) - 1, self._selected))
         t = Text()
-        t.append("Elegi un partido y presiona Enter para armar su tactica.\n\n",
-                 style="grey62")
+        t.append_text(hint(("arr/aba", "elegir partido"), ("Enter", "armar tactica")))
+        t.append("\n\n")
         # Encabezado.
         cells = [f"{h:<{w}}" if a == "l" else f"{h:>{w}}" for h, w, a in _COLUMNS]
         t.append("  " + " ".join(cells) + "\n", style="bold green")

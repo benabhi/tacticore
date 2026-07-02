@@ -13,7 +13,7 @@ teclas del marco (numeros/Tab para pestañas, letras para secciones) las maneja
 
 from rich.text import Text
 
-from ..format import append_section
+from ..format import append_section, hint
 from ..player_labels import FOOT_SHORT, SPECIALTY_SHORT
 from .section_screen import SectionScreen
 
@@ -138,12 +138,14 @@ class PlayersScreen(SectionScreen):
         if self._searching:
             t.append("Buscar: ", style="bold yellow")
             t.append(self._query + "_", style="bold white")
-            t.append("   Enter: ficha   Esc: cancelar", style="grey62")
-            t.append(f"   Pag {page}/{pages}", style="grey62")
+            t.append("   ")
+            t.append_text(hint(("Enter", "ficha"), ("Esc", "cancelar")))
         else:
-            t.append("Flechas: mover   Enter: ficha   /: buscar   <- ->: pagina",
-                     style="grey62")
-            t.append(f"   Pag {page}/{pages}", style="grey62")
+            t.append_text(hint(
+                ("Flechas", "mover"), ("Enter", "ficha"),
+                ("/", "buscar"), ("<- ->", "pagina"),
+            ))
+        t.append(f"   Pag {page}/{pages}", style="grey62")
 
     @staticmethod
     def _fmt(text, width: int, align: str) -> str:

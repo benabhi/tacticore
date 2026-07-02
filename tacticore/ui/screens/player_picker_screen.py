@@ -11,6 +11,7 @@ from textual.app import ComposeResult
 from textual.widgets import Static
 
 from ...domain.positions import line_of
+from ..format import hint
 from ..player_labels import POSITION_LABEL
 from .base_screen import BaseScreen
 
@@ -57,7 +58,8 @@ class PlayerPickerScreen(BaseScreen):
     def compose_viewport(self) -> ComposeResult:
         yield Static(self._card_text(), id="card")
         yield Static(
-            "Flechas: mover   Enter: elegir   X: vaciar puesto   Esc: cancelar",
+            hint(("Flechas", "mover"), ("Enter", "elegir"),
+                 ("X", "vaciar puesto"), ("Esc", "cancelar")),
             id="hint",
         )
 

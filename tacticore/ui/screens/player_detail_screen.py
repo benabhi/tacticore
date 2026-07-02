@@ -18,7 +18,7 @@ from textual.widgets import Static
 
 from ...domain.positions import POSITION_PRIORITIES
 from ...simulation.economy import player_salary, player_value
-from ..format import append_section, money
+from ..format import append_section, hint, money
 from ..player_labels import (
     ATTR_GROUPS,
     ATTR_LABEL,
@@ -102,10 +102,10 @@ class PlayerDetailScreen(BaseScreen):
         self.query_one("#card", Static).update(self._card_text())
         self.query_one("#hint", Static).update(self._hint_text())
 
-    def _hint_text(self) -> str:
-        return (
-            f"Esc: volver   <- ->: jugador   1-3: pestaña   "
-            f"c: color ({_MODE_NAMES[self._color_mode]})"
+    def _hint_text(self) -> Text:
+        return hint(
+            ("Esc", "volver"), ("<- ->", "jugador"), ("1-3", "pestaña"),
+            ("c", f"color ({_MODE_NAMES[self._color_mode]})"),
         )
 
     # --- Contenido segun pestaña ---
