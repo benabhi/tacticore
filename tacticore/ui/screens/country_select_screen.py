@@ -15,10 +15,12 @@ from textual.widgets import Static
 
 from ...generators.data.country_data import COUNTRIES
 from ..format import hint
+from ..palette import TAG
 from .base_screen import BaseScreen
 
 _COLS = 3
-_COL_W = 25  # ancho de cada columna
+_COL_W = 25       # ancho de cada columna
+_NAME_MAX = 18    # nombre recortado para que entre "  Nombre (XX)" en la columna
 
 
 class CountrySelectScreen(BaseScreen):
@@ -74,7 +76,8 @@ class CountrySelectScreen(BaseScreen):
         if not self._query:
             return self._countries
         q = self._query.lower()
-        return [c for c in self._countries if q in c[0].lower()]
+        # Filtra por nombre o por codigo (asi "ar" tambien encuentra Argentina).
+        return [c for c in self._countries if q in c[0].lower() or q in c[1].lower()]
 
     @property
     def _rows(self) -> int:
@@ -114,13 +117,24 @@ class CountrySelectScreen(BaseScreen):
                 idx = c * rows + r
                 if idx >= len(visible):
                     continue
-                name = visible[idx][0]
-                if idx == self._sel:
-                    t.append(f"> {name} <".ljust(_COL_W), style="bold black on green")
-                else:
-                    t.append(f"  {name}".ljust(_COL_W), style="white")
+                self._append_cell(t, visible[idx], idx == self._sel)
             t.append("\n")
         return t
+
+    def _append_cell(self, t: Text, country: tuple[str, str], selected: bool) -> None:
+        name, code = country
+        name = name[:_NAME_MAX]
+        if selected:  # fila elegida: barra verde entera (el codigo va dentro)
+            t.append(f"> {name} ({code})".ljust(_COL_W), style="bold black on green")
+            return
+        prefix = f"  {name} "
+        t.append(prefix, style="white")
+        t.append("(", style="grey50")
+        t.append(code, style=f"bold {TAG}")     # codigo de pais coloreado (cian)
+        t.append(")", style="grey50")
+        used = len(prefix) + len(code) + 2
+        if used < _COL_W:
+            t.append(" " * (_COL_W - used))
 
     def _refresh(self) -> None:
         self.query_one("#title", Static).update(self._title_text())

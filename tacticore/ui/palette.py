@@ -44,6 +44,13 @@ if TRUECOLOR:
     # Acento de UI: resalta atajos de teclado (la letra dentro de [X]) y detalles.
     # Ambar que contrasta tanto sobre el verde de la barra como sobre el negro.
     ACCENT = "#ffd24a"
+    # Fondo de la barra informativa superior: azul pizarra oscuro. La columna del
+    # nombre de pantalla queda en negro encima -> se ve como una pestaña.
+    BAR_BG = "#26364a"
+    # Etiquetas cortas / badges (ej. el codigo de pais "(AR)"): cian suave.
+    TAG = "#5fc9d6"
+    # Nivel/division (ej. la letra de liga A-E): lila suave, distinto del TAG.
+    TIER = "#c084fc"
     # Colores de identidad de club (identicon, versus, listas). Hues bien distintos
     # entre si; el de cada club sale de un hash de su nombre.
     IDENTICON_COLORS = [
@@ -68,6 +75,12 @@ else:
     MUTED = "bright_black"
     # Acento de UI: resalta atajos de teclado (la letra dentro de [X]) y detalles.
     ACCENT = "yellow"
+    # Fondo de la barra informativa superior.
+    BAR_BG = "blue"
+    # Etiquetas cortas / badges (ej. el codigo de pais).
+    TAG = "cyan"
+    # Nivel/division (la letra de liga A-E).
+    TIER = "magenta"
     # Identidad de club en ANSI: hues distintos (el dos-tonos del identicon lo dan
     # los caracteres #/:, no el par brillante/normal). Si dos clubes caen en el
     # mismo color, igual se distinguen por el glifo y el patron.

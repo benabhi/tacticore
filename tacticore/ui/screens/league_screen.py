@@ -18,6 +18,7 @@ from ...core.rng import new_rng
 from ...domain.enums import LeagueTier
 from ...simulation.season import Standing, compute_standings, generate_league_fixture
 from ..format import hint
+from ..palette import TAG, TIER
 from .section_screen import SectionScreen
 
 _WIDTH = config.SCREEN_WIDTH  # la tabla ocupa TODO el ancho (80)
@@ -136,17 +137,23 @@ class LeagueScreen(SectionScreen):
         club = self.app.game.player_club
 
         country = self._current_country()
-        cname = (country.name if country else "-")[:18]
-        t.append("POSICIONES", style="bold green")
-        t.append(f"   {cname} - Liga {league.tier.value}   ", style="bold white")
+        code = country.code if country else "-"
+        # Una sola linea: titulo con el CODIGO de pais + la division + los atajos
+        # (compactos: flechas como ^v y <>) -> entra todo en 80 columnas.
+        t.append("POSICIONES  ", style="bold green")
+        t.append(code, style=f"bold {TAG}")  # codigo de pais, mismo cian del selector
+        t.append(" - Liga ", style="bold white")
+        t.append(league.tier.value, style=f"bold {TIER}")  # division (varia): lila
+        t.append("   ", style="bold white")
         t.append("(", style="grey62")
-        t.append_text(hint(("n", "pais"), ("izq/der", "div"), ("arr/aba", "eq"), sep="  "))
+        t.append_text(hint(("^v", "equipo"), ("<>", "liga"), ("Enter", "info"),
+                           ("n", "pais"), ("Esc", "reset"), sep=" "))
         t.append(")\n", style="grey62")
         self._append_header(t)
         for pos, standing in enumerate(standings, start=1):
             is_cursor = (pos - 1) == self._selected
             self._append_row(t, pos, standing, moves[id(standing.club)], club, is_cursor)
-        t.append("-" * _WIDTH + "\n", style="grey50")
+        t.append("-" * _WIDTH + "\n", style="grey50")  # cierra la tabla antes del fixture
 
     @staticmethod
     def _fmt(text, width: int, align: str) -> str:
@@ -347,7 +354,19 @@ class LeagueScreen(SectionScreen):
             event.stop(); self._change_division(1)
         elif key == "n":
             event.stop(); self._open_country_picker()
+        elif key == "enter":
+            event.stop()  # reservado: ver info del equipo seleccionado (proximamente)
+        elif key == "escape":
+            event.stop(); self._reset_view()
         elif ch == "[":
             event.stop(); self._change_round(-1)
         elif ch == "]":
             event.stop(); self._change_round(1)
+
+    def _reset_view(self) -> None:
+        """Vuelve la vista a lo por defecto: tu pais, tu division, jornada actual."""
+        self._country = None
+        self._division = None
+        self._selected = 0
+        self._round = None
+        self._refresh_content()

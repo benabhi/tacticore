@@ -24,10 +24,9 @@ from textual.containers import Vertical
 from textual.widgets import Static
 
 from ... import config
-from ..format import money
-from ..palette import ACCENT
 from ..widgets.nav_bar import NavBar
 from ..widgets.tab_bar import TabBar
+from ..widgets.top_bar import TopBar
 from .base_screen import BaseScreen
 
 # Letra de atajo -> clave de seccion (para la barra inferior).
@@ -42,9 +41,6 @@ class SectionScreen(BaseScreen):
     tabs: tuple[str, ...] = ("Resumen",)
 
     CSS = """
-    #topbar {
-        height: 1;
-    }
     #sep {
         height: 1;
         color: grey;
@@ -63,7 +59,7 @@ class SectionScreen(BaseScreen):
         # si hay mas de una). Con una sola pestaña no se dibuja: esa fila queda
         # para el contenido (las pestañas son opcionales).
         with Vertical():
-            yield Static(id="topbar")
+            yield TopBar(self.section_title, id="topbar")
             yield Static("=" * config.SCREEN_WIDTH, id="sep")
             if len(self.tabs) > 1:
                 yield TabBar(self.tabs, id="tabbar")
@@ -90,31 +86,9 @@ class SectionScreen(BaseScreen):
         """
         return False
 
-    # --- HUD superior (titulo + control de avanzar dia + fecha + caja) ---
-    def _topbar_text(self) -> Text:
-        t = Text(no_wrap=True)
-        title = self.section_title.upper()
-        t.append(" " + title, style="bold green")
-        game = getattr(self.app, "game", None)
-        club = game.player_club if game else None
-        if club is not None:
-            date = game.calendar.current_date.strftime("%d-%m-%Y")
-            cash = money(club.capital)
-            # "[Espacio] Avanzar dia" es el control del game loop (avanza el tiempo).
-            hint_len = len("[Espacio] Avanzar dia")
-            used = 1 + len(title) + hint_len + 3 + len(date) + 3 + len(cash) + 1
-            t.append(" " * max(1, config.SCREEN_WIDTH - used))
-            t.append("[", style="grey62")
-            t.append("Espacio", style=f"bold {ACCENT}")
-            t.append("] Avanzar dia", style="white")
-            t.append("   ")
-            t.append(date, style="grey62")
-            t.append("   ")
-            t.append(cash, style="bold white")
-        return t
-
+    # --- Barra informativa superior (componente TopBar) ---
     def _refresh_topbar(self) -> None:
-        self.query_one("#topbar", Static).update(self._topbar_text())
+        self.query_one("#topbar", TopBar).refresh_bar()
 
     def _refresh_content(self) -> None:
         self.query_one("#content", Static).update(self.render_tab(self._active_tab))
