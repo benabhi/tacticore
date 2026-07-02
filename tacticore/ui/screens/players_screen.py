@@ -131,6 +131,7 @@ class PlayersScreen(SectionScreen):
             shown = len(page_players)
         for _ in range(_PAGE_SIZE - shown):
             t.append("\n")
+        t.append("\n")  # una linea de aire entre la tabla y la ayuda de teclas
         self._append_footer(t, page + 1, pages)
         return t
 
