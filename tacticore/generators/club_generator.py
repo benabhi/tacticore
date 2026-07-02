@@ -7,6 +7,7 @@ from ..domain.club import Club
 from ..domain.enums import LeagueTier, Position
 from ..domain.manager import Manager
 from ..domain.stadium import Stadium
+from .coach_generator import CoachGenerator
 from .manager_generator import ManagerGenerator
 from .name_generator import NameGenerator
 from .player_generator import PlayerGenerator
@@ -59,6 +60,7 @@ class ClubGenerator:
         self._players = PlayerGenerator(self._rng, self._names)
         self._stadiums = StadiumGenerator(self._rng)
         self._managers = ManagerGenerator(self._rng, self._names)
+        self._coaches = CoachGenerator(self._rng, self._names)
 
     def generate(
         self,
@@ -88,6 +90,7 @@ class ClubGenerator:
             fans_name=self._names.fan_group_name(),
             manager=self._managers.generate(country_code, today),
             players=players,
+            coach=self._coaches.generate(country_code, tier, today),
         )
 
     def player_club(
@@ -126,6 +129,7 @@ class ClubGenerator:
             fans_name=fans_name,
             manager=manager,
             players=players,
+            coach=self._coaches.generate(country_code, tier, today),
         )
 
     def _build_squad(

@@ -82,9 +82,27 @@ class ClubScreen(SectionScreen):
         return t
 
     def _staff_text(self) -> Text:
+        club = self._club
         t = Text()
-        append_section(t, "EMPLEADOS", [
-            ("El cuerpo de trabajo del club vivira aca.", "grey62"),
+        coach = club.coach if club else None
+        if coach is None:
+            append_section(t, "DIRECTOR TECNICO",
+                           [("Sin director tecnico.", "grey62")])
+        else:
+            today = self.app.game.calendar.current_date
+            rows = [
+                (f"{'Nombre':<12}{coach.full_name}", "bold white"),
+                (f"{'Nacion.':<12}{coach.nationality}    Edad: {coach.age_on(today)}",
+                 "white"),
+                (f"{'Mentalidad':<12}{coach.mentality.value}", "white"),
+                (f"{'Habilidad':<12}{coach.skill:.1f}   (calidad del entreno)", "grey70"),
+                (f"{'Liderazgo':<12}{coach.leadership:.1f}   (influye en la moral)",
+                 "grey70"),
+            ]
+            append_section(t, "DIRECTOR TECNICO", rows)
+        # Resto del cuerpo de trabajo (placeholder).
+        append_section(t, "OTRO PERSONAL", [
+            ("El resto del cuerpo de trabajo vivira aca.", "grey62"),
             "",
             ("  - Entrenadores asistentes", "grey70"),
             ("  - Medicos y preparadores fisicos", "grey70"),

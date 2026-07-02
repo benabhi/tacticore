@@ -12,14 +12,20 @@ from datetime import date
 from ..core.calendar import GameCalendar
 from ..core.game import GameState
 from ..domain.club import Club
+from ..domain.coach import Coach
 from ..domain.country import Country
-from ..domain.enums import Foot, LeagueTier, Morale, Position, Specialty
+from ..domain.enums import Foot, LeagueTier, Mentality, Morale, Position, Specialty
 from ..domain.league import League
 from ..domain.manager import Manager
 from ..domain.player import ALL_ATTRS, Player
 from ..domain.stadium import Stadium
 
-SCHEMA_VERSION = 2
+# v3: cada club guarda su director tecnico (coach_*) inline en la fila del club.
+SCHEMA_VERSION = 3
+
+
+class IncompatibleSaveError(Exception):
+    """El save es de una version de schema distinta a la actual (no se puede leer)."""
 
 # Columnas de jugador, separadas para construirlas una sola vez (DRY con ALL_ATTRS).
 _PLAYER_BASE_COLS = [
@@ -73,7 +79,14 @@ CREATE TABLE clubs (
     manager_first    TEXT,
     manager_last     TEXT,
     manager_nat      TEXT,
-    manager_birth    TEXT
+    manager_birth    TEXT,
+    coach_first      TEXT,
+    coach_last       TEXT,
+    coach_nat        TEXT,
+    coach_birth      TEXT,
+    coach_mentality  TEXT,
+    coach_skill      REAL,
+    coach_leadership REAL
 );
 
 CREATE TABLE players (
@@ -173,13 +186,16 @@ def _insert_club(
     conn: sqlite3.Connection, league_id: int, club: Club, is_player: bool
 ) -> int:
     mgr = club.manager
+    coach = club.coach
     return conn.execute(
         """
         INSERT INTO clubs (
             league_id, name, short_name, country_code, tier, capital, members,
             fans_name, is_player_club, stadium_name, stadium_capacity,
-            manager_first, manager_last, manager_nat, manager_birth
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            manager_first, manager_last, manager_nat, manager_birth,
+            coach_first, coach_last, coach_nat, coach_birth,
+            coach_mentality, coach_skill, coach_leadership
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             league_id, club.name, club.short_name, club.country_code,
@@ -189,6 +205,13 @@ def _insert_club(
             mgr.last_name if mgr else None,
             mgr.nationality if mgr else None,
             _iso(mgr.birth_date) if mgr else None,
+            coach.first_name if coach else None,
+            coach.last_name if coach else None,
+            coach.nationality if coach else None,
+            _iso(coach.birth_date) if coach else None,
+            coach.mentality.value if coach else None,
+            coach.skill if coach else None,
+            coach.leadership if coach else None,
         ),
     ).lastrowid
 
@@ -222,6 +245,8 @@ def read_game(conn: sqlite3.Connection) -> GameState:
     """Reconstruye el `GameState` completo desde la base."""
     conn.row_factory = sqlite3.Row
     meta = conn.execute("SELECT * FROM meta").fetchone()
+    if meta["schema_version"] != SCHEMA_VERSION:
+        raise IncompatibleSaveError(meta["schema_version"], SCHEMA_VERSION)
 
     countries: list[Country] = []
     player_club: Club | None = None
@@ -263,6 +288,17 @@ def _club_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Club:
             nationality=row["manager_nat"],
             birth_date=_date(row["manager_birth"]),
         )
+    coach = None
+    if row["coach_first"] is not None:
+        coach = Coach(
+            first_name=row["coach_first"],
+            last_name=row["coach_last"],
+            nationality=row["coach_nat"],
+            birth_date=_date(row["coach_birth"]),
+            mentality=Mentality(row["coach_mentality"]),
+            skill=row["coach_skill"],
+            leadership=row["coach_leadership"],
+        )
     players = [
         _player_from_row(prow)
         for prow in conn.execute(
@@ -280,6 +316,7 @@ def _club_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Club:
         fans_name=row["fans_name"],
         manager=manager,
         players=players,
+        coach=coach,
     )
 
 
