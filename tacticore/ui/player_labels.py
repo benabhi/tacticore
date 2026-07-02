@@ -84,6 +84,26 @@ ATTR_LABEL = {
     "work_rate": "Sacrificio",
 }
 
+# Abreviatura de 3 letras de cada atributo (para vistas compactas, ej. el panel
+# de tactica). El nombre completo esta en ATTR_LABEL.
+ATTR_SHORT = {
+    "speed": "VEL",
+    "stamina": "RES",
+    "strength": "FUE",
+    "agility": "AGI",
+    "aerial": "AER",
+    "passing": "PAS",
+    "shooting": "REM",
+    "dribbling": "REG",
+    "tackling": "ENT",
+    "crossing": "CEN",
+    "vision": "VIS",
+    "positioning": "POS",
+    "anticipation": "ANT",
+    "composure": "TEM",
+    "work_rate": "SAC",
+}
+
 # Grupos de atributos (titulo en pantalla + tupla de atributos del dominio).
 ATTR_GROUPS = [
     ("FISICOS", PHYSICAL_ATTRS),

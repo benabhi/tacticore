@@ -59,7 +59,7 @@ class PlayerPickerScreen(BaseScreen):
         yield Static(self._card_text(), id="card")
         yield Static(
             hint(("Flechas", "mover"), ("Enter", "elegir"),
-                 ("X", "vaciar puesto"), ("Esc", "cancelar")),
+                 ("X", "vaciar"), ("Esc", "cancelar"), sep="  "),
             id="hint",
         )
 

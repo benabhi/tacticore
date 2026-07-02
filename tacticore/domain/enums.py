@@ -96,6 +96,18 @@ class TeamTactic(Enum):
     PRESSING = "Presion alta"
 
 
+class Marking(Enum):
+    """Esquema de marcaje por defecto del equipo. Valor = etiqueta en pantalla.
+
+    Es el default del equipo para el partido; mas adelante el motor podra sesgar
+    la defensa segun este valor (zonal = cuidar zona; personal = hombre a hombre).
+    Complementa la marca individual por jugador (comando en-vivo `SetMarking`).
+    """
+
+    ZONAL = "Zonal"
+    PERSONAL = "Personal"
+
+
 class Morale(Enum):
     """Estado animico del jugador (de peor a mejor)."""
 
