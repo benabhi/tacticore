@@ -76,12 +76,25 @@ def player_salary(player: Player, today: date | None = None) -> int:
 
 
 def player_value(player: Player, today: date | None = None) -> int:
-    """Valor de mercado: crece con overall y potencial, decae con la edad."""
+    """Valor de mercado: crece con overall y potencial, decae con la edad.
+
+    Una especialidad lo encarece (jugador mas cotizado).
+    """
     today = today or config.SEASON_START_DATE
     skill = player.overall * player.overall
     upside = 1.0 + max(0.0, player.potential - player.overall) / 100 * 2
-    value = skill * _VALUE_K * upside * _age_value_factor(player.age_on(today))
+    specialty = 1.15 if player.specialty else 1.0
+    value = skill * _VALUE_K * upside * specialty * _age_value_factor(player.age_on(today))
     return round(value)
+
+
+# Recargo del vendedor sobre la tasacion al poner un jugador en venta.
+_ASKING_MARKUP = 1.15
+
+
+def asking_price(player: Player, today: date | None = None) -> int:
+    """Precio pedido sugerido al listar (algo por encima del valor de mercado)."""
+    return round(player_value(player, today) * _ASKING_MARKUP)
 
 
 def squad_wage_bill(players: list[Player], today: date | None = None) -> int:

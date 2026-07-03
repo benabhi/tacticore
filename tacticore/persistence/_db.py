@@ -23,10 +23,11 @@ from ..domain.match import Match
 from ..domain.player import ALL_ATTRS, Player
 from ..domain.sponsor import Sponsor, SponsorContract
 from ..domain.stadium import Stadium
+from ..domain.transfer import TransferOffer
 
-# v5: instalaciones (parcelas + tablas facilities/constructions). v4 estadio por
-# sectores + patrocinadores; v3 el director tecnico (coach_*) inline en el club.
-SCHEMA_VERSION = 5
+# v6: mercado de pases (players.asking_price + tabla offers). v5 instalaciones; v4
+# estadio por sectores + patrocinadores; v3 el director tecnico inline en el club.
+SCHEMA_VERSION = 6
 
 
 class IncompatibleSaveError(Exception):
@@ -37,7 +38,7 @@ _PLAYER_BASE_COLS = [
     "first_name", "last_name", "nationality", "position", "foot", "birth_date",
     "height_cm", "weight_kg", "form", "fitness", "experience", "morale",
     "specialty", "nickname", "shirt_number", "origin_club", "potential",
-    "injury_proneness",
+    "injury_proneness", "asking_price",
 ]
 _PLAYER_COLS = _PLAYER_BASE_COLS + list(ALL_ATTRS)
 
@@ -120,6 +121,7 @@ CREATE TABLE players (
     origin_club      TEXT,
     potential        REAL NOT NULL,
     injury_proneness REAL NOT NULL,
+    asking_price     INTEGER,
     {_PLAYER_ATTR_DDL}
 );
 
@@ -154,6 +156,18 @@ CREATE TABLE constructions (
     kind           TEXT NOT NULL,
     key            TEXT NOT NULL,
     days_remaining INTEGER NOT NULL
+);
+
+-- Ofertas abiertas del jugador humano (el comprador es siempre su club). El
+-- objetivo se reconecta por el club vendedor + numero de camiseta.
+CREATE TABLE offers (
+    id             INTEGER PRIMARY KEY,
+    seller_club_id INTEGER NOT NULL REFERENCES clubs(id),
+    player_shirt   INTEGER NOT NULL,
+    amount         INTEGER NOT NULL,
+    status         TEXT NOT NULL,
+    counter_amount INTEGER NOT NULL,
+    days_left      INTEGER NOT NULL
 );
 
 -- Partidos del fixture de cada liga (con su resultado si ya se jugaron). La
@@ -194,6 +208,9 @@ CREATE INDEX idx_matches_league     ON matches(league_id);
 CREATE INDEX idx_injuries_player    ON injuries(player_id);
 """
 
+# Estados de oferta que se persisten (solo las abiertas; las cerradas son historia).
+_OPEN_OFFER_STATUS = ("pending", "countered")
+
 
 def _iso(value: date | None) -> str | None:
     """Fecha a ISO, o None."""
@@ -233,6 +250,7 @@ def write_game(conn: sqlite3.Connection, game: GameState) -> None:
                 _insert_players(conn, club_id, club.players)
             _insert_matches(conn, league_id, league.matches, club_ids)
 
+    _insert_offers(conn, game, club_ids)
     conn.execute(
         "INSERT INTO meta (schema_version, seed, current_date, manager_name, "
         "player_club_id) VALUES (?, ?, ?, ?, ?)",
@@ -346,6 +364,34 @@ def _insert_matches(
     )
 
 
+def _owner_of(game: GameState, player: Player) -> Club | None:
+    for country in game.countries:
+        for league in country.leagues:
+            for club in league.clubs:
+                if player in club.players:
+                    return club
+    return None
+
+
+def _insert_offers(
+    conn: sqlite3.Connection, game: GameState, club_ids: dict[int, int]
+) -> None:
+    """Guarda las ofertas ABIERTAS del jugador (por club vendedor + camiseta)."""
+    rows = []
+    for o in game.offers:
+        if o.status not in _OPEN_OFFER_STATUS:
+            continue
+        seller = _owner_of(game, o.target)
+        if seller is None or o.target.shirt_number is None:
+            continue
+        rows.append((club_ids[id(seller)], o.target.shirt_number, o.amount,
+                     o.status, o.counter_amount, o.days_left))
+    if rows:
+        conn.executemany(
+            "INSERT INTO offers (seller_club_id, player_shirt, amount, status, "
+            "counter_amount, days_left) VALUES (?,?,?,?,?,?)", rows)
+
+
 def _insert_players(
     conn: sqlite3.Connection, club_id: int, players: list[Player]
 ) -> None:
@@ -363,6 +409,7 @@ def _player_row(club_id: int, p: Player) -> tuple:
         p.birth_date.isoformat(), p.height_cm, p.weight_kg, p.form, p.fitness,
         p.experience, p.morale.value, p.specialty.value if p.specialty else None,
         p.nickname, p.shirt_number, p.origin_club, p.potential, p.injury_proneness,
+        p.asking_price,
     )
     attrs = tuple(getattr(p, attr) for attr in ALL_ATTRS)
     return (club_id, *base, *attrs)
@@ -409,7 +456,27 @@ def read_game(conn: sqlite3.Connection) -> GameState:
         countries=countries,
         player_club=player_club,
         manager_name=meta["manager_name"],
+        offers=_offers_from_db(conn, club_by_id),
     )
+
+
+def _offers_from_db(
+    conn: sqlite3.Connection, club_by_id: dict[int, Club]
+) -> list[TransferOffer]:
+    """Reconecta las ofertas abiertas (por club vendedor + numero de camiseta)."""
+    out: list[TransferOffer] = []
+    for r in conn.execute("SELECT * FROM offers"):
+        seller = club_by_id.get(r["seller_club_id"])
+        if seller is None:
+            continue
+        target = next((p for p in seller.players
+                       if p.shirt_number == r["player_shirt"]), None)
+        if target is None:
+            continue
+        out.append(TransferOffer(
+            target=target, amount=r["amount"], status=r["status"],
+            counter_amount=r["counter_amount"], days_left=r["days_left"]))
+    return out
 
 
 def _club_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Club:
@@ -533,5 +600,6 @@ def _player_from_row(row: sqlite3.Row) -> Player:
         origin_club=row["origin_club"],
         potential=row["potential"],
         injury_proneness=row["injury_proneness"],
+        asking_price=row["asking_price"],
         **{attr: row[attr] for attr in ALL_ATTRS},
     )

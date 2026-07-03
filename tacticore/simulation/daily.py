@@ -23,12 +23,13 @@ from .economy import (
     matchday_income, membership_income, squad_wage_bill, stadium_upkeep)
 from .facilities import facility_income, tick_constructions
 from .match_engine import simulate_match
+from .transfers import ai_market_step, resolve_offers
 
 # Etiqueta del evento de cada dia de la semana (0=lunes .. 6=domingo).
 _WEEKDAY_EVENT = {
     0: "Cantera y juveniles",
     1: "Copa y amistosos",
-    2: "Recuperacion de lesionados",
+    2: "Mercado de pases",
     3: "Entrenamiento",
     4: "Cierre economico (cobros y pagos)",
     5: "Fecha de liga",
@@ -60,8 +61,14 @@ def advance_day(game, rng: random.Random | None = None, progress=None) -> date:
     # Las obras avanzan todos los dias (hoy solo el jugador tiene obras).
     for club in _all_clubs(game):
         tick_constructions(club)
+    # Las ofertas del jugador maduran un dia por vez (el vendedor responde).
+    resolve_offers(game)
     wd = today.weekday()
-    if wd == 4:
+    if wd == 2:  # miercoles: dia de mercado (altas y bajas de la IA)
+        ai_market_step(game, rng)
+        if progress is not None:
+            progress(day_event(today), 1, 1)
+    elif wd == 4:
         _weekly_economy(game, today, rng, progress)
     elif wd == 5:
         _play_matchday(game, today, rng, progress)

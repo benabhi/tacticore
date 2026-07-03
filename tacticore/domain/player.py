@@ -83,6 +83,9 @@ class Player:
     injury_proneness: float = 50.0  # propension a lesionarse (1-100)
     injury_history: list[Injury] = field(default_factory=list)
 
+    # --- Mercado ---
+    asking_price: int | None = None  # si esta seteado, esta a la venta a ese precio
+
     def age_on(self, today: date) -> int:
         """Edad en anios cumplidos a la fecha `today` (la del juego).
 

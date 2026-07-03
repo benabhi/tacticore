@@ -13,12 +13,16 @@ teclas del marco (numeros/Tab para pestañas, letras para secciones) las maneja
 
 from rich.text import Text
 
-from ..format import append_section, hint
+from ...domain.transfer import COUNTERED, PENDING
+from ...simulation import transfers as T
+from ..format import append_section, hint, money
 from ..player_labels import FOOT_SHORT, SPECIALTY_SHORT
 from .section_screen import SectionScreen
 
 _WIDTH = 80       # ancho total de la tabla (toda la pantalla)
 _PAGE_SIZE = 14   # filas de jugadores por pagina
+_MKT_PAGE = 10    # listados por pagina en el Mercado (deja lugar a "Mis ofertas")
+_PLANTILLA, _MERCADO = 0, 2  # indices de pestañas interactivas
 
 # Columnas: (titulo, ancho, alineacion). El nombre se calcula para llenar los 80.
 _NAME_W = _WIDTH - 2 - 11 - 32
@@ -33,6 +37,13 @@ _ESP_IDX = 11
 # Color de la moral (1 peor -> 5 mejor): de rojo a verde, sin leyenda aparte.
 _MORALE_STYLE = {1: "bold red", 2: "red", 3: "yellow", 4: "green", 5: "bold green"}
 
+# Columnas de la tabla del Mercado. CLUB llena el resto de los 80.
+_MKT_CLUB_W = _WIDTH - 2 - (2 + 20 + 3 + 3 + 2 + 9) - 6
+_MKT_COLS = [
+    ("#", 2, "r"), ("NOMBRE", 20, "l"), ("POS", 3, "l"), ("OVR", 3, "r"),
+    ("ED", 2, "r"), ("PRECIO", 9, "r"), ("CLUB", _MKT_CLUB_W, "l"),
+]
+
 
 class PlayersScreen(SectionScreen):
     """Plantilla del club (interactiva) + cantera y mercado (placeholder)."""
@@ -46,6 +57,12 @@ class PlayersScreen(SectionScreen):
         self._selected = 0    # indice del jugador seleccionado (sobre los visibles)
         self._searching = False  # si esta activo el buscador (se escribe)
         self._query = ""      # texto del filtro en vivo
+        # --- Estado del Mercado ---
+        self._mkt_sel = 0      # listado seleccionado
+        self._mkt_search = False
+        self._mkt_query = ""
+        self._offering = False  # ingresando el monto de una oferta
+        self._offer_text = ""   # monto tipeado
 
     # --- Datos ---
     @property
@@ -89,18 +106,113 @@ class PlayersScreen(SectionScreen):
         ])
         return t
 
+    # --- Mercado (interactivo: listados, ofertas, negociacion) ---
+    def _mkt_listings(self) -> list:
+        """Listados del mundo (excluye tu club), ordenados por overall y filtrados."""
+        game = self.app.game
+        club = game.player_club if game else None
+        rows = [(p, c) for (p, c) in T.all_listings(game) if c is not club]
+        rows.sort(key=lambda pc: pc[0].overall, reverse=True)
+        if self._mkt_query:
+            q = self._mkt_query.lower()
+            rows = [(p, c) for (p, c) in rows
+                    if q in p.full_name.lower() or q in p.position.value.lower()
+                    or q in c.name.lower()]
+        return rows
+
+    def _my_offer(self, player):
+        return next((o for o in self.app.game.offers if o.target is player), None)
+
     def _market_text(self) -> Text:
+        game = self.app.game
+        if game is None or game.player_club is None:
+            return Text("Sin club todavia.", style="white")
+        listings = self._mkt_listings()
+        total = len(listings)
+        pages = max(1, (total + _MKT_PAGE - 1) // _MKT_PAGE)
+        self._mkt_sel = max(0, min(total - 1, self._mkt_sel)) if total else 0
+        page = self._mkt_sel // _MKT_PAGE if total else 0
+        page_rows = listings[page * _MKT_PAGE:page * _MKT_PAGE + _MKT_PAGE]
+
         t = Text()
-        append_section(t, "MERCADO", [
-            ("El mercado de pases vivira aca.", "grey62"),
-            "",
-            ("  - Comprar y vender jugadores", "grey70"),
-            ("  - Ofertas recibidas y enviadas", "grey70"),
-            ("  - Jugadores en la mira", "grey70"),
-            "",
-            ("El valor de cada jugador ya se calcula (lo ves en su ficha).", "grey62"),
-        ])
+        t.append(f"MERCADO   {total} en venta   ", style="bold green")
+        t.append(f"Caja {money(game.player_club.capital)}", style="grey70")
+        if self._mkt_query:
+            t.append(f"   [filtro: {self._mkt_query}]", style="grey62")
+        t.append("\n")
+        cells = [self._fmt(h, w, a) for h, w, a in _MKT_COLS]
+        t.append("  " + " ".join(cells) + "\n", style="bold green")
+        t.append("-" * _WIDTH + "\n", style="grey50")
+        if total == 0:
+            t.append("  No hay jugadores en venta.\n", style="grey62")
+            shown = 1
+        else:
+            for offset, (p, c) in enumerate(page_rows):
+                self._mkt_row(t, p, c, page * _MKT_PAGE + offset == self._mkt_sel)
+            shown = len(page_rows)
+        for _ in range(_MKT_PAGE - shown):
+            t.append("\n")
+        self._mkt_offers_panel(t)
+        self._mkt_footer(t, page + 1, pages, listings)
         return t
+
+    def _mkt_row(self, t: Text, p, club, selected: bool) -> None:
+        values = [
+            str(p.shirt_number or "-"), p.full_name, p.position.value,
+            str(round(p.overall)), str(p.age_on(self._today)),
+            money(p.asking_price), club.name,
+        ]
+        cells = [self._fmt(v, w, a) for v, (_, w, a) in zip(values, _MKT_COLS)]
+        if selected:
+            t.append(("> " + " ".join(cells)).ljust(_WIDTH) + "\n",
+                     style="bold black on green")
+            return
+        offer = self._my_offer(p)
+        name_style = "bold cyan" if offer and offer.open else "white"
+        t.append("  ")
+        for i, cell in enumerate(cells):
+            t.append(cell, style=name_style if i == 1 else "white")
+            if i < len(cells) - 1:
+                t.append(" ")
+        t.append("\n")
+
+    def _mkt_offers_panel(self, t: Text) -> None:
+        t.append("MIS OFERTAS\n", style="bold green")
+        recent = self.app.game.offers[-3:]
+        if not recent:
+            t.append("  ninguna\n", style="grey62")
+            return
+        for o in recent:
+            if o.status == PENDING:
+                extra, style = "pendiente", "yellow"
+            elif o.status == COUNTERED:
+                extra, style = f"contraoferta {money(o.counter_amount)} (A aceptar / X quitar)", "bold cyan"
+            elif o.status == "accepted":
+                extra, style = "aceptada", "green"
+            elif o.status == "withdrawn":
+                extra, style = "retirada", "grey62"
+            else:
+                extra, style = "rechazada", "red"
+            t.append(f"  {o.target.full_name:.20} {money(o.amount)}  ", style="white")
+            t.append(extra + "\n", style=style)
+
+    def _mkt_footer(self, t: Text, page: int, pages: int, listings) -> None:
+        if self._mkt_search:
+            t.append("Buscar: ", style="bold yellow")
+            t.append(self._mkt_query + "_", style="bold white")
+            t.append("   ")
+            t.append_text(hint(("Enter", "aplicar"), ("Esc", "salir")))
+            return
+        if self._offering:
+            target = listings[self._mkt_sel][0]
+            t.append(f"Oferta por {target.full_name:.18}: $", style="bold yellow")
+            t.append(self._offer_text + "_", style="bold white")
+            t.append("   ")
+            t.append_text(hint(("Enter", "ofertar"), ("Esc", "cancelar")))
+            return
+        t.append_text(hint(("Flechas", "mover"), ("Enter", "ofertar"),
+                           ("A", "aceptar"), ("X", "retirar"), ("/", "buscar")))
+        t.append(f"   Pag {page}/{pages}", style="grey62")
 
     # --- Tabla de la plantilla ---
     def _table_text(self) -> Text:
@@ -144,8 +256,12 @@ class PlayersScreen(SectionScreen):
         else:
             t.append_text(hint(
                 ("Flechas", "mover"), ("Enter", "ficha"),
-                ("/", "buscar"), ("<- ->", "pagina"),
+                ("V", "vender"), ("/", "buscar"),
             ))
+            visible = self._visible()
+            sel = visible[self._selected] if visible else None
+            if sel is not None and sel.asking_price is not None:
+                t.append(f"   EN VENTA {money(sel.asking_price)}", style="bold yellow")
         t.append(f"   Pag {page}/{pages}", style="grey62")
 
     @staticmethod
@@ -168,7 +284,9 @@ class PlayersScreen(SectionScreen):
             return
         t.append("  ")
         for i, cell in enumerate(cells):
-            if i == _MOR_IDX:
+            if i == 1 and p.asking_price is not None:
+                style = "bold yellow"   # nombre en amarillo = esta en venta
+            elif i == _MOR_IDX:
                 style = _MORALE_STYLE.get(int(cell), "white")
             elif i == _ESP_IDX:
                 style = "grey42" if cell.strip() == "-" else "bold cyan"
@@ -221,12 +339,19 @@ class PlayersScreen(SectionScreen):
         self._refresh_content()
 
     def content_captures_keys(self) -> bool:
-        # Con el buscador abierto, la Plantilla consume TODO el teclado (para
-        # escribir el filtro sin que el marco cambie de seccion/pestaña).
-        return self._active_tab == 0 and self._searching
+        # Con un buscador o el input de oferta abiertos, la pestaña consume TODO el
+        # teclado (para escribir sin que el marco cambie de seccion/pestaña).
+        return ((self._active_tab == _PLANTILLA and self._searching)
+                or (self._active_tab == _MERCADO and (self._mkt_search or self._offering)))
 
     def on_content_key(self, event) -> None:
-        if self._active_tab != 0 or not self._players:
+        if self._active_tab == _PLANTILLA:
+            self._key_plantilla(event)
+        elif self._active_tab == _MERCADO:
+            self._key_market(event)
+
+    def _key_plantilla(self, event) -> None:
+        if not self._players:
             return
         if self._searching:
             self._on_key_search(event, event.key)
@@ -242,11 +367,90 @@ class PlayersScreen(SectionScreen):
             event.stop(); self._move(_PAGE_SIZE)
         elif key == "enter":
             event.stop(); self._open_detail()
+        elif event.character == "v":
+            event.stop(); self._toggle_sale()
         elif event.character == "/":
             self._searching = True
             self._query = ""
             self._selected = 0
             event.stop(); self._refresh_content()
+
+    def _toggle_sale(self) -> None:
+        visible = self._visible()
+        if not visible:
+            return
+        player = visible[self._selected]
+        if player.asking_price is not None:
+            T.unlist_player(player)
+        elif len(self._players) > T.MIN_SQUAD:  # no vender por debajo del minimo
+            T.list_player(player, today=self._today)
+        self._refresh_content()
+
+    # --- Teclado del Mercado ---
+    def _key_market(self, event) -> None:
+        if self._offering:
+            self._key_offering(event)
+            return
+        if self._mkt_search:
+            self._key_mkt_search(event)
+            return
+        key = event.key
+        listings = self._mkt_listings()
+        if key == "up":
+            event.stop(); self._mkt_sel = max(0, self._mkt_sel - 1); self._refresh_content()
+        elif key == "down":
+            event.stop(); self._mkt_sel = min(len(listings) - 1, self._mkt_sel + 1); self._refresh_content()
+        elif key in ("left", "pageup"):
+            event.stop(); self._mkt_sel = max(0, self._mkt_sel - _MKT_PAGE); self._refresh_content()
+        elif key in ("right", "pagedown"):
+            event.stop(); self._mkt_sel = min(len(listings) - 1, self._mkt_sel + _MKT_PAGE); self._refresh_content()
+        elif key == "enter" and listings:
+            event.stop()
+            self._offering = True
+            self._offer_text = str(listings[self._mkt_sel][0].asking_price)
+            self._refresh_content()
+        elif event.character == "a" and listings:  # aceptar contraoferta
+            event.stop()
+            offer = self._my_offer(listings[self._mkt_sel][0])
+            if offer and offer.status == COUNTERED:
+                T.accept_counter(self.app.game, offer)
+            self._refresh_content()
+        elif event.character == "x" and listings:  # retirar oferta
+            event.stop()
+            offer = self._my_offer(listings[self._mkt_sel][0])
+            if offer and offer.open:
+                T.withdraw_offer(offer)
+            self._refresh_content()
+        elif event.character == "/":
+            event.stop()
+            self._mkt_search = True; self._mkt_query = ""; self._mkt_sel = 0
+            self._refresh_content()
+
+    def _key_offering(self, event) -> None:
+        key = event.key
+        if key == "escape":
+            event.stop(); self._offering = False; self._refresh_content()
+        elif key == "enter":
+            event.stop()
+            listings = self._mkt_listings()
+            amount = int(self._offer_text) if self._offer_text.isdigit() else 0
+            if listings and amount > 0:
+                T.make_offer(self.app.game, listings[self._mkt_sel][0], amount)
+            self._offering = False
+            self._refresh_content()
+        elif key == "backspace":
+            event.stop(); self._offer_text = self._offer_text[:-1]; self._refresh_content()
+        elif event.character and event.character.isdigit():
+            event.stop(); self._offer_text += event.character; self._refresh_content()
+
+    def _key_mkt_search(self, event) -> None:
+        key = event.key
+        if key in ("escape", "enter"):
+            event.stop(); self._mkt_search = False; self._refresh_content()
+        elif key == "backspace":
+            event.stop(); self._mkt_query = self._mkt_query[:-1]; self._mkt_sel = 0; self._refresh_content()
+        elif event.character and event.character.isprintable() and len(event.character) == 1:
+            event.stop(); self._mkt_query += event.character; self._mkt_sel = 0; self._refresh_content()
 
     def _on_key_search(self, event, key: str) -> None:
         if key == "escape":
