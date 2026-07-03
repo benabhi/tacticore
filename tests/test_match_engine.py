@@ -42,8 +42,15 @@ def test_different_seed_diverges():
 def test_kickoff_sets_ball_moving_and_phase():
     engine = MatchEngine(_fresh_state(), new_rng(3))
     assert engine.state.phase is MatchPhase.KICKOFF
-    engine.run(12.0)  # pasa el delay pre-partido y se saca del medio
-    assert engine.state.phase is MatchPhase.PLAYING  # ya se jugo (saco del medio)
+    # Se juega paso a paso: en algun momento se saca del medio y se pasa a jugar
+    # (el estado final puede volver a KICKOFF si hubo un gol, por eso miramos si
+    # ALGUNA vez estuvo en PLAYING, no el instante exacto).
+    played = False
+    for _ in range(int(12.0 / DEFAULT_DT)):
+        engine.step()
+        if engine.state.phase is MatchPhase.PLAYING:
+            played = True
+    assert played  # se saco del medio y se jugo
     assert any(e.kind == "pase" for e in engine.state.log)  # el saque puso la pelota en juego
 
 

@@ -77,6 +77,10 @@ class Player:
     nickname: str | None = None         # alias, ej. "La Pulga"
     shirt_number: int | None = None     # lo asigna el club
     origin_club: str | None = None      # club de origen / cantera
+    # Rasgos de personalidad, escala 1-5 (como la moral). Influiran en distintas
+    # partes del juego mas adelante (vestuario, moral, presion, etc.).
+    leadership: int = 3   # liderazgo dentro del plantel
+    character: int = 3    # caracter / temperamento
 
     # --- Ocultos / desarrollo ---
     potential: float = 1.0          # techo de habilidad (1-100)

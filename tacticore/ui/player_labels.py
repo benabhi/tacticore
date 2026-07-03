@@ -34,6 +34,14 @@ MORALE_LABEL = {
     Morale.FIRED_UP: "Encendido",
 }
 
+# Rasgos de personalidad 1-5 (de peor a mejor), como la moral.
+LEADERSHIP_LABEL = {
+    1: "Pasivo", 2: "Reservado", 3: "Normal", 4: "Referente", 5: "Lider nato",
+}
+CHARACTER_LABEL = {
+    1: "Irrespetuoso", 2: "Rebelde", 3: "Normal", 4: "Profesional", 5: "Ejemplar",
+}
+
 SPECIALTY_LABEL = {
     Specialty.HEADER: "Cabeceador",
     Specialty.POWERFUL: "Potente",

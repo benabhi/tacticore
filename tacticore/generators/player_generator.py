@@ -153,4 +153,7 @@ class PlayerGenerator:
         age = player.age_on(today)
         growth_room = max(0.0, (24 - age)) * 1.2 + rng.uniform(0, 5)
         player.potential = _clamp(player.overall + growth_room)
+        # Rasgos de personalidad 1-5 (sesgados al centro, como la moral).
+        player.leadership = rng.choices([1, 2, 3, 4, 5], weights=[1, 2, 4, 3, 2])[0]
+        player.character = rng.choices([1, 2, 3, 4, 5], weights=[1, 2, 4, 3, 2])[0]
         return player

@@ -25,9 +25,9 @@ from ..domain.sponsor import Sponsor, SponsorContract
 from ..domain.stadium import Stadium
 from ..domain.transfer import TransferOffer
 
-# v6: mercado de pases (players.asking_price + tabla offers). v5 instalaciones; v4
-# estadio por sectores + patrocinadores; v3 el director tecnico inline en el club.
-SCHEMA_VERSION = 6
+# v7: rasgos de jugador liderazgo/caracter. v6 mercado de pases (asking_price +
+# offers); v5 instalaciones; v4 estadio por sectores + patrocinadores; v3 el DT.
+SCHEMA_VERSION = 7
 
 
 class IncompatibleSaveError(Exception):
@@ -38,7 +38,7 @@ _PLAYER_BASE_COLS = [
     "first_name", "last_name", "nationality", "position", "foot", "birth_date",
     "height_cm", "weight_kg", "form", "fitness", "experience", "morale",
     "specialty", "nickname", "shirt_number", "origin_club", "potential",
-    "injury_proneness", "asking_price",
+    "injury_proneness", "asking_price", "leadership", "character",
 ]
 _PLAYER_COLS = _PLAYER_BASE_COLS + list(ALL_ATTRS)
 
@@ -122,6 +122,8 @@ CREATE TABLE players (
     potential        REAL NOT NULL,
     injury_proneness REAL NOT NULL,
     asking_price     INTEGER,
+    leadership       INTEGER NOT NULL DEFAULT 3,
+    character        INTEGER NOT NULL DEFAULT 3,
     {_PLAYER_ATTR_DDL}
 );
 
@@ -409,7 +411,7 @@ def _player_row(club_id: int, p: Player) -> tuple:
         p.birth_date.isoformat(), p.height_cm, p.weight_kg, p.form, p.fitness,
         p.experience, p.morale.value, p.specialty.value if p.specialty else None,
         p.nickname, p.shirt_number, p.origin_club, p.potential, p.injury_proneness,
-        p.asking_price,
+        p.asking_price, p.leadership, p.character,
     )
     attrs = tuple(getattr(p, attr) for attr in ALL_ATTRS)
     return (club_id, *base, *attrs)
@@ -601,5 +603,7 @@ def _player_from_row(row: sqlite3.Row) -> Player:
         potential=row["potential"],
         injury_proneness=row["injury_proneness"],
         asking_price=row["asking_price"],
+        leadership=row["leadership"],
+        character=row["character"],
         **{attr: row[attr] for attr in ALL_ATTRS},
     )
