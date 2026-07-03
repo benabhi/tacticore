@@ -22,7 +22,9 @@ from ..format import append_section, hint, money
 from ..player_labels import (
     ATTR_GROUPS,
     ATTR_LABEL,
+    CHARACTER_LABEL,
     FOOT_LABEL,
+    LEADERSHIP_LABEL,
     MORALE_LABEL,
     POSITION_LABEL,
     specialty_label,
@@ -74,12 +76,13 @@ class PlayerDetailScreen(BaseScreen):
     #card {
         width: 76;
         height: auto;
+        margin-top: 1;   /* separa las pestañas del contenido */
     }
     #hint {
+        dock: bottom;    /* la ayuda siempre en la ultima linea */
         width: 76;
         text-align: center;
         color: $text-muted;
-        margin-top: 1;
     }
     """
 
@@ -157,7 +160,6 @@ class PlayerDetailScreen(BaseScreen):
         # --- Franja resumen: numeros clave, valor coloreado por nivel. ---
         self._summary_strip(t, p)
         t.append("-" * _W + "\n", style="grey50")
-        t.append("\n")
 
         # --- Detalle en dos columnas con titulos, valores alineados. ---
         years, days = p.age_parts_on(self._today)
@@ -176,12 +178,14 @@ class PlayerDetailScreen(BaseScreen):
             ("Experiencia", f"{p.experience:.0f}", "white"),
             ("Moral", f"{MORALE_LABEL[p.morale]} ({p.morale.value})",
              _MORALE_STYLE.get(p.morale.value, "white")),
+            ("Liderazgo", f"{LEADERSHIP_LABEL[p.leadership]} ({p.leadership})",
+             _MORALE_STYLE.get(p.leadership, "white")),
+            ("Caracter", f"{CHARACTER_LABEL[p.character]} ({p.character})",
+             _MORALE_STYLE.get(p.character, "white")),
             ("Especialidad", specialty_label(p.specialty), "white"),
-            ("Prop. lesion", f"{p.injury_proneness:.0f}", "white"),
             ("Lesion", lesion, "red" if p.injury is not None else "green"),
         ]
         self._two_columns(t, ("IDENTIDAD", identidad), ("FICHA", ficha))
-        t.append("\n")
 
         # --- Atributos (grilla de 3 columnas, sin cambios de fondo). ---
         t.append("-" * _W + "\n", style="grey50")

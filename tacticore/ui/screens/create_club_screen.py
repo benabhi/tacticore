@@ -1,13 +1,13 @@
 """Pantalla "Crea tu club": el arranque de la partida (estilo ncurses).
 
-Pide el nombre del manager (vos), del club, de la hinchada, del estadio y la
-nacionalidad (que define en que liga se juega). Al costado se dibuja, EN VIVO
-mientras se tipea el nombre del club, su identicon ASCII (emblema + color,
-unicos por nombre).
+Pide el nombre del manager (vos), del club, de la hinchada, del estadio, la
+nacionalidad (que define en que liga se juega) y el patrocinador principal (se
+elige entre 3 ofertas ahi mismo). Al costado se dibuja EN VIVO, mientras se tipea
+el nombre del club, su identicon ASCII (emblema + color, unicos por nombre).
 
-Forma de la vieja escuela: un panel de texto con campos en una linea, el activo
-resaltado (como el selector de paises); se escribe con el teclado, se mueve con
-las flechas y se confirma/elige con Enter. Pantalla completa 80x25, sin scroll.
+Forma de la vieja escuela: campos en una linea, el activo resaltado; se escribe
+con el teclado, se mueve con las flechas, se cambia el patrocinador con izq/der y
+se confirma/elige con Enter. La ayuda queda anclada al fondo. 80x25, sin scroll.
 """
 
 from rich.text import Text
@@ -17,9 +17,12 @@ from textual.widgets import Static
 
 from ... import config
 from ...core.rng import new_rng
+from ...domain.enums import LeagueTier
 from ...domain.manager import Manager
 from ...generators.club_generator import ClubGenerator
+from ...generators.sponsor_generator import SponsorGenerator
 from ...persistence import savegame
+from ..format import hint, money
 from ..identicon import identicon_color, render_identicon
 from ..palette import MUTED
 from .base_screen import BaseScreen
@@ -28,74 +31,38 @@ from .country_select_screen import CountrySelectScreen
 _LABELS = ["Manager", "Club", "Hinchada", "Estadio", "Nacionalidad"]
 _CLUB = 1          # indice del campo "Club" (el que alimenta el identicon)
 _NAT = 4           # indice del campo de nacionalidad (abre el selector)
-_CREATE = 5        # indice del boton "Crear club"
-_N = 6             # 4 campos de texto + nacionalidad + crear
+_SPONSOR = 5       # zona de eleccion de patrocinador (izq/der cambia la oferta)
+_CREATE = 6        # indice del boton "Crear club"
+_N = 7
 _LBL_W = 14        # ancho de la columna de etiquetas
 _ROW_W = 42        # ancho de la fila resaltada
+_CARD_W = 54       # ancho de la tarjeta de patrocinadores (columna izquierda)
 
 
 class CreateClubScreen(BaseScreen):
-    """Formulario de creacion del club (ncurses) con identicon en vivo."""
+    """Formulario de creacion del club (ncurses) con identicon y patrocinador."""
 
     CSS = """
-    #viewport {
-        align: center top;
-    }
+    #viewport { align: center top; }
     #title {
-        width: 1fr;
-        text-align: center;
-        color: green;
-        text-style: bold;
+        width: 1fr; text-align: center; color: green; text-style: bold;
         padding: 1 0 0 0;
     }
-    #welcome {
-        width: 1fr;
-        text-align: center;
-        padding: 1 2 0 2;
-    }
-    #status {
-        width: 1fr;
-        height: 1;
-        text-align: center;
-        margin: 1 0;
-    }
-    #cols {
-        width: 72;
-        height: auto;
-    }
-    #form {
-        width: 46;
-        height: auto;
-    }
-    #side {
-        width: 24;
-        height: auto;
-        align: center top;
-    }
-    #ident_title {
-        width: 24;
-        height: 1;
-        text-align: center;
-        color: $text-muted;
-    }
-    #ident {
-        width: 24;
-        height: auto;
-        text-align: center;
-    }
+    #welcome { width: 1fr; text-align: center; padding: 1 2 0 2; }
+    #status { width: 1fr; height: 1; text-align: center; margin: 1 0; }
+    #cols { width: 78; height: auto; }
+    #leftcol { width: 54; height: auto; }
+    #form { width: 52; height: auto; }
+    #sponsors { width: 54; height: auto; }
+    #side { width: 24; height: auto; align: center top; }
+    #ident_title { width: 24; height: 1; text-align: center; color: $text-muted; }
+    #ident { width: 24; height: auto; text-align: center; }
     #ident_name {
-        width: 24;
-        height: 1;
-        text-align: center;
-        text-style: bold;
+        width: 24; height: 1; text-align: center; text-style: bold;
         text-overflow: ellipsis;
     }
-    #footer {
-        width: 1fr;
-        text-align: center;
-        color: $text-muted;
-        padding: 1 0 0 0;
-    }
+    #crear { width: 1fr; height: auto; text-align: center; padding: 1 0 0 0; }
+    #footer { dock: bottom; width: 1fr; text-align: center; }
     """
 
     def __init__(self) -> None:
@@ -103,35 +70,39 @@ class CreateClubScreen(BaseScreen):
         self._texts = ["", "", "", ""]   # manager, club, hinchada, estadio
         self._country = None             # (nombre, codigo)
         self._active = 0
+        self._offers = None   # 3 ofertas de patrocinio (se generan al montar)
+        self._sponsor = 0     # oferta elegida por defecto
 
     def compose_viewport(self) -> ComposeResult:
+        # El club arranca en la liga E; las 3 ofertas salen de la semilla (deterministas).
+        self._offers = SponsorGenerator(new_rng(self.app.seed)).offers(LeagueTier.E, 3)
         yield Static("CREA TU CLUB", id="title")
         yield Static(self._welcome_text(), id="welcome")
-        # Linea reservada (altura fija): guia por defecto, error en rojo si falta
-        # algun campo. Siempre ocupa 1 fila, asi el error no desplaza nada.
+        # Linea reservada (altura fija): guia por defecto, error en rojo si falta algo.
         yield Static(self._status_help(), id="status")
         with Horizontal(id="cols"):
-            yield Static(self._form_text(), id="form")
+            with Vertical(id="leftcol"):
+                # El formulario (con lineas en blanco al final) empuja el bloque de
+                # patrocinadores hasta la altura del nombre del club (bajo el emblema).
+                yield Static(self._form_text(), id="form")
+                yield Static(self._sponsors_text(), id="sponsors")
             with Vertical(id="side"):
                 yield Static("Emblema del club", id="ident_title")
                 yield Static(render_identicon(""), id="ident")
                 yield Static("", id="ident_name")
-        yield Static(
-            "Flechas: campo   Escribi: editar   Enter: elegir / crear", id="footer"
-        )
+        yield Static(self._crear_text(), id="crear")
+        yield Static(self._footer_text(), id="footer")
 
     def _welcome_text(self) -> Text:
         w = Text(justify="center")
         w.append("Bienvenido a TACTICORE, manager.\n", style="bold green")
-        w.append(
-            "Vas a fundar tu club y arrancar el camino desde abajo, en el ascenso.\n",
-            style="white",
-        )
-        w.append(
-            "Dale su identidad: nombre, hinchada, estadio y bandera.",
-            style="grey62",
-        )
+        w.append("Funda tu club desde abajo: dale identidad y firma tu patrocinador.",
+                 style="grey62")
         return w
+
+    def _footer_text(self) -> Text:
+        return hint(("Flechas", "mover"), ("Escribi", "editar"),
+                    ("<>", "patrocinador"), ("Enter", "elegir / crear"))
 
     # --- Linea de estado: guia por defecto / error de validacion ---
     def _status_help(self) -> Text:
@@ -155,10 +126,8 @@ class CreateClubScreen(BaseScreen):
             Text(msg, style="bold red", justify="center")
         )
 
-    # --- Render del formulario ---
+    # --- Render del formulario (los 5 campos) ---
     def _form_text(self) -> Text:
-        # El LABEL va tenue y el VALOR (lo que escribis) en blanco/negrita, para
-        # distinguir que tipeaste vos. El campo activo ademas va resaltado.
         t = Text()
         for i, label in enumerate(_LABELS):
             if i == _NAT:
@@ -168,27 +137,54 @@ class CreateClubScreen(BaseScreen):
             cell = label.ljust(_LBL_W)
             if i == self._active:
                 t.append("> ", style="bold black on green")
-                t.append(cell, style="black on green")            # label
-                t.append(value, style="bold black on green")      # valor (negrita)
+                t.append(cell, style="black on green")
+                t.append(value, style="bold black on green")
                 used = 2 + len(cell) + len(value)
                 if used < _ROW_W:
                     t.append(" " * (_ROW_W - used), style="on green")
                 t.append("\n")
             else:
                 t.append("  ")
-                t.append(cell, style=MUTED)                       # label tenue
-                t.append(value + "\n", style="bold white")        # valor claro
-        # Lineas en blanco para que CREAR CLUB quede en la MISMA fila que el nombre
-        # del club bajo el identicon (titulo 1 + emblema 7 -> el nombre va en la
-        # fila 8; los campos son 5, asi que 3 en blanco dejan CREAR en la fila 8).
-        t.append("\n\n\n")
+                t.append(cell, style=MUTED)
+                t.append(value + "\n", style="bold white")
+        # Lineas en blanco: bajan el bloque PATROCINADOR hasta quedar a la altura del
+        # nombre del club (emblema = titulo + 7 filas + nombre; los campos son 5).
+        t.append("\n\n")
+        return t
+
+    def _sponsors_text(self) -> Text:
+        active = self._active == _SPONSOR
+        t = Text()
+        t.append("PATROCINADOR", style="bold green")
+        t.append("  (izq/der elige)\n" if active else "\n", style="grey62")
+        for i, c in enumerate(self._offers):
+            if c.promotion_bonus and c.streak_bonus:
+                bonus = f"Asc {money(c.promotion_bonus)} +Racha"
+            elif c.promotion_bonus:
+                bonus = f"Ascenso {money(c.promotion_bonus)}"
+            elif c.streak_bonus:
+                bonus = f"Racha {money(c.streak_bonus)}"
+            else:
+                bonus = "sin bonus"
+            row = (f"{c.sponsor.name}".ljust(12) + f"{c.weeks_total} sem".ljust(8)
+                   + f"{money(c.weekly_pay)}/sem".ljust(12) + bonus)
+            chosen = i == self._sponsor
+            if chosen:
+                style = "bold black on green" if active else "bold white"
+                t.append(("> " + row)[:_CARD_W].ljust(_CARD_W) + "\n", style=style)
+            else:
+                t.append(("  " + row)[:_CARD_W] + "\n", style="grey62")
+        return t
+
+    def _crear_text(self) -> Text:
         crear = "> CREAR CLUB <" if self._active == _CREATE else "CREAR CLUB"
         style = "bold black on green" if self._active == _CREATE else "green"
-        t.append(crear.center(_ROW_W), style=style)
-        return t
+        return Text(crear, style=style, justify="center")
 
     def _refresh(self) -> None:
         self.query_one("#form", Static).update(self._form_text())
+        self.query_one("#sponsors", Static).update(self._sponsors_text())
+        self.query_one("#crear", Static).update(self._crear_text())
 
     def _refresh_ident(self) -> None:
         name = self._texts[_CLUB]
@@ -200,40 +196,35 @@ class CreateClubScreen(BaseScreen):
         else:
             label.update("")
 
-    # --- Teclado: mover, editar, confirmar ---
+    # --- Teclado: mover, editar, elegir patrocinador, confirmar ---
     def on_key(self, event) -> None:
         key = event.key
         if key in ("down", "tab"):
             self._active = (self._active + 1) % _N
-            event.stop()
-            self._refresh()
+            event.stop(); self._refresh()
         elif key in ("up", "shift+tab"):
             self._active = (self._active - 1) % _N
-            event.stop()
-            self._refresh()
+            event.stop(); self._refresh()
+        elif key in ("left", "right") and self._active == _SPONSOR:
+            self._sponsor = (self._sponsor + (1 if key == "right" else -1)) % len(self._offers)
+            event.stop(); self._refresh()
         elif key == "enter":
-            event.stop()
-            self._activate()
+            event.stop(); self._activate()
         elif key == "backspace":
             if self._active < _NAT and self._texts[self._active]:
                 self._texts[self._active] = self._texts[self._active][:-1]
-                event.stop()
-                self._refresh()
-                self._show_help()
+                event.stop(); self._refresh(); self._show_help()
                 if self._active == _CLUB:
                     self._refresh_ident()
         elif event.character and event.character.isprintable() and len(event.character) == 1:
             if self._active < _NAT and len(self._texts[self._active]) < 22:
                 self._texts[self._active] += event.character
-                event.stop()
-                self._refresh()
-                self._show_help()
+                event.stop(); self._refresh(); self._show_help()
                 if self._active == _CLUB:
                     self._refresh_ident()
 
     def _activate(self) -> None:
         if self._active == _NAT:
-            # Solo se puede elegir un pais que exista en el mundo generado.
             available = [(c.name, c.code) for c in self.app.game.countries]
             self.app.push_screen(
                 CountrySelectScreen(available, title="ELEGI LA NACIONALIDAD DE TU CLUB"),
@@ -250,8 +241,8 @@ class CreateClubScreen(BaseScreen):
         self._show_help()
 
     def _create(self) -> None:
-        # Todos los campos son obligatorios: si falta alguno, mostramos el error
-        # en la linea reservada y no avanzamos.
+        from .office_screen import OfficeScreen
+
         missing = self._missing_fields()
         if missing:
             self._show_error(missing)
@@ -261,14 +252,8 @@ class CreateClubScreen(BaseScreen):
         game = app.game
         manager_name = self._texts[0].strip()
         country_code = self._country[1]
-
-        # Manager humano (sin edad: no se la pedimos).
         first, _, last = manager_name.partition(" ")
-        manager = Manager(
-            first_name=first, last_name=last, nationality=country_code
-        )
-        # Construir el club humilde del jugador (liga E, 500 socios) e insertarlo
-        # en su pais reemplazando a un club IA.
+        manager = Manager(first_name=first, last_name=last, nationality=country_code)
         club = ClubGenerator(new_rng(app.seed)).player_club(
             name=self._texts[1].strip(),
             fans_name=self._texts[2].strip(),
@@ -282,27 +267,14 @@ class CreateClubScreen(BaseScreen):
         game.install_player_club(club)
         game.manager_name = manager_name
 
-        # Generar los fixtures de TODAS las ligas (deterministas por semilla), asi
-        # el mundo puede progresar al avanzar dias.
+        # Fixtures de TODAS las ligas (deterministas) para que el mundo progrese.
         from ...simulation.season import ensure_all_fixtures
 
         ensure_all_fixtures(game)
 
-        # Ultimo paso: elegir el patrocinador principal (3 ofertas) y recien ahi
-        # guardar y entrar a la Oficina.
-        from ...generators.sponsor_generator import SponsorGenerator
-        from .sponsor_select_screen import SponsorSelectScreen
+        # Patrocinador elegido: se firma aca mismo y su bono de firma entra a la caja.
+        club.sponsor = self._offers[self._sponsor]
+        club.capital += club.sponsor.signing_bonus
 
-        offers = SponsorGenerator(new_rng(app.seed)).offers(club.tier, 3)
-        app.push_screen(SponsorSelectScreen(offers, self._on_sponsor_picked))
-
-    def _on_sponsor_picked(self, contract) -> None:
-        from .office_screen import OfficeScreen
-
-        app = self.app
-        club = app.game.player_club
-        club.sponsor = contract
-        club.capital += contract.signing_bonus  # el bono de firma entra a la caja
-        savegame.save_game(app.game)
-        app.pop_screen()               # cierra el selector de patrocinador
+        savegame.save_game(game)
         app.switch_screen(OfficeScreen())
