@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from .coach import Coach
 from .enums import LeagueTier
+from .facility import Construction
 from .manager import Manager
 from .player import Player
 from .sponsor import SponsorContract
@@ -26,6 +27,10 @@ class Club:
     players: list[Player] = field(default_factory=list)
     coach: Coach | None = None      # director tecnico (dirige al equipo)
     sponsor: SponsorContract | None = None  # contrato de patrocinio principal
+    plots: int = 0                  # parcelas de terreno (limitan cuanto se construye)
+    facilities: dict[str, int] = field(default_factory=dict)  # id edificio -> nivel
+    stands_built: int = 0           # gradas de estadio construidas (ocupan parcela)
+    constructions: list[Construction] = field(default_factory=list)  # obras en curso
 
     @property
     def squad_size(self) -> int:

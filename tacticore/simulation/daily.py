@@ -21,6 +21,7 @@ from ..core.rng import new_rng
 from ..domain.enums import Morale
 from .economy import (
     matchday_income, membership_income, squad_wage_bill, stadium_upkeep)
+from .facilities import facility_income, tick_constructions
 from .match_engine import simulate_match
 
 # Etiqueta del evento de cada dia de la semana (0=lunes .. 6=domingo).
@@ -56,6 +57,9 @@ def advance_day(game, rng: random.Random | None = None, progress=None) -> date:
     game.calendar.advance(1)
     today = game.calendar.current_date
     rng = rng or new_rng(game.seed + today.toordinal())
+    # Las obras avanzan todos los dias (hoy solo el jugador tiene obras).
+    for club in _all_clubs(game):
+        tick_constructions(club)
     wd = today.weekday()
     if wd == 4:
         _weekly_economy(game, today, rng, progress)
@@ -74,7 +78,7 @@ def _weekly_economy(game, today: date, rng: random.Random, progress) -> None:
     total = len(clubs) or 1
     label = day_event(today)
     for i, club in enumerate(clubs, start=1):
-        income = membership_income(club.members)
+        income = membership_income(club.members) + facility_income(club)
         spon = club.sponsor
         if spon is not None and spon.active:
             income += spon.weekly_pay

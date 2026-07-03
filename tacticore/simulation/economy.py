@@ -106,8 +106,14 @@ def _rival_factor(home: Club, away: Club) -> float:
 
 
 def expected_attendance(home: Club, away: Club) -> int:
-    """Cuanta gente se espera para un partido de local (tope: la capacidad)."""
+    """Cuanta gente se espera para un partido de local (tope: la capacidad).
+
+    La popularidad de las instalaciones del local multiplica la demanda.
+    """
+    from .facilities import facility_popularity
+
     demand = home.members * _ATTEND_RATE * _rival_factor(home, away)
+    demand *= 1 + facility_popularity(home)
     return int(min(home.stadium.capacity, round(demand)))
 
 

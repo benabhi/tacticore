@@ -16,6 +16,7 @@ from ..domain.coach import Coach
 from ..domain.country import Country
 from ..domain.enums import (
     Foot, LeagueTier, Mentality, MatchKind, Morale, Position, Specialty)
+from ..domain.facility import Construction
 from ..domain.league import League
 from ..domain.manager import Manager
 from ..domain.match import Match
@@ -23,9 +24,9 @@ from ..domain.player import ALL_ATTRS, Player
 from ..domain.sponsor import Sponsor, SponsorContract
 from ..domain.stadium import Stadium
 
-# v4: estadio por sectores (stadium_general/preferente/tribuna/palco) y tabla de
-# patrocinadores. v3 habia sumado el director tecnico (coach_*) inline en el club.
-SCHEMA_VERSION = 4
+# v5: instalaciones (parcelas + tablas facilities/constructions). v4 estadio por
+# sectores + patrocinadores; v3 el director tecnico (coach_*) inline en el club.
+SCHEMA_VERSION = 5
 
 
 class IncompatibleSaveError(Exception):
@@ -93,7 +94,9 @@ CREATE TABLE clubs (
     coach_birth      TEXT,
     coach_mentality  TEXT,
     coach_skill      REAL,
-    coach_leadership REAL
+    coach_leadership REAL,
+    plots            INTEGER NOT NULL DEFAULT 0,
+    stands_built     INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE players (
@@ -136,6 +139,23 @@ CREATE TABLE sponsors (
     streak_len       INTEGER NOT NULL
 );
 
+-- Instalaciones construidas de cada club (id del edificio -> nivel).
+CREATE TABLE facilities (
+    id          INTEGER PRIMARY KEY,
+    club_id     INTEGER NOT NULL REFERENCES clubs(id),
+    facility_id TEXT NOT NULL,
+    level       INTEGER NOT NULL
+);
+
+-- Obras en curso de cada club (bajan un dia por vez en el loop diario).
+CREATE TABLE constructions (
+    id             INTEGER PRIMARY KEY,
+    club_id        INTEGER NOT NULL REFERENCES clubs(id),
+    kind           TEXT NOT NULL,
+    key            TEXT NOT NULL,
+    days_remaining INTEGER NOT NULL
+);
+
 -- Partidos del fixture de cada liga (con su resultado si ya se jugaron). La
 -- tactica del club del jugador NO se persiste (es transitoria).
 CREATE TABLE matches (
@@ -166,10 +186,12 @@ CREATE TABLE injuries (
 -- club/liga (la carga pasaba de ~16s a <1s con estos indices).
 CREATE INDEX idx_leagues_country ON leagues(country_id);
 CREATE INDEX idx_clubs_league    ON clubs(league_id);
-CREATE INDEX idx_players_club    ON players(club_id);
-CREATE INDEX idx_sponsors_club   ON sponsors(club_id);
-CREATE INDEX idx_matches_league  ON matches(league_id);
-CREATE INDEX idx_injuries_player ON injuries(player_id);
+CREATE INDEX idx_players_club       ON players(club_id);
+CREATE INDEX idx_sponsors_club      ON sponsors(club_id);
+CREATE INDEX idx_facilities_club    ON facilities(club_id);
+CREATE INDEX idx_constructions_club ON constructions(club_id);
+CREATE INDEX idx_matches_league     ON matches(league_id);
+CREATE INDEX idx_injuries_player    ON injuries(player_id);
 """
 
 
@@ -239,8 +261,9 @@ def _insert_club(
             stadium_general, stadium_preferente, stadium_tribuna, stadium_palco,
             manager_first, manager_last, manager_nat, manager_birth,
             coach_first, coach_last, coach_nat, coach_birth,
-            coach_mentality, coach_skill, coach_leadership
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            coach_mentality, coach_skill, coach_leadership,
+            plots, stands_built
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             league_id, club.name, club.short_name, club.country_code,
@@ -258,10 +281,25 @@ def _insert_club(
             coach.mentality.value if coach else None,
             coach.skill if coach else None,
             coach.leadership if coach else None,
+            club.plots, club.stands_built,
         ),
     ).lastrowid
     _insert_sponsor(conn, club_id, club.sponsor)
+    _insert_facilities(conn, club_id, club)
     return club_id
+
+
+def _insert_facilities(conn: sqlite3.Connection, club_id: int, club: Club) -> None:
+    """Guarda las instalaciones construidas y las obras en curso del club."""
+    facs = [(club_id, fid, lv) for fid, lv in club.facilities.items() if lv > 0]
+    if facs:
+        conn.executemany(
+            "INSERT INTO facilities (club_id, facility_id, level) VALUES (?,?,?)", facs)
+    cons = [(club_id, c.kind, c.key, c.days_remaining) for c in club.constructions]
+    if cons:
+        conn.executemany(
+            "INSERT INTO constructions (club_id, kind, key, days_remaining) "
+            "VALUES (?,?,?,?)", cons)
 
 
 def _insert_sponsor(conn: sqlite3.Connection, club_id: int, contract) -> None:
@@ -420,6 +458,18 @@ def _club_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Club:
         players=players,
         coach=coach,
         sponsor=_sponsor_from_db(conn, row["id"]),
+        plots=row["plots"],
+        stands_built=row["stands_built"],
+        facilities={
+            f["facility_id"]: f["level"]
+            for f in conn.execute(
+                "SELECT * FROM facilities WHERE club_id = ?", (row["id"],))
+        },
+        constructions=[
+            Construction(c["kind"], c["key"], c["days_remaining"])
+            for c in conn.execute(
+                "SELECT * FROM constructions WHERE club_id = ? ORDER BY id", (row["id"],))
+        ],
     )
 
 

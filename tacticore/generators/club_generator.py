@@ -137,6 +137,7 @@ class ClubGenerator:
             coach=self._coaches.generate(country_code, tier, today),
             # El patrocinador lo ELIGE el jugador al crear el club (queda None aca).
             sponsor=None,
+            plots=4,  # parcelas iniciales (facilities.START_PLOTS)
         )
 
     def _build_squad(
