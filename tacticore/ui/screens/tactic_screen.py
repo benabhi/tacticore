@@ -23,6 +23,7 @@ from textual.widgets import Static
 from ... import config
 from ...domain.enums import Marking, Mentality, Position, TeamTactic
 from ...domain.tactic import Tactic
+from ...simulation.formation_training import training_level
 from ...simulation.match.formation import (
     FORMATIONS, auto_select, get_formation)
 from ..format import hint
@@ -176,7 +177,7 @@ class TacticScreen(BaseScreen):
     # --- Columna izquierda: planteo (arriba) + stats del jugador (abajo) ---
     def _left_lines(self) -> list[Text]:
         lines = [self._panel_title("PLANTEO", "planteo")]
-        lines.append(self._field_row(0, "Formacion", self._tactic.formation))
+        lines.append(self._formation_field())
         lines.append(self._field_row(1, "Mentalidad", self._tactic.mentality.value))
         lines.append(self._field_row(2, "Tactica", self._tactic.team_tactic.value))
         lines.append(self._field_row(3, "Marcaje", self._tactic.marking.value))
@@ -191,6 +192,20 @@ class TacticScreen(BaseScreen):
         if selected:  # campo elegido: barra verde (mismo efecto que las pestañas)
             return Text(text.ljust(_FIELD_W), style="bold black on green")
         return Text(text[:_LW], style="white" if active else "grey50")
+
+    def _formation_field(self) -> Text:
+        """Campo Formacion con el nivel de entrenamiento del club (Ent NN)."""
+        active = self._pane == "planteo"
+        selected = active and self._field == 0
+        value = self._tactic.formation
+        lvl = round(training_level(self._club, value)) if self._club else 0
+        base = f" {'Formacion':<{_LABEL_W}} < {value} >"
+        if selected:  # todo en la barra verde (incluye el Ent NN)
+            return Text(f"{base}  Ent {lvl}".ljust(_FIELD_W), style="bold black on green")
+        t = Text(base, style="white" if active else "grey50")
+        t.append("  Ent ", style="grey50")
+        t.append(str(lvl), style=self._attr_style(lvl) if active else "grey50")
+        return t
 
     # --- Stats resumidas del jugador en foco (parte baja de la columna izq) ---
     @staticmethod

@@ -50,11 +50,14 @@ class CoachGenerator:
         country_code: str | None = None,
         tier: LeagueTier = LeagueTier.E,
         today: date | None = None,
+        mentality: Mentality | None = None,
     ) -> Coach:
         """Genera un DT de la nacionalidad `country_code` para una liga `tier`.
 
         `today` (fecha del juego) ancla la fecha de nacimiento para que la edad
-        sea >= 35 al inicio y el DT envejezca al avanzar el calendario.
+        sea >= 35 al inicio y el DT envejezca al avanzar el calendario. Si se pasa
+        `mentality`, la usa (el DT del club del jugador lo elige el jugador); si no,
+        la sortea.
         """
         today = today or config.SEASON_START_DATE
         rng = self._rng
@@ -68,7 +71,7 @@ class CoachGenerator:
             last_name=last,
             nationality=country_code or "FAN",
             birth_date=birth_date,
-            mentality=rng.choice(list(Mentality)),
+            mentality=mentality if mentality is not None else rng.choice(list(Mentality)),
             skill=skill,
             leadership=leadership,
         )

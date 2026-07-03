@@ -31,6 +31,7 @@ class Club:
     facilities: dict[str, int] = field(default_factory=dict)  # id edificio -> nivel
     stands_built: int = 0           # gradas de estadio construidas (ocupan parcela)
     constructions: list[Construction] = field(default_factory=list)  # obras en curso
+    formation_training: dict[str, float] = field(default_factory=dict)  # formacion -> nivel 1-100
 
     @property
     def squad_size(self) -> int:

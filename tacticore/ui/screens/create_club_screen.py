@@ -17,7 +17,7 @@ from textual.widgets import Static
 
 from ... import config
 from ...core.rng import new_rng
-from ...domain.enums import LeagueTier
+from ...domain.enums import LeagueTier, Mentality
 from ...domain.manager import Manager
 from ...generators.club_generator import ClubGenerator
 from ...generators.sponsor_generator import SponsorGenerator
@@ -28,15 +28,23 @@ from ..palette import MUTED
 from .base_screen import BaseScreen
 from .country_select_screen import CountrySelectScreen
 
-_LABELS = ["Manager", "Club", "Hinchada", "Estadio", "Nacionalidad"]
+_LABELS = ["Manager", "Club", "Hinchada", "Estadio", "Entrenador", "Nacionalidad"]
 _CLUB = 1          # indice del campo "Club" (el que alimenta el identicon)
-_NAT = 4           # indice del campo de nacionalidad (abre el selector)
-_SPONSOR = 5       # zona de eleccion de patrocinador (izq/der cambia la oferta)
-_CREATE = 6        # indice del boton "Crear club"
-_N = 7
+_COACH = 4         # indice del campo "Entrenador" (izq/der cambia la mentalidad)
+_NAT = 5           # indice del campo de nacionalidad (abre el selector)
+_SPONSOR = 6       # zona de eleccion de patrocinador (izq/der cambia la oferta)
+_CREATE = 7        # indice del boton "Crear club"
+_N = 8
 _LBL_W = 14        # ancho de la columna de etiquetas
 _ROW_W = 42        # ancho de la fila resaltada
 _CARD_W = 54       # ancho de la tarjeta de patrocinadores (columna izquierda)
+
+# Etiqueta del entrenador en masculino (el enum Mentality va en femenino porque
+# describe la "mentalidad"; aca describe al entrenador).
+_COACH_LABEL = {
+    Mentality.OFFENSIVE: "Ofensivo", Mentality.NEUTRAL: "Neutral",
+    Mentality.DEFENSIVE: "Defensivo",
+}
 
 
 class CreateClubScreen(BaseScreen):
@@ -72,6 +80,8 @@ class CreateClubScreen(BaseScreen):
         self._active = 0
         self._offers = None   # 3 ofertas de patrocinio (se generan al montar)
         self._sponsor = 0     # oferta elegida por defecto
+        self._mentalities = list(Mentality)  # opciones del entrenador
+        self._coach = self._mentalities.index(Mentality.NEUTRAL)  # mentalidad elegida
 
     def compose_viewport(self) -> ComposeResult:
         # El club arranca en la liga E; las 3 ofertas salen de la semilla (deterministas).
@@ -102,7 +112,7 @@ class CreateClubScreen(BaseScreen):
 
     def _footer_text(self) -> Text:
         return hint(("Flechas", "mover"), ("Escribi", "editar"),
-                    ("<>", "patrocinador"), ("Enter", "elegir / crear"))
+                    ("<>", "cambiar"), ("Enter", "elegir / crear"))
 
     # --- Linea de estado: guia por defecto / error de validacion ---
     def _status_help(self) -> Text:
@@ -112,7 +122,7 @@ class CreateClubScreen(BaseScreen):
 
     def _missing_fields(self) -> list[str]:
         """Etiquetas de los campos sin completar (texto vacio o sin pais)."""
-        missing = [_LABELS[i] for i in range(_NAT) if not self._texts[i].strip()]
+        missing = [_LABELS[i] for i in range(_COACH) if not self._texts[i].strip()]
         if self._country is None:
             missing.append(_LABELS[_NAT])
         return missing
@@ -132,6 +142,8 @@ class CreateClubScreen(BaseScreen):
         for i, label in enumerate(_LABELS):
             if i == _NAT:
                 value = self._country[0] if self._country else "(Enter para elegir)"
+            elif i == _COACH:
+                value = f"< {_COACH_LABEL[self._mentalities[self._coach]]} >"
             else:
                 value = self._texts[i] + ("_" if i == self._active else "")
             cell = label.ljust(_LBL_W)
@@ -148,8 +160,8 @@ class CreateClubScreen(BaseScreen):
                 t.append(cell, style=MUTED)
                 t.append(value + "\n", style="bold white")
         # Lineas en blanco: bajan el bloque PATROCINADOR hasta quedar a la altura del
-        # nombre del club (emblema = titulo + 7 filas + nombre; los campos son 5).
-        t.append("\n\n")
+        # nombre del club (emblema = titulo + 7 filas + nombre; los campos son 6).
+        t.append("\n")
         return t
 
     def _sponsors_text(self) -> Text:
@@ -205,19 +217,22 @@ class CreateClubScreen(BaseScreen):
         elif key in ("up", "shift+tab"):
             self._active = (self._active - 1) % _N
             event.stop(); self._refresh()
+        elif key in ("left", "right") and self._active == _COACH:
+            self._coach = (self._coach + (1 if key == "right" else -1)) % len(self._mentalities)
+            event.stop(); self._refresh()
         elif key in ("left", "right") and self._active == _SPONSOR:
             self._sponsor = (self._sponsor + (1 if key == "right" else -1)) % len(self._offers)
             event.stop(); self._refresh()
         elif key == "enter":
             event.stop(); self._activate()
         elif key == "backspace":
-            if self._active < _NAT and self._texts[self._active]:
+            if self._active < _COACH and self._texts[self._active]:
                 self._texts[self._active] = self._texts[self._active][:-1]
                 event.stop(); self._refresh(); self._show_help()
                 if self._active == _CLUB:
                     self._refresh_ident()
         elif event.character and event.character.isprintable() and len(event.character) == 1:
-            if self._active < _NAT and len(self._texts[self._active]) < 22:
+            if self._active < _COACH and len(self._texts[self._active]) < 22:
                 self._texts[self._active] += event.character
                 event.stop(); self._refresh(); self._show_help()
                 if self._active == _CLUB:
@@ -263,6 +278,7 @@ class CreateClubScreen(BaseScreen):
             squad_size=config.SQUAD_SIZE,
             members=1500,
             today=game.calendar.current_date,
+            coach_mentality=self._mentalities[self._coach],
         )
         game.install_player_club(club)
         game.manager_name = manager_name

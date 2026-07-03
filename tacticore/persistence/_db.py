@@ -25,9 +25,9 @@ from ..domain.sponsor import Sponsor, SponsorContract
 from ..domain.stadium import Stadium
 from ..domain.transfer import TransferOffer
 
-# v7: rasgos de jugador liderazgo/caracter. v6 mercado de pases (asking_price +
-# offers); v5 instalaciones; v4 estadio por sectores + patrocinadores; v3 el DT.
-SCHEMA_VERSION = 7
+# v8: entrenamiento de formaciones por club. v7 liderazgo/caracter; v6 mercado de
+# pases; v5 instalaciones; v4 estadio por sectores + patrocinadores; v3 el DT.
+SCHEMA_VERSION = 8
 
 
 class IncompatibleSaveError(Exception):
@@ -160,6 +160,15 @@ CREATE TABLE constructions (
     days_remaining INTEGER NOT NULL
 );
 
+-- Entrenamiento de formaciones por club (nombre de formacion -> nivel 1-100).
+-- Hoy solo el club del jugador tiene filas.
+CREATE TABLE formation_training (
+    id        INTEGER PRIMARY KEY,
+    club_id   INTEGER NOT NULL REFERENCES clubs(id),
+    formation TEXT NOT NULL,
+    level     REAL NOT NULL
+);
+
 -- Ofertas abiertas del jugador humano (el comprador es siempre su club). El
 -- objetivo se reconecta por el club vendedor + numero de camiseta.
 CREATE TABLE offers (
@@ -206,6 +215,7 @@ CREATE INDEX idx_players_club       ON players(club_id);
 CREATE INDEX idx_sponsors_club      ON sponsors(club_id);
 CREATE INDEX idx_facilities_club    ON facilities(club_id);
 CREATE INDEX idx_constructions_club ON constructions(club_id);
+CREATE INDEX idx_ftrain_club        ON formation_training(club_id);
 CREATE INDEX idx_matches_league     ON matches(league_id);
 CREATE INDEX idx_injuries_player    ON injuries(player_id);
 """
@@ -310,7 +320,7 @@ def _insert_club(
 
 
 def _insert_facilities(conn: sqlite3.Connection, club_id: int, club: Club) -> None:
-    """Guarda las instalaciones construidas y las obras en curso del club."""
+    """Guarda instalaciones, obras y entrenamiento de formaciones del club."""
     facs = [(club_id, fid, lv) for fid, lv in club.facilities.items() if lv > 0]
     if facs:
         conn.executemany(
@@ -320,6 +330,11 @@ def _insert_facilities(conn: sqlite3.Connection, club_id: int, club: Club) -> No
         conn.executemany(
             "INSERT INTO constructions (club_id, kind, key, days_remaining) "
             "VALUES (?,?,?,?)", cons)
+    ftrain = [(club_id, name, lv) for name, lv in club.formation_training.items()]
+    if ftrain:
+        conn.executemany(
+            "INSERT INTO formation_training (club_id, formation, level) "
+            "VALUES (?,?,?)", ftrain)
 
 
 def _insert_sponsor(conn: sqlite3.Connection, club_id: int, contract) -> None:
@@ -539,6 +554,11 @@ def _club_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Club:
             for c in conn.execute(
                 "SELECT * FROM constructions WHERE club_id = ? ORDER BY id", (row["id"],))
         ],
+        formation_training={
+            f["formation"]: f["level"]
+            for f in conn.execute(
+                "SELECT * FROM formation_training WHERE club_id = ?", (row["id"],))
+        },
     )
 
 

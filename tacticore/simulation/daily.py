@@ -22,6 +22,7 @@ from ..domain.enums import Morale
 from .economy import (
     matchday_income, membership_income, squad_wage_bill, stadium_upkeep)
 from .facilities import facility_income, tick_constructions
+from .formation_training import train_formation
 from .match_engine import simulate_match
 from .transfers import ai_market_step, resolve_offers
 
@@ -124,6 +125,10 @@ def _play_matchday(game, today: date, rng: random.Random, progress) -> None:
                 m.home.capital += matchday_income(m.home, m.away)
                 _maybe_streak_bonus(league, m.home)
                 _maybe_streak_bonus(league, m.away)
+                # El club del jugador entrena la formacion que desplego este partido.
+                pc = game.player_club
+                if pc in (m.home, m.away) and m.tactic is not None:
+                    train_formation(pc, m.tactic.formation, pc.coach)
         if progress is not None and (i % 20 == 0 or i == total):
             progress(label, i, total)
 

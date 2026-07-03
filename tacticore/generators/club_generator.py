@@ -107,20 +107,23 @@ class ClubGenerator:
         tier: LeagueTier = LeagueTier.E,
         members: int = 500,
         today: date | None = None,
+        coach_mentality=None,
     ) -> Club:
         """Construye el club humilde del jugador con la identidad que eligio.
 
         El nombre, la hinchada, el estadio y el manager (el propio jugador) vienen
-        del jugador; la plantilla (en `tier`) se genera. Arranca con pocos socios y
-        el capital minimo de su nivel.
+        del jugador; la plantilla (en `tier`) se genera. `coach_mentality` (la que
+        eligio el jugador) define la mentalidad del DT y el entrenamiento inicial de
+        las formaciones. Arranca con pocos socios y el capital minimo de su nivel.
         """
         players = self._build_squad(squad_size, tier, country_code, today, name)
-        # Presupuesto inicial chico (estilo Hattrick), definido en economia.
+        # Presupuesto inicial chico (estilo Hattrick) y entrenamiento inicial segun
+        # la mentalidad del DT elegido.
         from ..simulation.economy import STARTING_BUDGET
+        from ..simulation.formation_training import initial_training
 
-        capital = STARTING_BUDGET
-
-        return Club(
+        coach = self._coaches.generate(country_code, tier, today, mentality=coach_mentality)
+        club = Club(
             name=name,
             short_name=_short_name(name),
             country_code=country_code,
@@ -129,16 +132,18 @@ class ClubGenerator:
             # Hattrick: se agrandan asientos mas adelante.
             stadium=Stadium(name=stadium_name, general=8000, preferente=3000,
                             tribuna=1000, palco=0),
-            capital=capital,
+            capital=STARTING_BUDGET,
             members=members,
             fans_name=fans_name,
             manager=manager,
             players=players,
-            coach=self._coaches.generate(country_code, tier, today),
+            coach=coach,
             # El patrocinador lo ELIGE el jugador al crear el club (queda None aca).
             sponsor=None,
             plots=4,  # parcelas iniciales (facilities.START_PLOTS)
+            formation_training=initial_training(coach.mentality),
         )
+        return club
 
     def _build_squad(
         self,
