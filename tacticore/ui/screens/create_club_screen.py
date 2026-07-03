@@ -250,8 +250,6 @@ class CreateClubScreen(BaseScreen):
         self._show_help()
 
     def _create(self) -> None:
-        from .office_screen import OfficeScreen
-
         # Todos los campos son obligatorios: si falta alguno, mostramos el error
         # en la linea reservada y no avanzamos.
         missing = self._missing_fields()
@@ -278,18 +276,33 @@ class CreateClubScreen(BaseScreen):
             manager=manager,
             country_code=country_code,
             squad_size=config.SQUAD_SIZE,
+            members=1500,
             today=game.calendar.current_date,
         )
         game.install_player_club(club)
         game.manager_name = manager_name
 
-        # Generar el fixture de la temporada de la liga del jugador (ya esta
-        # armada: todos los clubes definidos). Se usa la misma semilla para que
-        # sea reproducible al recargar.
-        from ...simulation.season import generate_league_fixture
+        # Generar los fixtures de TODAS las ligas (deterministas por semilla), asi
+        # el mundo puede progresar al avanzar dias.
+        from ...simulation.season import ensure_all_fixtures
 
-        generate_league_fixture(game.player_league, new_rng(app.seed))
+        ensure_all_fixtures(game)
 
-        # Guardar la partida (autosave) y entrar a la Oficina.
-        savegame.save_game(game)
+        # Ultimo paso: elegir el patrocinador principal (3 ofertas) y recien ahi
+        # guardar y entrar a la Oficina.
+        from ...generators.sponsor_generator import SponsorGenerator
+        from .sponsor_select_screen import SponsorSelectScreen
+
+        offers = SponsorGenerator(new_rng(app.seed)).offers(club.tier, 3)
+        app.push_screen(SponsorSelectScreen(offers, self._on_sponsor_picked))
+
+    def _on_sponsor_picked(self, contract) -> None:
+        from .office_screen import OfficeScreen
+
+        app = self.app
+        club = app.game.player_club
+        club.sponsor = contract
+        club.capital += contract.signing_bonus  # el bono de firma entra a la caja
+        savegame.save_game(app.game)
+        app.pop_screen()               # cierra el selector de patrocinador
         app.switch_screen(OfficeScreen())

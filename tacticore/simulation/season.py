@@ -91,6 +91,22 @@ def generate_league_fixture(
     league.matches = build_fixture(league.clubs, rng, start_date)
 
 
+def ensure_all_fixtures(game, start_date: date | None = None) -> None:
+    """Genera el fixture de CADA liga del mundo que aun no lo tenga.
+
+    Necesario para que el loop diario haga progresar todas las ligas (no solo la
+    del jugador). Cada liga usa una semilla propia (derivada de la del juego) para
+    ser determinista. Idempotente: las ligas que ya tienen fixture se saltean.
+    """
+    from ..core.rng import new_rng
+
+    index = 0
+    for country in game.countries:
+        for league in country.leagues:
+            generate_league_fixture(league, new_rng(game.seed + index), start_date)
+            index += 1
+
+
 @dataclass
 class Standing:
     """Fila de la tabla de posiciones de un club."""

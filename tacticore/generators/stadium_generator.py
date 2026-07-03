@@ -21,9 +21,24 @@ _STADIUM_NICKS = [
     "El Bastion", "El Gigante", "El Coliseo", "La Catedral", "El Fortin",
 ]
 
+# Reparto de la capacidad total en sectores. Los palcos solo existen desde tier C
+# (los clubes chicos no tienen); su cuota se pasa a la general en D/E.
+_SECTOR_RATIOS_BIG = (0.66, 0.25, 0.08, 0.01)    # general, preferente, tribuna, palco
+_SECTOR_RATIOS_SMALL = (0.67, 0.25, 0.08, 0.00)
+
+
+def split_capacity(total: int, tier: LeagueTier) -> tuple[int, int, int, int]:
+    """Reparte una capacidad total en (general, preferente, tribuna, palco)."""
+    ratios = _SECTOR_RATIOS_BIG if tier in (LeagueTier.A, LeagueTier.B, LeagueTier.C) \
+        else _SECTOR_RATIOS_SMALL
+    general, preferente, tribuna, palco = (round(total * r) for r in ratios)
+    # Ajuste de redondeo: que los cuatro sumen EXACTO el total (va a la general).
+    general += total - (general + preferente + tribuna + palco)
+    return general, preferente, tribuna, palco
+
 
 class StadiumGenerator:
-    """Crea estadios con capacidad acorde al nivel del club."""
+    """Crea estadios con capacidad (por sectores) acorde al nivel del club."""
 
     def __init__(self, rng: random.Random | None = None) -> None:
         self._rng = rng or random.Random()
@@ -33,9 +48,10 @@ class StadiumGenerator:
         return _TIER_CAPACITY[tier]
 
     def generate(self, tier: LeagueTier, club_name: str) -> Stadium:
-        """Genera un estadio para un club de la liga `tier`."""
+        """Genera un estadio (por sectores) para un club de la liga `tier`."""
         low, high = _TIER_CAPACITY[tier]
         capacity = self._rng.randint(low, high)
+        general, preferente, tribuna, palco = split_capacity(capacity, tier)
         # El nombre se arma sobre el toponimo del club (no sobre un descriptor),
         # con varios formatos para dar variedad; rara vez un apodo generico.
         core = club_core(club_name)
@@ -54,4 +70,5 @@ class StadiumGenerator:
             name = f"Parque {core}"
         else:
             name = self._rng.choice(_STADIUM_NICKS)
-        return Stadium(name=name, capacity=capacity)
+        return Stadium(name=name, general=general, preferente=preferente,
+                       tribuna=tribuna, palco=palco)

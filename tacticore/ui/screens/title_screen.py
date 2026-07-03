@@ -162,12 +162,11 @@ class TitleScreen(BaseScreen):
         elif savegame.compatible_save_exists():
             # Continuar: cargar la partida guardada y entrar a la Oficina.
             self.app.game = savegame.load_game()
-            # El fixture no se persiste todavia: se regenera (determinista por
-            # semilla) para tener la temporada de la liga del jugador disponible.
-            from ...core.rng import new_rng
-            from ...simulation.season import generate_league_fixture
+            # Los fixtures ya vienen persistidos; por las dudas, aseguramos que
+            # toda liga tenga el suyo (idempotente).
+            from ...simulation.season import ensure_all_fixtures
 
-            generate_league_fixture(self.app.game.player_league, new_rng(self.app.game.seed))
+            ensure_all_fixtures(self.app.game)
             self.app.switch_screen(OfficeScreen())
         else:
             # Partida nueva: generar el mundo.

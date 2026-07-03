@@ -10,6 +10,7 @@ Pestañas:
 from rich.text import Text
 
 from ...simulation.economy import (
+    matchday_income,
     membership_income,
     player_salary,
     squad_wage_bill,
@@ -38,6 +39,18 @@ class FinanceScreen(SectionScreen):
     def _today(self):
         return self.app.game.calendar.current_date
 
+    def _next_home_match(self):
+        """Proximo partido de local del club (para estimar la taquilla), o None."""
+        game = self.app.game
+        league = game.player_league if game else None
+        club = self._club
+        if league is None or club is None:
+            return None
+        for m in sorted(league.matches, key=lambda m: m.matchday):
+            if not m.played and m.home is club:
+                return m
+        return None
+
     def render_tab(self, index: int) -> Text:
         if index == 1:
             return self._salaries_text()
@@ -53,11 +66,14 @@ class FinanceScreen(SectionScreen):
             return Text("Sin club todavia.", style="white")
 
         wages = squad_wage_bill(club.players, self._today)
+        nxt = self._next_home_match()
+        gate = matchday_income(club, nxt.away) if nxt is not None else 0
+        sponsor = club.sponsor.weekly_pay if (club.sponsor and club.sponsor.active) else 0
         incomes = [
             ("Cuota de socios", membership_income(club.members)),
-            ("Patrocinadores", 0),
+            ("Patrocinador", sponsor),
+            ("Taquilla (prox local)", gate),
             ("Venta de jugadores", 0),
-            ("Otros", 0),
         ]
         expenses = [
             ("Sueldos", wages),
@@ -132,13 +148,27 @@ class FinanceScreen(SectionScreen):
         return t
 
     def _sponsors_text(self) -> Text:
+        club = self._club
         t = Text()
-        append_section(t, "PATROCINADORES", [
-            ("Todavia no hay patrocinadores.", "grey62"),
-            "",
-            ("Proximamente vas a poder negociar sponsors (camiseta, estadio)", "grey62"),
-            ("que daran ingresos periodicos segun tu rendimiento y categoria.", "grey62"),
-        ])
+        contract = club.sponsor if club else None
+        if contract is None:
+            append_section(t, "PATROCINADOR", [("Sin patrocinador.", "grey62")])
+            return t
+        s = contract.sponsor
+        rows = [
+            (f"{'Marca':<14}{s.name}  ({s.sector})", "bold white"),
+            (f"{'Tier':<14}{s.tier}", "white"),
+            (f"{'Contrato':<14}{contract.weeks_remaining}/{contract.weeks_total} semanas restantes",
+             "white"),
+            (f"{'Pago semanal':<14}{money(contract.weekly_pay)}", "green"),
+        ]
+        if contract.promotion_bonus:
+            rows.append((f"{'Bonus ascenso':<14}{money(contract.promotion_bonus)}", "grey70"))
+        if contract.streak_bonus:
+            rows.append(
+                (f"{'Bonus racha':<14}{money(contract.streak_bonus)}  "
+                 f"(cada {contract.streak_len} victorias)", "grey70"))
+        append_section(t, "PATROCINADOR", rows)
         return t
 
     def _movements_text(self) -> Text:

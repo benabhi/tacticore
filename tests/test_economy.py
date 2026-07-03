@@ -32,8 +32,8 @@ def test_starting_budget_is_small():
 
 
 def test_salary_has_a_floor():
-    # Hasta el peor jugador cobra el minimo.
-    assert player_salary(_player(1, age=25), _TODAY) >= 400
+    # Hasta el peor jugador cobra el minimo (extremo bajo del rango de E).
+    assert player_salary(_player(1, age=25), _TODAY) >= 300
 
 
 def test_salary_grows_with_overall():

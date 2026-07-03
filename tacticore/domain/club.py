@@ -6,6 +6,7 @@ from .coach import Coach
 from .enums import LeagueTier
 from .manager import Manager
 from .player import Player
+from .sponsor import SponsorContract
 from .stadium import Stadium
 
 
@@ -24,6 +25,7 @@ class Club:
     manager: Manager | None = None  # quien dirige la institucion (el jugador o un IA)
     players: list[Player] = field(default_factory=list)
     coach: Coach | None = None      # director tecnico (dirige al equipo)
+    sponsor: SponsorContract | None = None  # contrato de patrocinio principal
 
     @property
     def squad_size(self) -> int:

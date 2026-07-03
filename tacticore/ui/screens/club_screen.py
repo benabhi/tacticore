@@ -9,6 +9,7 @@ Pestañas:
 
 from rich.text import Text
 
+from ...simulation.economy import TICKET_PRICES, stadium_upkeep
 from ..format import append_section, money
 from ..identicon import emblem_lines
 from .section_screen import SectionScreen
@@ -66,18 +67,29 @@ class ClubScreen(SectionScreen):
         ])
         return t
 
+    _SECTORS = (("General", "general"), ("Preferente", "preferente"),
+                ("Tribuna", "tribuna"), ("Palco", "palco"))
+
     def _facilities_text(self) -> Text:
         club = self._club
+        if club is None:
+            return Text("Sin club todavia.", style="white")
+        st = club.stadium
+        cap = f"{st.capacity:,}".replace(",", ".")
         t = Text()
-        cap = f"{club.stadium.capacity:,}".replace(",", ".") if club else "-"
-        append_section(t, "INSTALACIONES", [
-            (f"Estadio: {club.stadium.name if club else '-'}  (cap. {cap})", "white"),
-            "",
-            ("Proximamente vas a poder construir y mejorar:", "grey62"),
-            ("  - Ampliaciones del estadio", "grey70"),
-            ("  - Centro de entrenamiento", "grey70"),
-            ("  - Complejo juvenil (para la cantera)", "grey70"),
-            ("Cada construccion tendra un costo y dara beneficios.", "grey62"),
+        t.append("ESTADIO\n", style="bold green")
+        t.append(f"  {st.name}    Capacidad: {cap}\n\n", style="white")
+        t.append(f"  {'SECTOR':<12}{'ASIENTOS':>10}{'ENTRADA':>10}\n", style="bold green")
+        t.append("  " + "-" * 32 + "\n", style="grey50")
+        for label, attr in self._SECTORS:
+            seats = f"{getattr(st, attr):,}".replace(",", ".")
+            t.append(f"  {label:<12}{seats:>10}{money(TICKET_PRICES[attr]):>10}\n",
+                     style="white")
+        t.append(f"\n  Mantenimiento semanal: {money(stadium_upkeep(st.capacity))}\n\n",
+                 style="grey70")
+        append_section(t, "CONSTRUCCION", [
+            ("Proximamente vas a poder ampliar sectores y construir edificios", "grey62"),
+            ("(tienda, museo, centro de entrenamiento...) comprando parcelas.", "grey62"),
         ])
         return t
 

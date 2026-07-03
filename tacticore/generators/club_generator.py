@@ -11,6 +11,7 @@ from .coach_generator import CoachGenerator
 from .manager_generator import ManagerGenerator
 from .name_generator import NameGenerator
 from .player_generator import PlayerGenerator
+from .sponsor_generator import SponsorGenerator
 from .stadium_generator import StadiumGenerator
 
 # Capital inicial (en millones) y rango de asociados segun el nivel de la liga.
@@ -61,6 +62,7 @@ class ClubGenerator:
         self._stadiums = StadiumGenerator(self._rng)
         self._managers = ManagerGenerator(self._rng, self._names)
         self._coaches = CoachGenerator(self._rng, self._names)
+        self._sponsors = SponsorGenerator(self._rng)
 
     def generate(
         self,
@@ -91,6 +93,7 @@ class ClubGenerator:
             manager=self._managers.generate(country_code, today),
             players=players,
             coach=self._coaches.generate(country_code, tier, today),
+            sponsor=self._sponsors.auto(tier),
         )
 
     def player_club(
@@ -112,7 +115,6 @@ class ClubGenerator:
         el capital minimo de su nivel.
         """
         players = self._build_squad(squad_size, tier, country_code, today, name)
-        capacity = self._rng.randint(*self._stadiums.capacity_range(tier))
         # Presupuesto inicial chico (estilo Hattrick), definido en economia.
         from ..simulation.economy import STARTING_BUDGET
 
@@ -123,13 +125,18 @@ class ClubGenerator:
             short_name=_short_name(name),
             country_code=country_code,
             tier=tier,
-            stadium=Stadium(name=stadium_name, capacity=capacity),
+            # Estadio inicial modesto y FIJO (8000/3000/1000/0 = 12.000), estilo
+            # Hattrick: se agrandan asientos mas adelante.
+            stadium=Stadium(name=stadium_name, general=8000, preferente=3000,
+                            tribuna=1000, palco=0),
             capital=capital,
             members=members,
             fans_name=fans_name,
             manager=manager,
             players=players,
             coach=self._coaches.generate(country_code, tier, today),
+            # El patrocinador lo ELIGE el jugador al crear el club (queda None aca).
+            sponsor=None,
         )
 
     def _build_squad(

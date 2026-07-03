@@ -111,9 +111,14 @@ class SectionScreen(BaseScreen):
         game = getattr(self.app, "game", None)
         if game is None:
             return
-        game.calendar.advance(1)
-        # Al avanzar cambia la fecha (y mas adelante se disparan eventos): se
-        # refresca el HUD y el contenido, que puede depender de la fecha.
+        # Avanzar procesa la economia y los partidos de TODO el mundo: se hace en
+        # una pantalla propia que confirma y muestra la barra de progreso.
+        from .advance_day_screen import AdvanceDayScreen
+
+        self.app.push_screen(AdvanceDayScreen(on_done=self._after_advance))
+
+    def _after_advance(self) -> None:
+        # Cambio la fecha y se dispararon eventos: refresco HUD y contenido.
         self._refresh_topbar()
         self._refresh_content()
 

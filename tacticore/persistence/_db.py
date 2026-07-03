@@ -14,14 +14,18 @@ from ..core.game import GameState
 from ..domain.club import Club
 from ..domain.coach import Coach
 from ..domain.country import Country
-from ..domain.enums import Foot, LeagueTier, Mentality, Morale, Position, Specialty
+from ..domain.enums import (
+    Foot, LeagueTier, Mentality, MatchKind, Morale, Position, Specialty)
 from ..domain.league import League
 from ..domain.manager import Manager
+from ..domain.match import Match
 from ..domain.player import ALL_ATTRS, Player
+from ..domain.sponsor import Sponsor, SponsorContract
 from ..domain.stadium import Stadium
 
-# v3: cada club guarda su director tecnico (coach_*) inline en la fila del club.
-SCHEMA_VERSION = 3
+# v4: estadio por sectores (stadium_general/preferente/tribuna/palco) y tabla de
+# patrocinadores. v3 habia sumado el director tecnico (coach_*) inline en el club.
+SCHEMA_VERSION = 4
 
 
 class IncompatibleSaveError(Exception):
@@ -75,7 +79,10 @@ CREATE TABLE clubs (
     fans_name        TEXT NOT NULL,
     is_player_club   INTEGER NOT NULL DEFAULT 0,
     stadium_name     TEXT NOT NULL,
-    stadium_capacity INTEGER NOT NULL,
+    stadium_general    INTEGER NOT NULL,
+    stadium_preferente INTEGER NOT NULL,
+    stadium_tribuna    INTEGER NOT NULL,
+    stadium_palco      INTEGER NOT NULL,
     manager_first    TEXT,
     manager_last     TEXT,
     manager_nat      TEXT,
@@ -113,6 +120,37 @@ CREATE TABLE players (
     {_PLAYER_ATTR_DDL}
 );
 
+-- Patrocinador principal de cada club (0 o 1 por club, tabla aparte).
+CREATE TABLE sponsors (
+    id               INTEGER PRIMARY KEY,
+    club_id          INTEGER NOT NULL REFERENCES clubs(id),
+    name             TEXT NOT NULL,
+    sector           TEXT NOT NULL,
+    tier             INTEGER NOT NULL,
+    weeks_total      INTEGER NOT NULL,
+    weeks_remaining  INTEGER NOT NULL,
+    weekly_pay       INTEGER NOT NULL,
+    signing_bonus    INTEGER NOT NULL,
+    promotion_bonus  INTEGER NOT NULL,
+    streak_bonus     INTEGER NOT NULL,
+    streak_len       INTEGER NOT NULL
+);
+
+-- Partidos del fixture de cada liga (con su resultado si ya se jugaron). La
+-- tactica del club del jugador NO se persiste (es transitoria).
+CREATE TABLE matches (
+    id           INTEGER PRIMARY KEY,
+    league_id    INTEGER NOT NULL REFERENCES leagues(id),
+    matchday     INTEGER NOT NULL,
+    home_club_id INTEGER NOT NULL REFERENCES clubs(id),
+    away_club_id INTEGER NOT NULL REFERENCES clubs(id),
+    kind         TEXT NOT NULL,
+    match_date   TEXT,
+    home_goals   INTEGER NOT NULL,
+    away_goals   INTEGER NOT NULL,
+    played       INTEGER NOT NULL
+);
+
 -- Lesiones (activas + historial). Arranca vacia; se poblara con la simulacion.
 CREATE TABLE injuries (
     id              INTEGER PRIMARY KEY,
@@ -129,6 +167,8 @@ CREATE TABLE injuries (
 CREATE INDEX idx_leagues_country ON leagues(country_id);
 CREATE INDEX idx_clubs_league    ON clubs(league_id);
 CREATE INDEX idx_players_club    ON players(club_id);
+CREATE INDEX idx_sponsors_club   ON sponsors(club_id);
+CREATE INDEX idx_matches_league  ON matches(league_id);
 CREATE INDEX idx_injuries_player ON injuries(player_id);
 """
 
@@ -150,6 +190,7 @@ def write_game(conn: sqlite3.Connection, game: GameState) -> None:
     """Crea el esquema y vuelca el `GameState` entero en una transaccion."""
     conn.executescript(SCHEMA)
     player_club_id: int | None = None
+    club_ids: dict[int, int] = {}  # id(objeto Club) -> club_id en la base
 
     for country in game.countries:
         country_id = conn.execute(
@@ -164,9 +205,11 @@ def write_game(conn: sqlite3.Connection, game: GameState) -> None:
             for club in league.clubs:
                 is_player = club is game.player_club
                 club_id = _insert_club(conn, league_id, club, is_player)
+                club_ids[id(club)] = club_id
                 if is_player:
                     player_club_id = club_id
                 _insert_players(conn, club_id, club.players)
+            _insert_matches(conn, league_id, league.matches, club_ids)
 
     conn.execute(
         "INSERT INTO meta (schema_version, seed, current_date, manager_name, "
@@ -187,20 +230,23 @@ def _insert_club(
 ) -> int:
     mgr = club.manager
     coach = club.coach
-    return conn.execute(
+    st = club.stadium
+    club_id = conn.execute(
         """
         INSERT INTO clubs (
             league_id, name, short_name, country_code, tier, capital, members,
-            fans_name, is_player_club, stadium_name, stadium_capacity,
+            fans_name, is_player_club, stadium_name,
+            stadium_general, stadium_preferente, stadium_tribuna, stadium_palco,
             manager_first, manager_last, manager_nat, manager_birth,
             coach_first, coach_last, coach_nat, coach_birth,
             coach_mentality, coach_skill, coach_leadership
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             league_id, club.name, club.short_name, club.country_code,
             club.tier.value, club.capital, club.members, club.fans_name,
-            int(is_player), club.stadium.name, club.stadium.capacity,
+            int(is_player), st.name,
+            st.general, st.preferente, st.tribuna, st.palco,
             mgr.first_name if mgr else None,
             mgr.last_name if mgr else None,
             mgr.nationality if mgr else None,
@@ -214,6 +260,52 @@ def _insert_club(
             coach.leadership if coach else None,
         ),
     ).lastrowid
+    _insert_sponsor(conn, club_id, club.sponsor)
+    return club_id
+
+
+def _insert_sponsor(conn: sqlite3.Connection, club_id: int, contract) -> None:
+    """Guarda el contrato de patrocinio del club (si tiene)."""
+    if contract is None:
+        return
+    s = contract.sponsor
+    conn.execute(
+        """
+        INSERT INTO sponsors (
+            club_id, name, sector, tier, weeks_total, weeks_remaining, weekly_pay,
+            signing_bonus, promotion_bonus, streak_bonus, streak_len
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            club_id, s.name, s.sector, s.tier, contract.weeks_total,
+            contract.weeks_remaining, contract.weekly_pay, contract.signing_bonus,
+            contract.promotion_bonus, contract.streak_bonus, contract.streak_len,
+        ),
+    )
+
+
+def _insert_matches(
+    conn: sqlite3.Connection, league_id: int, matches: list, club_ids: dict[int, int]
+) -> None:
+    """Guarda los partidos del fixture de una liga (resultado incluido)."""
+    if not matches:
+        return
+    rows = [
+        (
+            league_id, m.matchday, club_ids[id(m.home)], club_ids[id(m.away)],
+            m.kind.value, _iso(m.match_date), m.home_goals, m.away_goals, int(m.played),
+        )
+        for m in matches
+    ]
+    conn.executemany(
+        """
+        INSERT INTO matches (
+            league_id, matchday, home_club_id, away_club_id, kind, match_date,
+            home_goals, away_goals, played
+        ) VALUES (?,?,?,?,?,?,?,?,?)
+        """,
+        rows,
+    )
 
 
 def _insert_players(
@@ -250,6 +342,7 @@ def read_game(conn: sqlite3.Connection) -> GameState:
 
     countries: list[Country] = []
     player_club: Club | None = None
+    club_by_id: dict[int, Club] = {}  # club_id en la base -> objeto Club
     for crow in conn.execute("SELECT * FROM countries ORDER BY id"):
         country = Country(name=crow["name"], code=crow["code"])
         for lrow in conn.execute(
@@ -264,9 +357,11 @@ def read_game(conn: sqlite3.Connection) -> GameState:
                 "SELECT * FROM clubs WHERE league_id = ? ORDER BY id", (lrow["id"],)
             ):
                 club = _club_from_row(conn, clrow)
+                club_by_id[clrow["id"]] = club
                 league.clubs.append(club)
                 if clrow["id"] == meta["player_club_id"]:
                     player_club = club
+            league.matches = _matches_for_league(conn, lrow["id"], club_by_id)
             country.leagues.append(league)
         countries.append(country)
 
@@ -305,18 +400,66 @@ def _club_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Club:
             "SELECT * FROM players WHERE club_id = ? ORDER BY shirt_number", (row["id"],)
         )
     ]
+    stadium = Stadium(
+        name=row["stadium_name"],
+        general=row["stadium_general"],
+        preferente=row["stadium_preferente"],
+        tribuna=row["stadium_tribuna"],
+        palco=row["stadium_palco"],
+    )
     return Club(
         name=row["name"],
         short_name=row["short_name"],
         country_code=row["country_code"],
         tier=LeagueTier(row["tier"]),
-        stadium=Stadium(name=row["stadium_name"], capacity=row["stadium_capacity"]),
+        stadium=stadium,
         capital=row["capital"],
         members=row["members"],
         fans_name=row["fans_name"],
         manager=manager,
         players=players,
         coach=coach,
+        sponsor=_sponsor_from_db(conn, row["id"]),
+    )
+
+
+def _matches_for_league(
+    conn: sqlite3.Connection, league_id: int, club_by_id: dict[int, Club]
+) -> list[Match]:
+    """Reconstruye los partidos de una liga, reconectando local/visitante."""
+    out: list[Match] = []
+    for m in conn.execute(
+        "SELECT * FROM matches WHERE league_id = ? ORDER BY matchday, id", (league_id,)
+    ):
+        out.append(Match(
+            home=club_by_id[m["home_club_id"]],
+            away=club_by_id[m["away_club_id"]],
+            matchday=m["matchday"],
+            kind=MatchKind(m["kind"]),
+            match_date=_date(m["match_date"]),
+            home_goals=m["home_goals"],
+            away_goals=m["away_goals"],
+            played=bool(m["played"]),
+        ))
+    return out
+
+
+def _sponsor_from_db(conn: sqlite3.Connection, club_id: int) -> SponsorContract | None:
+    """Reconstruye el contrato de patrocinio del club (o None si no tiene)."""
+    srow = conn.execute(
+        "SELECT * FROM sponsors WHERE club_id = ?", (club_id,)
+    ).fetchone()
+    if srow is None:
+        return None
+    return SponsorContract(
+        sponsor=Sponsor(name=srow["name"], sector=srow["sector"], tier=srow["tier"]),
+        weeks_total=srow["weeks_total"],
+        weeks_remaining=srow["weeks_remaining"],
+        weekly_pay=srow["weekly_pay"],
+        signing_bonus=srow["signing_bonus"],
+        promotion_bonus=srow["promotion_bonus"],
+        streak_bonus=srow["streak_bonus"],
+        streak_len=srow["streak_len"],
     )
 
 
