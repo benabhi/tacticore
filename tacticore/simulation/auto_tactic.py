@@ -16,7 +16,8 @@ Funcion pura: misma semilla -> misma tactica. Sin UI.
 import random
 
 from ..domain.club import Club
-from ..domain.enums import Marking, Mentality, TeamTactic
+from ..domain.enums import Marking, Mentality, Specialty, TeamTactic
+from ..domain.player import Player
 from ..domain.tactic import Tactic
 from .formation_training import offensiveness, training_level
 from .match.formation import FORMATIONS, auto_select, get_formation
@@ -25,6 +26,32 @@ from .match.formation import FORMATIONS, auto_select, get_formation
 # las 8 formaciones en defensivas / equilibradas / ofensivas (reparto 3/2/3).
 _DEF_MAX = 0.33
 _OFF_MIN = 0.66
+
+# El balon parado no tiene atributo propio: se estima con el remate mas un bonus
+# para el especialista en pelota parada ("Canonero" / DEAD_BALL).
+_DEAD_BALL_BONUS = 12.0
+
+
+def set_piece_skill(player: Player) -> float:
+    """Aptitud para el balon parado (tiros libres/corners/penales)."""
+    base = player.shooting
+    if player.specialty is Specialty.DEAD_BALL:
+        base += _DEAD_BALL_BONUS
+    return base
+
+
+def default_captain(starters: list[Player]) -> Player | None:
+    """Capitan por defecto: el titular con mas experiencia (desempata liderazgo)."""
+    if not starters:
+        return None
+    return max(starters, key=lambda p: (p.experience, p.leadership))
+
+
+def default_free_kick_taker(starters: list[Player]) -> Player | None:
+    """Encargado del balon parado por defecto: el titular con mejor pelota parada."""
+    if not starters:
+        return None
+    return max(starters, key=set_piece_skill)
 
 
 def _category_formations(mentality: Mentality) -> list[str]:
@@ -49,6 +76,7 @@ def default_tactic(club: Club, rng: random.Random) -> Tactic:
     formation_name = max(candidates, key=lambda n: training_level(club, n))
     formation = get_formation(formation_name)
     lineup, bench = auto_select(club, formation)
+    starters = [p for p in lineup if p is not None]
     return Tactic(
         mentality=mentality,
         team_tactic=rng.choice(list(TeamTactic)),
@@ -56,4 +84,6 @@ def default_tactic(club: Club, rng: random.Random) -> Tactic:
         lineup=list(lineup),
         bench=list(bench),
         marking=Marking.ZONAL,
+        captain=default_captain(starters),
+        free_kick_taker=default_free_kick_taker(starters),
     )

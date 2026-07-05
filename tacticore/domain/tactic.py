@@ -4,6 +4,8 @@ Se asigna por partido (cada encuentro tiene su propia tactica). Guarda la
 mentalidad, la tactica general, el marcaje, la formacion (por nombre) y la
 seleccion de jugadores: `lineup` son los 11 titulares alineados a los slots de la
 formacion (puede haber huecos = None) y `bench` los suplentes (banco de extras).
+Ademas designa dos roles entre los titulares: el `captain` (capitan) y el
+`free_kick_taker` (encargado del balon parado).
 
 La pantalla donde se arma (planteo + cancha, en una sola vista) es
 `ui/screens/tactic_screen.py`.
@@ -25,6 +27,8 @@ class Tactic:
     lineup: list[Player | None] = field(default_factory=list)  # titulares, por slot
     bench: list[Player | None] = field(default_factory=list)   # suplentes (banco)
     marking: Marking = Marking.ZONAL                    # esquema de marcaje del equipo
+    captain: Player | None = None            # capitan (uno de los titulares)
+    free_kick_taker: Player | None = None    # encargado del balon parado (titular)
 
     @property
     def is_complete(self) -> bool:

@@ -9,7 +9,9 @@ from tacticore.core.rng import new_rng
 from tacticore.domain.enums import Mentality
 from tacticore.domain.manager import Manager
 from tacticore.generators import ClubGenerator, WorldGenerator
-from tacticore.simulation.auto_tactic import _category_formations, default_tactic
+from tacticore.simulation.auto_tactic import (
+    _category_formations, default_captain, default_free_kick_taker,
+    default_tactic, set_piece_skill)
 from tacticore.simulation.daily import (
     advance_day, finish_player_match, player_match_on)
 from tacticore.simulation.formation_training import offensiveness
@@ -45,6 +47,19 @@ def test_default_tactic_formation_matches_coach_mentality(monkeypatch):
     game, club = _game(3, monkeypatch, Mentality.DEFENSIVE)
     dfn = default_tactic(club, new_rng(1)).formation
     assert offensiveness(off) > offensiveness(dfn)
+
+
+def test_default_tactic_sets_captain_and_free_kick_taker(monkeypatch):
+    """El capitan es el titular con mas experiencia; el del balon parado, el de
+    mejor pelota parada (remate + bonus de Canonero). Ambos son titulares."""
+    game, club = _game(3, monkeypatch)
+    tactic = default_tactic(club, new_rng(1))
+    starters = [p for p in tactic.lineup if p is not None]
+    assert tactic.captain in starters
+    assert tactic.free_kick_taker in starters
+    assert tactic.captain is default_captain(starters)
+    assert tactic.free_kick_taker is max(starters, key=set_piece_skill)
+    assert tactic.captain is max(starters, key=lambda p: (p.experience, p.leadership))
 
 
 def _next_player_match(game, club):

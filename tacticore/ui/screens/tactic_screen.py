@@ -3,9 +3,10 @@
 La tactica es POR PARTIDO y se arma toda en una sola vista de 80x25, en dos
 columnas al estilo de la seccion Liga:
 
-- Izquierda, el panel PLANTEO: formacion, mentalidad, tactica general y marcaje
-  (campos que se ciclan con las flechas) + un resumen de la alineacion y la info
-  del puesto/jugador en foco.
+- Izquierda, el panel PLANTEO: formacion, mentalidad, tactica general, marcaje,
+  capitan y balon parado (campos que se ciclan con las flechas; los dos ultimos
+  eligen entre los titulares) + un resumen de la alineacion y la info del
+  puesto/jugador en foco.
 - Derecha, la CANCHA (vista vertical, arco propio abajo) con el DORSAL de cada
   titular en su puesto, y debajo el banco de suplentes.
 
@@ -23,6 +24,7 @@ from textual.widgets import Static
 from ... import config
 from ...domain.enums import Marking, Mentality, Position, TeamTactic
 from ...domain.tactic import Tactic
+from ...simulation.auto_tactic import default_captain, default_free_kick_taker
 from ...simulation.formation_training import training_level
 from ...simulation.match.formation import (
     FORMATIONS, auto_select, get_formation)
@@ -38,9 +40,11 @@ _RW = _W - _LW - len(_SEP)   # ancho disponible para la columna derecha (cancha)
 _PW, _PH = 35, 17         # ancho y alto de la cancha (vertical)
 _PITCH_PAD = (_RW - _PW) // 2   # sangria para centrar la cancha en su columna
 _BODY_ROWS = 21           # filas del cuerpo (25 - header - 2 separadores - hint)
-_LABEL_W = 11             # ancho de la etiqueta de cada campo del planteo
+_LABEL_W = 12             # ancho de la etiqueta de cada campo del planteo
 _FIELD_W = 35             # ancho de la barra resaltada de un campo del planteo
 _BENCH = 5                # suplentes en el banco
+_N_FIELDS = 6             # campos del planteo (formacion, mentalidad, tactica,
+                          # marcaje, capitan, balon parado)
 
 _MENTALITIES = list(Mentality)
 _TACTICS = list(TeamTactic)
@@ -69,7 +73,8 @@ class TacticScreen(BaseScreen):
         src = match.tactic
         if src is not None:
             self._tactic = Tactic(src.mentality, src.team_tactic, src.formation,
-                                  list(src.lineup), list(src.bench), src.marking)
+                                  list(src.lineup), list(src.bench), src.marking,
+                                  src.captain, src.free_kick_taker)
         else:
             self._tactic = Tactic()
         if not self._tactic.lineup:
@@ -77,6 +82,7 @@ class TacticScreen(BaseScreen):
             self._tactic.lineup = list(lineup)
             self._tactic.bench = list(bench)
         self._normalize()
+        self._ensure_leaders()
 
     def _normalize(self) -> None:
         """Ajusta el largo de lineup/bench a la formacion y al banco actuales."""
@@ -84,6 +90,19 @@ class TacticScreen(BaseScreen):
         self._tactic.lineup = (list(self._tactic.lineup) + [None] * n)[:n]
         self._tactic.bench = (list(self._tactic.bench) + [None] * _BENCH)[:_BENCH]
         self._focus = min(self._focus, n + _BENCH - 1)
+
+    def _starters(self) -> list:
+        """Los titulares actualmente asignados (sin huecos)."""
+        return [p for p in self._tactic.lineup if p is not None]
+
+    def _ensure_leaders(self) -> None:
+        """Valida capitan y encargado del balon parado: si el elegido ya no es
+        titular (o no hay), vuelve al default (mas experiencia / mejor pelota parada)."""
+        starters = self._starters()
+        if self._tactic.captain not in starters:
+            self._tactic.captain = default_captain(starters)
+        if self._tactic.free_kick_taker not in starters:
+            self._tactic.free_kick_taker = default_free_kick_taker(starters)
 
     # --- Formacion y slots ---
     @property
@@ -181,6 +200,8 @@ class TacticScreen(BaseScreen):
         lines.append(self._field_row(1, "Mentalidad", self._tactic.mentality.value))
         lines.append(self._field_row(2, "Tactica", self._tactic.team_tactic.value))
         lines.append(self._field_row(3, "Marcaje", self._tactic.marking.value))
+        lines.append(self._leader_field(4, "Capitan", self._tactic.captain))
+        lines.append(self._leader_field(5, "Balon parado", self._tactic.free_kick_taker))
         lines.append(Text("-" * _LW, style="grey50"))  # divide planteo / stats
         lines.extend(self._stats_lines())
         return lines
@@ -190,6 +211,19 @@ class TacticScreen(BaseScreen):
         selected = active and index == self._field
         text = f" {label:<{_LABEL_W}} < {value} >"
         if selected:  # campo elegido: barra verde (mismo efecto que las pestañas)
+            return Text(text.ljust(_FIELD_W), style="bold black on green")
+        return Text(text[:_LW], style="white" if active else "grey50")
+
+    def _leader_field(self, index: int, label: str, player) -> Text:
+        """Campo que elige un jugador entre los titulares (capitan / balon parado)."""
+        active = self._pane == "planteo"
+        selected = active and index == self._field
+        if player is None:
+            value = "(nadie)"
+        else:  # numero + apellido: entra en la barra y deja ver el cierre " >"
+            value = f"{player.shirt_number or '-'} {player.last_name}"
+        text = f" {label:<{_LABEL_W}} < {value} >"[:_FIELD_W]
+        if selected:
             return Text(text.ljust(_FIELD_W), style="bold black on green")
         return Text(text[:_LW], style="white" if active else "grey50")
 
@@ -363,9 +397,9 @@ class TacticScreen(BaseScreen):
     def _key_planteo(self, event) -> None:
         key = event.key
         if key == "up":
-            event.stop(); self._field = (self._field - 1) % 4; self._refresh()
+            event.stop(); self._field = (self._field - 1) % _N_FIELDS; self._refresh()
         elif key == "down":
-            event.stop(); self._field = (self._field + 1) % 4; self._refresh()
+            event.stop(); self._field = (self._field + 1) % _N_FIELDS; self._refresh()
         elif key == "left":
             event.stop(); self._change_value(-1)
         elif key == "right":
@@ -381,7 +415,8 @@ class TacticScreen(BaseScreen):
         elif key == "enter":
             event.stop(); self._choose()
         elif key == "x":
-            event.stop(); self._assign(self._focus, None); self._refresh()
+            event.stop(); self._assign(self._focus, None)
+            self._ensure_leaders(); self._refresh()
         elif key == "a":
             event.stop(); self._auto()
 
@@ -395,10 +430,23 @@ class TacticScreen(BaseScreen):
         elif self._field == 2:
             cur = _TACTICS.index(self._tactic.team_tactic)
             self._tactic.team_tactic = _TACTICS[(cur + delta) % len(_TACTICS)]
-        else:
+        elif self._field == 3:
             cur = _MARKINGS.index(self._tactic.marking)
             self._tactic.marking = _MARKINGS[(cur + delta) % len(_MARKINGS)]
+        elif self._field == 4:
+            self._cycle_leader("captain", delta)
+        else:
+            self._cycle_leader("free_kick_taker", delta)
         self._refresh()
+
+    def _cycle_leader(self, attr: str, delta: int) -> None:
+        """Rota el capitan / encargado del balon parado entre los titulares."""
+        starters = self._starters()
+        if not starters:
+            return
+        current = getattr(self._tactic, attr)
+        idx = starters.index(current) if current in starters else 0
+        setattr(self._tactic, attr, starters[(idx + delta) % len(starters)])
 
     def _change_formation(self, delta: int) -> None:
         name = self._tactic.formation
@@ -410,6 +458,7 @@ class TacticScreen(BaseScreen):
         self._tactic.lineup = list(lineup)
         self._tactic.bench = list(bench)
         self._normalize()
+        self._ensure_leaders()
 
     # --- Acciones de la cancha ---
     def _choose(self) -> None:
@@ -434,6 +483,7 @@ class TacticScreen(BaseScreen):
 
     def _on_pick(self, player) -> None:
         self._assign(self._focus, player)
+        self._ensure_leaders()
         self._refresh()
 
     def _auto(self) -> None:
@@ -442,6 +492,7 @@ class TacticScreen(BaseScreen):
             self._tactic.lineup[i] = lineup[i] if i < len(lineup) else None
         for j in range(_BENCH):
             self._tactic.bench[j] = bench[j] if j < len(bench) else None
+        self._ensure_leaders()
         self._refresh()
 
     # --- Guardar / cancelar ---
