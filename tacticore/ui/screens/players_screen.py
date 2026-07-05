@@ -25,14 +25,18 @@ _MKT_PAGE = 10    # listados por pagina en el Mercado (deja lugar a "Mis ofertas
 _PLANTILLA, _MERCADO = 0, 2  # indices de pestañas interactivas
 
 # Columnas: (titulo, ancho, alineacion). El nombre se calcula para llenar los 80.
-_NAME_W = _WIDTH - 2 - 11 - 32
+# EST = estado/disponibilidad (L#=lesionado con semanas, SUS=suspendido, 1A=una
+# amarilla, - =disponible).
+_NAME_W = _WIDTH - 2 - 12 - 36
 _COLUMNS = [
     ("#", 2, "r"), ("NOMBRE", _NAME_W, "l"), ("POS", 3, "l"), ("NAC", 3, "l"),
     ("ED", 2, "r"), ("PIE", 3, "l"), ("OVR", 3, "r"), ("POT", 3, "r"),
     ("FOR", 3, "r"), ("FIT", 3, "r"), ("MOR", 3, "r"), ("ESP", 4, "l"),
+    ("EST", 4, "l"),
 ]
 _MOR_IDX = 10
 _ESP_IDX = 11
+_EST_IDX = 12
 
 # Color de la moral (1 peor -> 5 mejor): de rojo a verde, sin leyenda aparte.
 _MORALE_STYLE = {1: "bold red", 2: "red", 3: "yellow", 4: "green", 5: "bold green"}
@@ -260,7 +264,12 @@ class PlayersScreen(SectionScreen):
             ))
             visible = self._visible()
             sel = visible[self._selected] if visible else None
-            if sel is not None and sel.asking_price is not None:
+            if sel is not None and sel.injury is not None:
+                t.append(f"   LESIONADO ({sel.injury_weeks_left(self._today)} sem)",
+                         style="bold red")
+            elif sel is not None and sel.matches_suspended > 0:
+                t.append(f"   SUSPENDIDO ({sel.matches_suspended})", style="bold red")
+            elif sel is not None and sel.asking_price is not None:
                 t.append(f"   EN VENTA {money(sel.asking_price)}", style="bold yellow")
         t.append(f"   Pag {page}/{pages}", style="grey62")
 
@@ -290,6 +299,9 @@ class PlayersScreen(SectionScreen):
                 style = _MORALE_STYLE.get(int(cell), "white")
             elif i == _ESP_IDX:
                 style = "grey42" if cell.strip() == "-" else "bold cyan"
+            elif i == _EST_IDX:
+                v = cell.strip()
+                style = "grey42" if v == "-" else "yellow" if v == "1A" else "bold red"
             else:
                 style = "white"
             t.append(cell, style=style)
@@ -315,7 +327,18 @@ class PlayersScreen(SectionScreen):
             str(round(p.fitness)),
             str(p.morale.value),
             esp,
+            self._est_value(p),
         ]
+
+    def _est_value(self, p) -> str:
+        """Marcador de estado: lesion (con semanas), suspension o amarilla."""
+        if p.injury is not None:
+            return f"L{p.injury_weeks_left(self._today)}"
+        if p.matches_suspended > 0:
+            return "SUS"
+        if p.yellow_cards >= 1:
+            return "1A"
+        return "-"
 
     # --- Interaccion (solo en la pestaña Plantilla) ---
     def _open_detail(self) -> None:

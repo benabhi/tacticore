@@ -4,7 +4,8 @@ Traduce enums y nombres de atributos a texto en pantalla (ASCII, directiva 2).
 Lo usan la tabla de plantilla y la ficha del jugador.
 """
 
-from ..domain.enums import Foot, Morale, Position, Specialty
+from ..domain.enums import (
+    Foot, InjurySeverity, InjuryType, Morale, Position, Specialty)
 from ..domain.player import MENTAL_ATTRS, PHYSICAL_ATTRS, TECHNICAL_ATTRS
 
 # Posicion: nombre completo en espanol (la sigla es Position.value, ej. "LI").
@@ -40,6 +41,24 @@ LEADERSHIP_LABEL = {
 }
 CHARACTER_LABEL = {
     1: "Irrespetuoso", 2: "Rebelde", 3: "Normal", 4: "Profesional", 5: "Ejemplar",
+}
+
+# Tipo de lesion (nombre en pantalla, ASCII).
+INJURY_TYPE_LABEL = {
+    InjuryType.KNOCK: "Golpe",
+    InjuryType.MUSCLE: "Muscular",
+    InjuryType.HAMSTRING: "Isquiotibial",
+    InjuryType.ANKLE: "Tobillo",
+    InjuryType.KNEE: "Rodilla",
+    InjuryType.HEAD: "Conmocion",
+    InjuryType.FRACTURE: "Fractura",
+}
+
+# Gravedad de la lesion.
+INJURY_SEVERITY_LABEL = {
+    InjurySeverity.MINOR: "Leve",
+    InjurySeverity.MODERATE: "Media",
+    InjurySeverity.SEVERE: "Grave",
 }
 
 SPECIALTY_LABEL = {

@@ -75,7 +75,7 @@ def default_tactic(club: Club, rng: random.Random) -> Tactic:
     # Dentro de la categoria, la mejor entrenada (empate -> la primera de la lista).
     formation_name = max(candidates, key=lambda n: training_level(club, n))
     formation = get_formation(formation_name)
-    lineup, bench = auto_select(club, formation)
+    lineup, bench = auto_select(club, formation, available_only=True)
     starters = [p for p in lineup if p is not None]
     return Tactic(
         mentality=mentality,

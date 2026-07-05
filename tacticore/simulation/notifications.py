@@ -17,6 +17,7 @@ FINANCE = "finanzas"
 MATCH = "partido"
 MARKET = "mercado"
 TRAINING = "entrenamiento"
+SQUAD = "plantel"      # lesiones, tarjetas, suspensiones
 GENERAL = "general"
 
 

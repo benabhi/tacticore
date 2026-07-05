@@ -174,16 +174,19 @@ def get_formation(name: str) -> Formation:
 
 
 def auto_select(
-    club: Club, formation: Formation, bench_size: int = 5
+    club: Club, formation: Formation, bench_size: int = 5,
+    available_only: bool = False,
 ) -> tuple[list[Player], list[Player]]:
     """Alineacion automatica: 11 titulares (pick_lineup) + banco con los mejores.
 
     Los titulares se eligen por posicion preferida y habilidad (ver pick_lineup);
     el banco son los mejores del resto del plantel (por overall), hasta bench_size.
+    Con `available_only`, se saltean lesionados/suspendidos (banco incluido).
     """
-    lineup = pick_lineup(club, formation)
+    lineup = pick_lineup(club, formation, available_only=available_only)
     used = {id(p) for p in lineup}
-    rest = [p for p in sorted(club.players, key=lambda p: p.overall, reverse=True)
+    pool = [p for p in club.players if not available_only or p.is_available]
+    rest = [p for p in sorted(pool, key=lambda p: p.overall, reverse=True)
             if id(p) not in used]
     return lineup, rest[:bench_size]
 
@@ -198,14 +201,25 @@ def slot_to_meters(slot: FormationSlot, side: Side, pitch: Pitch) -> Vec2:
     return Vec2(x, y)
 
 
-def pick_lineup(club: Club, formation: Formation) -> list[Player]:
+def pick_lineup(
+    club: Club, formation: Formation, available_only: bool = False
+) -> list[Player]:
     """Elige los titulares: el mejor disponible para cada slot.
 
     Prioridad por slot: 1) jugador de esa posicion exacta; 2) de la misma linea
     (un MCO falta -> otro mediocampista); 3) el mejor de campo libre; 4) lo que
     quede (arquero suplente solo como ultimo recurso). Todo por overall.
+
+    Con `available_only` se excluyen lesionados/suspendidos; si no alcanzan para
+    llenar la formacion, se completa con los no disponibles (para no dejar huecos).
     """
-    ranked = sorted(club.players, key=lambda p: p.overall, reverse=True)
+    players = club.players
+    if available_only:
+        available = [p for p in players if p.is_available]
+        # Solo se filtra si quedan al menos los 11 (si no, se juega con lo que hay).
+        if len(available) >= formation.size:
+            players = available
+    ranked = sorted(players, key=lambda p: p.overall, reverse=True)
     by_position: dict[Position, list[Player]] = {}
     by_line: dict[object, list[Player]] = {}
     for player in ranked:

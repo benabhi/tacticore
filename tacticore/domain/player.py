@@ -82,6 +82,10 @@ class Player:
     leadership: int = 3   # liderazgo dentro del plantel
     character: int = 3    # caracter / temperamento
 
+    # --- Disciplina (se pobla al jugar partidos del club del jugador) ---
+    yellow_cards: int = 0       # amarillas acumuladas (a 2 -> suspension, y resetea)
+    matches_suspended: int = 0  # partidos de liga que se pierde por sancion
+
     # --- Ocultos / desarrollo ---
     potential: float = 1.0          # techo de habilidad (1-100)
     injury_proneness: float = 50.0  # propension a lesionarse (1-100)
@@ -125,6 +129,21 @@ class Player:
     def is_injured(self) -> bool:
         """Si tiene una lesion activa."""
         return self.injury is not None
+
+    @property
+    def is_available(self) -> bool:
+        """Si puede ser convocado: ni lesionado ni suspendido.
+
+        La recuperacion diaria (simulation) limpia la lesion al vencer, asi que
+        `injury is None` equivale a estar sano."""
+        return self.injury is None and self.matches_suspended == 0
+
+    def injury_weeks_left(self, today: date) -> int:
+        """Semanas de baja que faltan a la fecha `today` (0 si esta sano)."""
+        if self.injury is None:
+            return 0
+        days = (self.injury.expected_return - today).days
+        return max(1, -(-days // 7)) if days > 0 else 0  # ceil a semanas, minimo 1
 
     @property
     def overall(self) -> float:

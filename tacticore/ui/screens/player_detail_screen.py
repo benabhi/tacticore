@@ -24,6 +24,7 @@ from ..player_labels import (
     ATTR_LABEL,
     CHARACTER_LABEL,
     FOOT_LABEL,
+    INJURY_TYPE_LABEL,
     LEADERSHIP_LABEL,
     MORALE_LABEL,
     POSITION_LABEL,
@@ -172,7 +173,18 @@ class PlayerDetailScreen(BaseScreen):
             ("Peso", f"{p.weight_kg} kg"),
             ("Cantera", p.origin_club or "-"),
         ]
-        lesion = "Sano" if p.injury is None else "Lesionado"
+        if p.injury is None:
+            lesion, lesion_style = "Sano", "green"
+        else:
+            lesion = f"{INJURY_TYPE_LABEL[p.injury.type]} - {p.injury_weeks_left(self._today)} sem"
+            lesion_style = "red"
+        if p.matches_suspended > 0:
+            sancion = f"Suspendido ({p.matches_suspended} partido/s)"
+            sancion_style = "red"
+        elif p.yellow_cards > 0:
+            sancion, sancion_style = f"{p.yellow_cards} amarilla(s)", "yellow"
+        else:
+            sancion, sancion_style = "Sin sanciones", "grey62"
         ficha = [
             ("Sueldo", money(player_salary(p, self._today)), "white"),
             ("Experiencia", f"{p.experience:.0f}", "white"),
@@ -183,7 +195,8 @@ class PlayerDetailScreen(BaseScreen):
             ("Caracter", f"{CHARACTER_LABEL[p.character]} ({p.character})",
              _MORALE_STYLE.get(p.character, "white")),
             ("Especialidad", specialty_label(p.specialty), "white"),
-            ("Lesion", lesion, "red" if p.injury is not None else "green"),
+            ("Lesion", lesion, lesion_style),
+            ("Sancion", sancion, sancion_style),
         ]
         self._two_columns(t, ("IDENTIDAD", identidad), ("FICHA", ficha))
 

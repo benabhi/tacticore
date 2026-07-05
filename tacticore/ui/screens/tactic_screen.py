@@ -78,11 +78,12 @@ class TacticScreen(BaseScreen):
         else:
             self._tactic = Tactic()
         if not self._tactic.lineup:
-            lineup, bench = auto_select(self._club, get_formation(self._tactic.formation))
+            lineup, bench = auto_select(
+                self._club, get_formation(self._tactic.formation), available_only=True)
             self._tactic.lineup = list(lineup)
             self._tactic.bench = list(bench)
         self._normalize()
-        self._ensure_leaders()
+        self._ensure_available()
 
     def _normalize(self) -> None:
         """Ajusta el largo de lineup/bench a la formacion y al banco actuales."""
@@ -103,6 +104,17 @@ class TacticScreen(BaseScreen):
             self._tactic.captain = default_captain(starters)
         if self._tactic.free_kick_taker not in starters:
             self._tactic.free_kick_taker = default_free_kick_taker(starters)
+
+    def _ensure_available(self) -> None:
+        """Saca del lineup/banco a los jugadores no disponibles (lesionados o
+        suspendidos) y revalida capitan y balon parado."""
+        for i, p in enumerate(self._tactic.lineup):
+            if p is not None and not p.is_available:
+                self._tactic.lineup[i] = None
+        for i, p in enumerate(self._tactic.bench):
+            if p is not None and not p.is_available:
+                self._tactic.bench[i] = None
+        self._ensure_leaders()
 
     # --- Formacion y slots ---
     @property
@@ -416,7 +428,7 @@ class TacticScreen(BaseScreen):
             event.stop(); self._choose()
         elif key == "x":
             event.stop(); self._assign(self._focus, None)
-            self._ensure_leaders(); self._refresh()
+            self._ensure_available(); self._refresh()
         elif key == "a":
             event.stop(); self._auto()
 
@@ -454,11 +466,11 @@ class TacticScreen(BaseScreen):
         self._tactic.formation = _FORMATION_NAMES[(cur + delta) % len(_FORMATION_NAMES)]
         # Cambiar de formacion re-arma la alineacion automatica para la nueva forma
         # (los ajustes manuales previos se pierden: la cantidad de puestos cambia).
-        lineup, bench = auto_select(self._club, self._formation)
+        lineup, bench = auto_select(self._club, self._formation, available_only=True)
         self._tactic.lineup = list(lineup)
         self._tactic.bench = list(bench)
         self._normalize()
-        self._ensure_leaders()
+        self._ensure_available()
 
     # --- Acciones de la cancha ---
     def _choose(self) -> None:
@@ -483,16 +495,17 @@ class TacticScreen(BaseScreen):
 
     def _on_pick(self, player) -> None:
         self._assign(self._focus, player)
-        self._ensure_leaders()
+        self._ensure_available()
         self._refresh()
 
     def _auto(self) -> None:
-        lineup, bench = auto_select(self._club, self._formation, _BENCH)
+        lineup, bench = auto_select(
+            self._club, self._formation, _BENCH, available_only=True)
         for i in range(self._n):
             self._tactic.lineup[i] = lineup[i] if i < len(lineup) else None
         for j in range(_BENCH):
             self._tactic.bench[j] = bench[j] if j < len(bench) else None
-        self._ensure_leaders()
+        self._ensure_available()
         self._refresh()
 
     # --- Guardar / cancelar ---

@@ -53,7 +53,7 @@ class MatchState:
 
 def _place_team(club: Club, side: Side, formation: Formation, pitch: Pitch) -> list[MatchPlayer]:
     """Ubica a los titulares de un club en sus posiciones de formacion."""
-    players = pick_lineup(club, formation)
+    players = pick_lineup(club, formation, available_only=True)
     placed = []
     for slot, player in zip(formation.slots, players):
         pos = slot_to_meters(slot, side, pitch)

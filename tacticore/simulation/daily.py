@@ -23,6 +23,7 @@ from datetime import date
 
 from ..core.rng import new_rng
 from ..domain.enums import MatchKind, Morale
+from .discipline import apply_player_match_discipline, recover_injuries
 from .economy import (
     matchday_income, membership_income, squad_wage_bill, stadium_upkeep)
 from .facilities import facility_income, tick_constructions
@@ -107,6 +108,8 @@ def advance_day(game, rng: random.Random | None = None, progress=None,
     # Las obras avanzan todos los dias (hoy solo el jugador tiene obras).
     for club in _all_clubs(game):
         tick_constructions(club)
+    # Altas de lesionados del club del jugador cuya baja ya vencio.
+    recover_injuries(game, today)
     # Las ofertas del jugador maduran un dia por vez (el vendedor responde).
     resolve_offers(game)
     wd = today.weekday()
@@ -227,20 +230,22 @@ def _play_matchday(game, today: date, rng: random.Random, progress, skip=None) -
     leagues = _leagues(game)
     total = len(leagues) or 1
     label = day_event(today)
+    pc = game.player_club
     for i, league in enumerate(leagues, start=1):
         for m in league.matches:
             if m is skip:
                 continue
             if m.match_date == today and not m.played:
                 res = simulate_match(m.home, m.away, rng)
+                if pc in (m.home, m.away):
+                    # El partido del jugador (caso headless, no en vivo) pasa por el
+                    # mismo cierre que en vivo: taquilla, racha, entreno y disciplina.
+                    finish_player_match(game, m, res.home_goals, res.away_goals, rng)
+                    continue
                 m.home_goals, m.away_goals, m.played = res.home_goals, res.away_goals, True
                 _credit_matchday_income(game, m, today)
                 _maybe_streak_bonus(league, m.home)
                 _maybe_streak_bonus(league, m.away)
-                # El club del jugador entrena la formacion que desplego este partido.
-                pc = game.player_club
-                if pc in (m.home, m.away) and m.tactic is not None:
-                    train_formation(pc, m.tactic.formation, pc.coach)
         if progress is not None and (i % 20 == 0 or i == total):
             progress(label, i, total)
 
@@ -255,18 +260,19 @@ def _credit_matchday_income(game, match, when: date) -> int:
     return gate
 
 
-def finish_player_match(game, match, home_goals: int, away_goals: int) -> None:
-    """Registra el resultado de un partido que el club del jugador jugo EN VIVO.
+def finish_player_match(game, match, home_goals: int, away_goals: int,
+                        rng: random.Random | None = None) -> None:
+    """Registra el resultado de un partido que juega el club del jugador.
 
-    El marcador lo produjo el motor en tiempo real (no `simulate_match`), asi que
-    aca solo se anota y se aplican los efectos: taquilla al local (en tiempo real),
-    bonus de racha del patrocinador (solo en LIGA), entrenamiento de la formacion
-    desplegada y una notificacion con el resultado. Los hinchas reaccionan el
-    lunes, como siempre."""
+    Aplica taquilla al local (en tiempo real), bonus de racha del patrocinador
+    (solo en LIGA), entrenamiento de la formacion desplegada, la DISCIPLINA
+    (suspensiones, tarjetas, lesiones del once que jugo) y una notificacion con el
+    resultado. Los hinchas reaccionan el lunes, como siempre."""
     match.home_goals = home_goals
     match.away_goals = away_goals
     match.played = True
     when = game.calendar.current_date
+    rng = rng or new_rng(game.seed + when.toordinal())
     _credit_matchday_income(game, match, when)
     league = game.player_league
     # El bonus por racha es de competencia: no aplica en amistosos.
@@ -276,6 +282,7 @@ def finish_player_match(game, match, home_goals: int, away_goals: int) -> None:
     pc = game.player_club
     if pc in (match.home, match.away) and match.tactic is not None:
         train_formation(pc, match.tactic.formation, pc.coach)
+    apply_player_match_discipline(game, match, when, rng)
     _notify_result(game, match)
 
 

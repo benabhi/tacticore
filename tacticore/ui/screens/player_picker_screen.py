@@ -74,7 +74,14 @@ class PlayerPickerScreen(BaseScreen):
         t.append("-" * _W + "\n", style="grey50")
         t.append("   #  NOMBRE                        POS  OVR  EN\n", style="bold green")
         for i, p in enumerate(self._players):
-            status = self._status.get(id(p), "")
+            # Los no disponibles (lesionados/suspendidos) se marcan en rojo y no se
+            # pueden elegir; si esta disponible, se muestra donde esta (TIT/BCO).
+            if not p.is_available:
+                status = "LES" if p.injury is not None else "SUS"
+                status_style = "bold red"
+            else:
+                status = self._status.get(id(p), "")
+                status_style = _STATUS_STYLE.get(status, "grey42")
             row = (f"{str(p.shirt_number or '-'):>3}  {p.full_name:<28.28}  "
                    f"{p.position.value:<3}  {round(p.overall):>3}  ")
             if i == self._selected:
@@ -82,7 +89,7 @@ class PlayerPickerScreen(BaseScreen):
                 t.append(line + "\n", style="bold black on green")
             else:
                 t.append("  " + row, style="white")
-                t.append(f"{status:<3}\n", style=_STATUS_STYLE.get(status, "grey42"))
+                t.append(f"{status:<3}\n", style=status_style)
         return t
 
     def action_move(self, delta: int) -> None:
@@ -107,8 +114,13 @@ class PlayerPickerScreen(BaseScreen):
         self._refresh()
 
     def action_pick(self) -> None:
-        if self._players:
-            self._on_pick(self._players[self._selected])
+        if not self._players:
+            self.app.pop_screen()
+            return
+        player = self._players[self._selected]
+        if not player.is_available:
+            return  # lesionado/suspendido: no se puede elegir (el selector sigue abierto)
+        self._on_pick(player)
         self.app.pop_screen()
 
     def action_clear(self) -> None:

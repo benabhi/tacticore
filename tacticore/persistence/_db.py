@@ -15,8 +15,10 @@ from ..domain.club import Club
 from ..domain.coach import Coach
 from ..domain.country import Country
 from ..domain.enums import (
-    Foot, LeagueTier, Mentality, MatchKind, Morale, Position, Specialty)
+    Foot, InjurySeverity, InjuryType, LeagueTier, Mentality, MatchKind, Morale,
+    Position, Specialty)
 from ..domain.facility import Construction
+from ..domain.injury import Injury
 from ..domain.league import League
 from ..domain.manager import Manager
 from ..domain.match import Match
@@ -27,10 +29,11 @@ from ..domain.sponsor import Sponsor, SponsorContract
 from ..domain.stadium import Stadium
 from ..domain.transfer import TransferOffer
 
-# v9: notificaciones, amistosos del jugador y libro de caja (movimientos). v8:
-# entrenamiento de formaciones; v7 liderazgo/caracter; v6 mercado de pases; v5
-# instalaciones; v4 estadio por sectores + patrocinadores; v3 el DT.
-SCHEMA_VERSION = 9
+# v10: lesion activa + tarjetas/suspension por jugador (se quita la tabla injuries
+# huerfana). v9: notificaciones, amistosos y libro de caja; v8 entrenamiento de
+# formaciones; v7 liderazgo/caracter; v6 mercado; v5 instalaciones; v4 estadio por
+# sectores + patrocinadores; v3 el DT.
+SCHEMA_VERSION = 10
 
 
 class IncompatibleSaveError(Exception):
@@ -42,6 +45,8 @@ _PLAYER_BASE_COLS = [
     "height_cm", "weight_kg", "form", "fitness", "experience", "morale",
     "specialty", "nickname", "shirt_number", "origin_club", "potential",
     "injury_proneness", "asking_price", "leadership", "character",
+    "yellow_cards", "matches_suspended",
+    "injury_type", "injury_severity", "injury_start", "injury_return",
 ]
 _PLAYER_COLS = _PLAYER_BASE_COLS + list(ALL_ATTRS)
 
@@ -127,6 +132,12 @@ CREATE TABLE players (
     asking_price     INTEGER,
     leadership       INTEGER NOT NULL DEFAULT 3,
     character        INTEGER NOT NULL DEFAULT 3,
+    yellow_cards       INTEGER NOT NULL DEFAULT 0,
+    matches_suspended  INTEGER NOT NULL DEFAULT 0,
+    injury_type        TEXT,
+    injury_severity    INTEGER,
+    injury_start       TEXT,
+    injury_return      TEXT,
     {_PLAYER_ATTR_DDL}
 );
 
@@ -199,17 +210,6 @@ CREATE TABLE matches (
     played       INTEGER NOT NULL
 );
 
--- Lesiones (activas + historial). Arranca vacia; se poblara con la simulacion.
-CREATE TABLE injuries (
-    id              INTEGER PRIMARY KEY,
-    player_id       INTEGER NOT NULL REFERENCES players(id),
-    type            TEXT NOT NULL,
-    severity        INTEGER NOT NULL,
-    start_date      TEXT NOT NULL,
-    expected_return TEXT NOT NULL,
-    is_active       INTEGER NOT NULL
-);
-
 -- Notificaciones (registro de novedades para el manager). Orden = orden de id.
 CREATE TABLE notifications (
     id       INTEGER PRIMARY KEY,
@@ -252,7 +252,6 @@ CREATE INDEX idx_facilities_club    ON facilities(club_id);
 CREATE INDEX idx_constructions_club ON constructions(club_id);
 CREATE INDEX idx_ftrain_club        ON formation_training(club_id);
 CREATE INDEX idx_matches_league     ON matches(league_id);
-CREATE INDEX idx_injuries_player    ON injuries(player_id);
 CREATE INDEX idx_movements_club     ON movements(club_id);
 """
 
@@ -504,12 +503,17 @@ def _insert_players(
 
 
 def _player_row(club_id: int, p: Player) -> tuple:
+    inj = p.injury
     base = (
         p.first_name, p.last_name, p.nationality, p.position.value, p.foot.value,
         p.birth_date.isoformat(), p.height_cm, p.weight_kg, p.form, p.fitness,
         p.experience, p.morale.value, p.specialty.value if p.specialty else None,
         p.nickname, p.shirt_number, p.origin_club, p.potential, p.injury_proneness,
         p.asking_price, p.leadership, p.character,
+        p.yellow_cards, p.matches_suspended,
+        inj.type.value if inj else None, inj.severity.value if inj else None,
+        _iso(inj.start_date) if inj else None,
+        _iso(inj.expected_return) if inj else None,
     )
     attrs = tuple(getattr(p, attr) for attr in ALL_ATTRS)
     return (club_id, *base, *attrs)
@@ -724,6 +728,14 @@ def _sponsor_from_db(conn: sqlite3.Connection, club_id: int) -> SponsorContract 
 
 
 def _player_from_row(row: sqlite3.Row) -> Player:
+    injury = None
+    if row["injury_type"] is not None:
+        injury = Injury(
+            type=InjuryType(row["injury_type"]),
+            severity=InjurySeverity(row["injury_severity"]),
+            start_date=_date(row["injury_start"]),
+            expected_return=_date(row["injury_return"]),
+        )
     return Player(
         first_name=row["first_name"],
         last_name=row["last_name"],
@@ -746,5 +758,8 @@ def _player_from_row(row: sqlite3.Row) -> Player:
         asking_price=row["asking_price"],
         leadership=row["leadership"],
         character=row["character"],
+        yellow_cards=row["yellow_cards"],
+        matches_suspended=row["matches_suspended"],
+        injury=injury,
         **{attr: row[attr] for attr in ALL_ATTRS},
     )
