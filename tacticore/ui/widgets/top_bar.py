@@ -25,7 +25,7 @@ from ...simulation import notifications as notif
 from ...simulation.daily import day_event_short
 from ..palette import ACCENT, BAR_BG
 
-_TAB_W = 11  # ancho de la pestaña del nombre (entra "JUGADORES", el mas largo)
+_TAB_W = 14  # ancho de la pestaña del nombre (entra " ENTRENAMIENTO", el mas largo)
 _BG = f"on {BAR_BG}"   # sufijo de estilo para pintar el fondo de la barra
 _DOW = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]  # 0=lunes .. 6=domingo
 _CONTROL = " [Espacio] avanzar"  # control de avanzar dia (la tecla va en acento)
@@ -78,8 +78,8 @@ class TopBar(Static):
 
         # El cluster derecho termina justo en la ultima columna (el badge ya trae
         # su propio espacio final). Se rellena el medio con el fondo de la barra.
-        # El separador es " -> " (4): con " -> " entra hasta el peor caso de eventos.
-        right_len = len(hoy) + len(_ARROW) + len(sig) + (2 + len(badge) if badge else 0)
+        # Separador " -> " (4) y 1 espacio antes del badge: entra hasta el peor caso.
+        right_len = len(hoy) + len(_ARROW) + len(sig) + (1 + len(badge) if badge else 0)
         used = _TAB_W + len(_CONTROL)
         pad = config.SCREEN_WIDTH - used - right_len
         t.append(" " * max(1, pad), style=_BG)
@@ -87,6 +87,6 @@ class TopBar(Static):
         t.append(_ARROW, style=f"grey50 {_BG}")           # flecha de progresion
         t.append(sig, style=f"grey62 {_BG}")              # siguiente: tenue
         if badge:
-            t.append("  ", style=_BG)
+            t.append(" ", style=_BG)
             t.append(badge, style=f"bold black on {ACCENT}")
         return t

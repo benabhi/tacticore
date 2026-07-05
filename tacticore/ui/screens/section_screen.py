@@ -1,6 +1,6 @@
 """Pantalla base de seccion con frame estandar (barra inferior + pestañas).
 
-Cada seccion del juego (Oficina, Club, Jugadores, Liga, Partidos, Entreno,
+Cada seccion del juego (Oficina, Club, Jugadores, Partidos, Entrenamiento,
 Finanzas) es una pantalla completa que comparte el mismo marco de 80x25:
 
     Fila 0 : TITULO ....................................  fecha   caja   (HUD)

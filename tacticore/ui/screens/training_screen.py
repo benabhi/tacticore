@@ -1,4 +1,4 @@
-"""Seccion Entreno: entrenamiento por habilidad, con grupos de jugadores.
+"""Seccion Entrenamiento: entrenamiento por habilidad, con grupos de jugadores.
 
 Pestañas:
 - Grupos: grupos de entrenamiento, cada uno enfocado en una habilidad entrenable,
@@ -21,7 +21,7 @@ class TrainingScreen(SectionScreen):
     """Grupos de entrenamiento por habilidad e historial."""
 
     section_key = "E"
-    section_title = "Entreno"
+    section_title = "Entrenamiento"
     tabs = ("Grupos", "Historial")
 
     def render_tab(self, index: int) -> Text:
