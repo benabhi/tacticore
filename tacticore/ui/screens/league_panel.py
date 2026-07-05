@@ -1,14 +1,18 @@
-"""Seccion Liga: la competicion, en una sola vista navegable.
+"""Panel de Liga: la competicion en una vista navegable, embebida en Partidos.
 
-Muestra, de arriba a abajo:
+Antes era una seccion propia (Liga); ahora vive como la pestaña "Liga" de la
+seccion Partidos. Es un panel (no una pantalla): lo instancia la pantalla
+anfitriona (`MatchesScreen`), que le pide el contenido (`render`) y le pasa el
+teclado (`handle_key`) cuando su pestaña esta activa. Muestra, de arriba a abajo:
+
 - la tabla de posiciones de la division actual (con columna de MOVimiento:
   ^ subio, v bajo, - igual), con un cursor para elegir equipo;
 - el fixture de una jornada (navegable), con el partido propio resaltado;
 - una franja de estadisticas de liga (disciplina, lesionados, mercado).
 
 Teclas: arriba/abajo eligen equipo (cursor); izquierda/derecha cambian de division
-(los 5 niveles A-E del pais); [ y ] cambian la jornada del fixture; Enter (mas
-adelante) abrira la info del equipo seleccionado.
+(los 5 niveles A-E del pais); [ y ] cambian la jornada del fixture; n elige pais;
+Esc resetea la vista; Enter (mas adelante) abrira la info del equipo seleccionado.
 """
 
 from rich.text import Text
@@ -19,7 +23,6 @@ from ...domain.enums import LeagueTier
 from ...simulation.season import Standing, compute_standings, generate_league_fixture
 from ..format import hint
 from ..palette import TAG, TIER
-from .section_screen import SectionScreen
 
 _WIDTH = config.SCREEN_WIDTH  # la tabla ocupa TODO el ancho (80)
 _FORM_LEN = 5  # cuantos resultados recientes se muestran en "ULT5"
@@ -53,19 +56,22 @@ def _goal_style(a: int, b: int) -> str:
     return "white"
 
 
-class LeagueScreen(SectionScreen):
+class LeaguePanel:
     """Posiciones (ciclables por division), fixture y stats de la liga."""
 
-    section_key = "L"
-    section_title = "Liga"
-    tabs = ("Tabla",)
-
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, host) -> None:
+        self._host = host     # pantalla anfitriona (MatchesScreen): da app y refresh
         self._country = None   # pais mostrado (None = el del jugador)
         self._division = None  # indice de la division mostrada (None = la del jugador)
         self._selected = 0     # equipo seleccionado en la tabla (cursor)
         self._round = None     # jornada mostrada en el fixture (None = auto)
+
+    @property
+    def app(self):
+        return self._host.app
+
+    def _refresh(self) -> None:
+        self._host._refresh_content()
 
     # --- Pais y divisiones ---
     def _current_country(self):
@@ -113,7 +119,7 @@ class LeagueScreen(SectionScreen):
         return max(1, self._total_rounds(league))
 
     # --- Render ---
-    def render_tab(self, index: int) -> Text:
+    def render(self) -> Text:
         league = self._ensure_fixture(self._current_league())
         if league is None:
             return Text("No hay liga para mostrar.", style="white")
@@ -121,7 +127,6 @@ class LeagueScreen(SectionScreen):
         t = Text()
         self._append_standings(t, league)
         self._append_fixture(t, league)
-        t.append("\n")
         self._append_stats(t, league)
         return t
 
@@ -328,7 +333,7 @@ class LeagueScreen(SectionScreen):
         total = self._total_rounds(league)
         current = self._round if self._round is not None else self._next_round(league)
         self._round = max(1, min(total, current + delta))
-        self._refresh_content()
+        self._refresh()
 
     def _change_division(self, delta: int) -> None:
         divs = self._divisions()
@@ -338,7 +343,7 @@ class LeagueScreen(SectionScreen):
         self._division = (self._division + delta) % len(divs)
         self._round = None
         self._selected = 0
-        self._refresh_content()
+        self._refresh()
 
     def _open_country_picker(self) -> None:
         from .country_select_screen import CountrySelectScreen
@@ -362,18 +367,18 @@ class LeagueScreen(SectionScreen):
         self._country = country
         self._selected = 0
         self._round = None
-        self._refresh_content()
+        self._refresh()
 
-    def on_content_key(self, event) -> None:
+    def handle_key(self, event) -> None:
         league = self._current_league()
         if league is None:
             return
         key, ch = event.key, event.character
         if key == "up":
-            event.stop(); self._selected = max(0, self._selected - 1); self._refresh_content()
+            event.stop(); self._selected = max(0, self._selected - 1); self._refresh()
         elif key == "down":
             n = len(league.clubs)
-            event.stop(); self._selected = min(n - 1, self._selected + 1); self._refresh_content()
+            event.stop(); self._selected = min(n - 1, self._selected + 1); self._refresh()
         elif key == "left":
             event.stop(); self._change_division(-1)
         elif key == "right":
@@ -395,4 +400,4 @@ class LeagueScreen(SectionScreen):
         self._division = None
         self._selected = 0
         self._round = None
-        self._refresh_content()
+        self._refresh()

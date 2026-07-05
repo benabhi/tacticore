@@ -30,7 +30,7 @@ from ..widgets.top_bar import TopBar
 from .base_screen import BaseScreen
 
 # Letra de atajo -> clave de seccion (para la barra inferior).
-_SECTION_KEYS = {"o": "O", "c": "C", "j": "J", "l": "L", "p": "P", "e": "E", "f": "F"}
+_SECTION_KEYS = {"o": "O", "c": "C", "j": "J", "p": "P", "e": "E", "f": "F"}
 
 
 class SectionScreen(BaseScreen):
@@ -165,7 +165,6 @@ class SectionScreen(BaseScreen):
         # Import local para evitar imports circulares entre secciones.
         from .club_screen import ClubScreen
         from .finance_screen import FinanceScreen
-        from .league_screen import LeagueScreen
         from .matches_screen import MatchesScreen
         from .office_screen import OfficeScreen
         from .players_screen import PlayersScreen
@@ -175,7 +174,6 @@ class SectionScreen(BaseScreen):
             "O": OfficeScreen,
             "C": ClubScreen,
             "J": PlayersScreen,
-            "L": LeagueScreen,
             "P": MatchesScreen,
             "E": TrainingScreen,
             "F": FinanceScreen,

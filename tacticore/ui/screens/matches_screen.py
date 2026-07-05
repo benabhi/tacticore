@@ -1,22 +1,28 @@
-"""Seccion Partidos: los encuentros del club.
+"""Seccion Partidos: los encuentros del club y la competicion.
 
 Pestañas:
-- Proximos: los proximos partidos con su FECHA, el tipo (Liga/Amistoso/Copa) y si
-  ya tienen tactica asignada. Es una lista navegable (arriba/abajo) y PAGINADA: con
-  Enter se abre la pantalla de tactica de ESE partido (la tactica es por partido).
+- Proximos: los proximos partidos con su FECHA, tipo y si tienen tactica. Lista
+  navegable (arriba/abajo) y PAGINADA; con Enter se abre la tactica de ESE partido.
+- Liga: la tabla de posiciones, el fixture y las stats de la division (el panel
+  `LeaguePanel`, que antes era la seccion Liga).
+- Copa: por ahora un aviso (no se participa en ningun torneo).
 - Historial: partidos ya jugados del club (del mas nuevo al mas viejo), paginado.
 
-Layout de la pestaña: la TABLA queda arriba y la ayuda ABAJO, pegada al menu
-(tabs / espacio / tabla / espacio / ayuda / espacio / menu). En vez de desplazarse,
-la lista se divide en PAGINAS (izq/der cambian de pagina), como en Jugadores.
+Layout de las tablas (Proximos/Historial): la TABLA queda arriba y la ayuda ABAJO,
+pegada al menu (tabs / espacio / tabla / espacio / ayuda / espacio / menu). En vez
+de desplazarse, se divide en PAGINAS (izq/der), como en Jugadores. La pestaña Liga
+trae su propio layout (con la ayuda inline en sus titulos).
 """
 
 from datetime import date
 
 from rich.text import Text
 
-from ..format import hint
+from ..format import append_section, hint
+from .league_panel import LeaguePanel
 from .section_screen import SectionScreen
+
+_LIGA_TAB, _COPA_TAB, _HIST_TAB = 1, 2, 3
 
 _WIDTH = 78
 
@@ -40,12 +46,13 @@ class MatchesScreen(SectionScreen):
 
     section_key = "P"
     section_title = "Partidos"
-    tabs = ("Proximos", "Historial")
+    tabs = ("Proximos", "Liga", "Copa", "Historial")
 
     def __init__(self) -> None:
         super().__init__()
         self._selected = 0   # indice del partido resaltado en Proximos
         self._hist_page = 0  # pagina del Historial (0 = mas recientes)
+        self._league_panel = LeaguePanel(self)  # la pestaña Liga
 
     @property
     def _club(self):
@@ -83,9 +90,13 @@ class MatchesScreen(SectionScreen):
 
     # --- Ensamblado: tabla arriba, ayuda abajo (pegada al menu) ---
     def render_tab(self, index: int) -> Text:
-        if index == 1:
+        if index == _LIGA_TAB:
+            return self._league_panel.render()   # trae su propio layout/ayuda
+        if index == _COPA_TAB:
+            return self._copa_text()
+        if index == _HIST_TAB:
             table, page, pages = self._history_page()
-            help_line = hint(("1/2", "pestaña"), ("izq/der", "pagina"))
+            help_line = hint(("1-4", "pestana"), ("izq/der", "pagina"))
         else:
             table, page, pages = self._upcoming_page()
             help_line = hint(("arr/aba", "elegir partido"), ("Enter", "armar tactica"),
@@ -93,6 +104,15 @@ class MatchesScreen(SectionScreen):
         if pages > 1:
             help_line.append(f"   Pag {page}/{pages}", style="grey62")
         return self._frame(table, help_line)
+
+    def _copa_text(self) -> Text:
+        t = Text()
+        append_section(t, "COPA", [
+            ("No estas participando en ningun torneo de copa por el momento.", "grey62"),
+            "",
+            ("Las copas nacionales e internacionales llegaran mas adelante.", "grey50"),
+        ])
+        return t
 
     def _frame(self, table_lines: list[Text], help_line: Text) -> Text:
         """Une la tabla (arriba) con la ayuda (abajo): encabezado + pagina, un blanco,
@@ -214,7 +234,16 @@ class MatchesScreen(SectionScreen):
 
     def on_content_key(self, event) -> None:
         key = event.key
-        if self._active_tab == 0:  # Proximos: cursor + paginas
+        if self._active_tab == _LIGA_TAB:      # Liga: el panel maneja su teclado
+            self._league_panel.handle_key(event)
+        elif self._active_tab == _COPA_TAB:    # Copa: sin interaccion por ahora
+            return
+        elif self._active_tab == _HIST_TAB:    # Historial: solo paginas
+            if key in ("left", "pageup"):
+                event.stop(); self._turn_history(-1)
+            elif key in ("right", "pagedown"):
+                event.stop(); self._turn_history(1)
+        else:                                  # Proximos: cursor + paginas
             if key == "up":
                 event.stop(); self._move(-1)
             elif key == "down":
@@ -225,8 +254,3 @@ class MatchesScreen(SectionScreen):
                 event.stop(); self._move(_PAGE_SIZE)
             elif key == "enter":
                 event.stop(); self._open_tactic()
-        else:  # Historial: solo paginas
-            if key in ("left", "pageup"):
-                event.stop(); self._turn_history(-1)
-            elif key in ("right", "pagedown"):
-                event.stop(); self._turn_history(1)
