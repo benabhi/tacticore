@@ -10,9 +10,10 @@ Antes se hacia en un hilo aparte con `call_from_thread` + `pop_screen`, pero pop
 la pantalla desde el propio worker producia fallas intermitentes (la ventana se
 cerraba sin avanzar). Sincrono es simple y confiable.
 
-Ademas, si el dia destino es la fecha del partido de liga del club del jugador, el
-cartel lo avisa (y avisa si no hay tactica: se usara una por defecto). En ese caso
-el mundo se procesa SIN resolver ese partido y se encadena a la pantalla previa
+Ademas, si el dia destino es la fecha del partido del club del jugador, el cartel
+lo avisa. Si no hay tactica asignada, se puede armar a mano (tecla T -> pantalla de
+tactica de ese partido) o continuar con la tactica por defecto (Enter). En cualquier
+caso el mundo se procesa SIN resolver ese partido y se encadena a la pantalla previa
 (el "versus") para jugarlo en vivo; no se puede saltar.
 """
 
@@ -35,6 +36,7 @@ class AdvanceDayScreen(BaseScreen):
 
     BINDINGS = [
         ("enter", "confirm", "Confirmar"),
+        ("t", "set_tactic", "Armar tactica"),
         ("escape", "cancel", "Cancelar"),
     ]
 
@@ -61,7 +63,17 @@ class AdvanceDayScreen(BaseScreen):
         yield Static("AVANZAR UN DIA", id="adv_title")
         yield Static(self._info_text(), id="adv_info")
         yield ProgressBar(width=56, id="adv_bar")
-        yield Static(hint(("Enter", "confirmar"), ("Esc", "cancelar")), id="adv_hint")
+        yield Static(self._hint_text(), id="adv_hint")
+
+    def _hint_text(self) -> Text:
+        # Con partido sin tactica se ofrece armarla a mano; con tactica lista o sin
+        # partido, solo confirmar/cancelar.
+        if self._match is None:
+            return hint(("Enter", "confirmar"), ("Esc", "cancelar"))
+        if self._match.tactic is None:
+            return hint(("Enter", "continuar (tactica por defecto)"),
+                        ("T", "armar tactica"), ("Esc", "cancelar"))
+        return hint(("Enter", "jugar"), ("T", "editar tactica"), ("Esc", "cancelar"))
 
     def _info_text(self) -> Text:
         info = Text(justify="center")
@@ -86,6 +98,22 @@ class AdvanceDayScreen(BaseScreen):
     def action_cancel(self) -> None:
         if not self._processing:
             self.app.pop_screen()
+
+    def action_set_tactic(self) -> None:
+        """Abre la pantalla de tactica de ESE partido para armarla a mano."""
+        if self._processing or self._match is None:
+            return
+        from .tactic_screen import TacticScreen
+
+        self.app.push_screen(TacticScreen(self._match, self.app.game.player_club))
+
+    def on_screen_resume(self) -> None:
+        """Al volver de la pantalla de tactica, refresca el aviso y la ayuda (la
+        tactica pudo quedar asignada)."""
+        if self._processing or not self.is_mounted:
+            return
+        self.query_one("#adv_info", Static).update(self._info_text())
+        self.query_one("#adv_hint", Static).update(self._hint_text())
 
     def action_confirm(self) -> None:
         if self._processing:
