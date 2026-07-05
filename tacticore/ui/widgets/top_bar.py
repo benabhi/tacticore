@@ -1,29 +1,37 @@
 """Barra informativa superior (una fila, con fondo de color).
 
-Comun a todas las secciones: a la izquierda, el nombre de la pantalla en una
-"columna" negra (se ve como una pestaña sobre el fondo azul); pegado a ella, el
-control de avanzar dia ([Espacio] > dia); y a la derecha, datos del club (fecha,
-caja y el proximo partido).
+Comun a todas las secciones. De izquierda a derecha:
 
-El fondo azul se pinta con spans (`on BAR_BG`) sobre toda la fila MENOS la columna
-del nombre: esa pestaña va SIN fondo, asi muestra el negro real de la terminal (y
-no un negro forzado que se veria distinto).
+- la "pestaña" del nombre de la pantalla, en una columna negra (se ve como una
+  solapa sobre el fondo azul);
+- el control de avanzar dia ([Espacio]);
+- el dia de HOY con su evento, y el dia SIGUIENTE con su fecha entera y su evento
+  (los "dias" son lunes/martes/...; el evento es lo que se procesa ese dia);
+- un indicador de notificaciones sin leer: el numero con fondo amarillo.
+
+No repite datos que ya viven en sus pantallas (caja, proximo partido): la barra es
+para el pulso del tiempo y las novedades. El fondo azul se pinta con spans
+(`on BAR_BG`) sobre toda la fila MENOS la pestaña del nombre (que va sin fondo).
 """
+
+from datetime import timedelta
 
 from rich.text import Text
 from textual.widgets import Static
 
 from ... import config
-from ..format import money
+from ...simulation import notifications as notif
+from ...simulation.daily import day_event_short
 from ..palette import ACCENT, BAR_BG
 
 _TAB_W = 11  # ancho de la pestaña del nombre (entra "JUGADORES", el mas largo)
-_ADVANCE = "] Avanzar dia"  # texto del control de avanzar dia (tras "[Espacio")
 _BG = f"on {BAR_BG}"   # sufijo de estilo para pintar el fondo de la barra
+_DOW = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]  # 0=lunes .. 6=domingo
+_CONTROL = " [Espacio] avanzar"  # control de avanzar dia (la tecla va en acento)
 
 
 class TopBar(Static):
-    """Fila superior con la pestaña del nombre + avanzar dia + datos del club."""
+    """Fila superior: pestaña + avanzar dia + hoy/siguiente + notificaciones."""
 
     DEFAULT_CSS = """
     TopBar {
@@ -36,19 +44,8 @@ class TopBar(Static):
         self._title = title
 
     def refresh_bar(self) -> None:
-        """Re-renderiza la barra (ej. al avanzar el dia cambia la fecha)."""
+        """Re-renderiza la barra (cambia la fecha, el evento o las notificaciones)."""
         self.refresh()
-
-    def _next_match_text(self, game, club) -> str:
-        """'Prox J{jornada} {dd-mm}' del proximo partido del club (o '')."""
-        league = game.player_league
-        if league is None or club is None:
-            return ""
-        for m in sorted(league.matches, key=lambda m: m.matchday):
-            if not m.played and (m.home is club or m.away is club):
-                when = m.match_date.strftime("%d-%m") if m.match_date else ""
-                return f"Prox J{m.matchday} {when}".rstrip()
-        return ""
 
     def render(self) -> Text:
         t = Text(no_wrap=True)
@@ -57,33 +54,35 @@ class TopBar(Static):
         t.append(tab, style="bold green")
 
         game = getattr(self.app, "game", None)
-        club = game.player_club if game else None
-        if club is None:
+        if game is None:
             t.append(" " * (config.SCREEN_WIDTH - _TAB_W), style=_BG)
             return t
 
-        # Avanzar dia, pegado a la pestaña (izquierda). Todo con el fondo azul.
+        # Control de avanzar dia (la tecla resaltada), pegado a la pestaña.
         t.append(" [", style=f"grey62 {_BG}")
         t.append("Espacio", style=f"bold {ACCENT} {_BG}")
-        t.append(_ADVANCE, style=f"white {_BG}")
+        t.append("] avanzar", style=f"white {_BG}")
 
-        # Cluster derecho: fecha, proximo partido y, al final (mas a la derecha),
-        # la caja del club.
-        date = game.calendar.current_date.strftime("%d-%m-%Y")
-        cash = money(club.capital)
-        nxt = self._next_match_text(game, club)
-        right = [(date, f"grey70 {_BG}")]
-        if nxt:
-            right.append((nxt, f"grey70 {_BG}"))
-        right.append((cash, f"bold white {_BG}"))
-        right_len = sum(len(txt) for txt, _ in right) + 3 * (len(right) - 1)
+        # Cluster derecho: hoy (dia + evento), siguiente (dia + fecha + evento) y
+        # el contador de notificaciones sin leer.
+        cur = game.calendar.current_date
+        nxt = cur + timedelta(days=1)
+        hoy = f"Hoy {_DOW[cur.weekday()]} {day_event_short(cur)}"
+        sig = (f"Sig {_DOW[nxt.weekday()]} {nxt.strftime('%d-%m-%Y')} "
+               f"{day_event_short(nxt)}")
+        unread = notif.unread_count(game)
+        badge = f" {unread} " if unread > 0 else ""
 
-        used = _TAB_W + len(" [") + len("Espacio") + len(_ADVANCE)
-        pad = config.SCREEN_WIDTH - used - right_len - 1  # -1: margen al borde
+        # El cluster derecho termina justo en la ultima columna (el badge ya trae
+        # su propio espacio final). Se rellena el medio con el fondo de la barra.
+        right_len = len(hoy) + 2 + len(sig) + (2 + len(badge) if badge else 0)
+        used = _TAB_W + len(_CONTROL)
+        pad = config.SCREEN_WIDTH - used - right_len
         t.append(" " * max(1, pad), style=_BG)
-        for i, (txt, style) in enumerate(right):
-            if i:
-                t.append("   ", style=_BG)
-            t.append(txt, style=style)
-        t.append(" ", style=_BG)
+        t.append(hoy, style=f"grey70 {_BG}")
+        t.append("  ", style=_BG)
+        t.append(sig, style=f"white {_BG}")
+        if badge:
+            t.append("  ", style=_BG)
+            t.append(badge, style=f"bold black on {ACCENT}")
         return t

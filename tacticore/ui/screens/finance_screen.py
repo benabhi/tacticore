@@ -1,21 +1,24 @@
 """Seccion Finanzas: la economia del club.
 
 Pestañas:
-- Balance: caja actual y masa salarial semanal (datos reales).
+- Balance: caja actual y el flujo semanal RECURRENTE (socios, patrocinador,
+  instalaciones vs sueldos y mantenimiento). No proyecta taquilla: la economia es
+  en tiempo real (la taquilla entra cuando se juega el partido, no antes).
 - Sueldos: el sueldo de cada jugador (calculado por atributos/edad).
-- Patrocinadores: sponsors e ingresos (placeholder).
-- Movimientos: registro de ingresos/gastos (placeholder).
+- Patrocinadores: el contrato de patrocinio.
+- Movimientos: el libro de caja real (ingresos y gastos a medida que ocurren).
 """
 
 from rich.text import Text
 
 from ...simulation.economy import (
-    matchday_income,
     membership_income,
     player_salary,
     squad_wage_bill,
     stadium_upkeep,
 )
+from ...simulation.facilities import facility_income
+from ...simulation.finance_log import newest_first
 from ..format import append_section, money
 from .section_screen import SectionScreen
 
@@ -39,18 +42,6 @@ class FinanceScreen(SectionScreen):
     def _today(self):
         return self.app.game.calendar.current_date
 
-    def _next_home_match(self):
-        """Proximo partido de local del club (para estimar la taquilla), o None."""
-        game = self.app.game
-        league = game.player_league if game else None
-        club = self._club
-        if league is None or club is None:
-            return None
-        for m in sorted(league.matches, key=lambda m: m.matchday):
-            if not m.played and m.home is club:
-                return m
-        return None
-
     def render_tab(self, index: int) -> Text:
         if index == 1:
             return self._salaries_text()
@@ -66,27 +57,23 @@ class FinanceScreen(SectionScreen):
             return Text("Sin club todavia.", style="white")
 
         wages = squad_wage_bill(club.players, self._today)
-        nxt = self._next_home_match()
-        gate = matchday_income(club, nxt.away) if nxt is not None else 0
         sponsor = club.sponsor.weekly_pay if (club.sponsor and club.sponsor.active) else 0
         incomes = [
             ("Cuota de socios", membership_income(club.members)),
             ("Patrocinador", sponsor),
-            ("Taquilla (prox local)", gate),
-            ("Venta de jugadores", 0),
+            ("Instalaciones", facility_income(club)),
         ]
         expenses = [
             ("Sueldos", wages),
             ("Mantenimiento estadio", stadium_upkeep(club.stadium.capacity)),
-            ("Empleados", 0),
-            ("Otros", 0),
         ]
         total_in = sum(v for _, v in incomes)
         total_out = sum(v for _, v in expenses)
         net = total_in - total_out
 
         t = Text()
-        t.append("Resumen semanal estimado\n\n", style="grey62")
+        t.append("Flujo semanal recurrente (se cobra/paga los viernes)\n\n",
+                 style="grey62")
         # Encabezados de las dos columnas.
         t.append("  ")
         t.append("INGRESOS".ljust(_COL), style="bold green")
@@ -103,15 +90,15 @@ class FinanceScreen(SectionScreen):
                       style="bold white")
         t.append("\n")
 
-        # Resultado y proyeccion de caja.
+        # Resultado recurrente y caja ACTUAL (real, no proyectada).
         sign = "+" if net >= 0 else "-"
         res_style = "bold green" if net >= 0 else "bold red"
-        t.append("  Resultado semanal estimado:  ")
+        t.append("  Resultado semanal recurrente:  ")
         t.append(f"{sign}{money(abs(net))}\n", style=res_style)
         t.append("  Caja actual: ")
-        t.append(money(club.capital), style="bold white")
-        t.append("     Proyectada (fin de semana): ")
-        t.append(money(club.capital + net) + "\n", style="bold white")
+        t.append(money(club.capital) + "\n", style="bold white")
+        t.append("\n  La taquilla y los fichajes se reflejan al ocurrir "
+                 "(ver Movimientos).", style="grey50")
         return t
 
     def _fin_row(self, t: Text, left, right, style: str = "white") -> None:
@@ -172,11 +159,26 @@ class FinanceScreen(SectionScreen):
         return t
 
     def _movements_text(self) -> Text:
+        club = self._club
+        if club is None:
+            return Text("Sin club todavia.", style="white")
+        movements = newest_first(club)
+        if not movements:
+            append_section(t := Text(), "MOVIMIENTOS", [
+                ("Todavia no hubo movimientos.", "grey62"),
+                ("Aca aparecen ingresos y gastos apenas ocurren: taquilla,", "grey62"),
+                ("sueldos, patrocinador, fichajes y ventas.", "grey62"),
+            ])
+            return t
         t = Text()
-        append_section(t, "MOVIMIENTOS", [
-            ("Sin movimientos registrados.", "grey62"),
-            "",
-            ("Aca se listaran ingresos y gastos: sueldos, fichajes,", "grey62"),
-            ("entradas, premios y construcciones.", "grey62"),
-        ])
+        t.append("MOVIMIENTOS", style="bold green")
+        t.append("   (los mas recientes primero)\n", style="grey50")
+        t.append("-" * 52 + "\n", style="grey50")
+        for mv in movements[:18]:
+            when = mv.date.strftime("%d-%m-%Y")
+            sign = "+" if mv.amount >= 0 else "-"
+            style = "green" if mv.amount >= 0 else "red"
+            t.append(f"  {when}  ", style="grey50")
+            t.append(f"{mv.concept:<28.28}", style="white")
+            t.append(f"{sign}{money(abs(mv.amount)):>10}\n", style=style)
         return t

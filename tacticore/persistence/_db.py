@@ -20,14 +20,17 @@ from ..domain.facility import Construction
 from ..domain.league import League
 from ..domain.manager import Manager
 from ..domain.match import Match
+from ..domain.movement import Movement
+from ..domain.notification import Notification
 from ..domain.player import ALL_ATTRS, Player
 from ..domain.sponsor import Sponsor, SponsorContract
 from ..domain.stadium import Stadium
 from ..domain.transfer import TransferOffer
 
-# v8: entrenamiento de formaciones por club. v7 liderazgo/caracter; v6 mercado de
-# pases; v5 instalaciones; v4 estadio por sectores + patrocinadores; v3 el DT.
-SCHEMA_VERSION = 8
+# v9: notificaciones, amistosos del jugador y libro de caja (movimientos). v8:
+# entrenamiento de formaciones; v7 liderazgo/caracter; v6 mercado de pases; v5
+# instalaciones; v4 estadio por sectores + patrocinadores; v3 el DT.
+SCHEMA_VERSION = 9
 
 
 class IncompatibleSaveError(Exception):
@@ -207,6 +210,38 @@ CREATE TABLE injuries (
     is_active       INTEGER NOT NULL
 );
 
+-- Notificaciones (registro de novedades para el manager). Orden = orden de id.
+CREATE TABLE notifications (
+    id       INTEGER PRIMARY KEY,
+    subject  TEXT NOT NULL,
+    message  TEXT NOT NULL,
+    date     TEXT NOT NULL,
+    category TEXT NOT NULL,
+    read     INTEGER NOT NULL
+);
+
+-- Libro de caja del club del jugador (movimientos en tiempo real). Orden = id.
+CREATE TABLE movements (
+    id      INTEGER PRIMARY KEY,
+    club_id INTEGER NOT NULL REFERENCES clubs(id),
+    date    TEXT NOT NULL,
+    concept TEXT NOT NULL,
+    amount  INTEGER NOT NULL
+);
+
+-- Amistosos del club del jugador (miercoles), guardados aparte de la liga.
+CREATE TABLE friendlies (
+    id           INTEGER PRIMARY KEY,
+    matchday     INTEGER NOT NULL,
+    home_club_id INTEGER NOT NULL REFERENCES clubs(id),
+    away_club_id INTEGER NOT NULL REFERENCES clubs(id),
+    kind         TEXT NOT NULL,
+    match_date   TEXT,
+    home_goals   INTEGER NOT NULL,
+    away_goals   INTEGER NOT NULL,
+    played       INTEGER NOT NULL
+);
+
 -- Indices en las FK: sin esto, cargar el mundo escanea tablas enteras por cada
 -- club/liga (la carga pasaba de ~16s a <1s con estos indices).
 CREATE INDEX idx_leagues_country ON leagues(country_id);
@@ -218,6 +253,7 @@ CREATE INDEX idx_constructions_club ON constructions(club_id);
 CREATE INDEX idx_ftrain_club        ON formation_training(club_id);
 CREATE INDEX idx_matches_league     ON matches(league_id);
 CREATE INDEX idx_injuries_player    ON injuries(player_id);
+CREATE INDEX idx_movements_club     ON movements(club_id);
 """
 
 # Estados de oferta que se persisten (solo las abiertas; las cerradas son historia).
@@ -263,6 +299,8 @@ def write_game(conn: sqlite3.Connection, game: GameState) -> None:
             _insert_matches(conn, league_id, league.matches, club_ids)
 
     _insert_offers(conn, game, club_ids)
+    _insert_friendlies(conn, game, club_ids)
+    _insert_notifications(conn, game)
     conn.execute(
         "INSERT INTO meta (schema_version, seed, current_date, manager_name, "
         "player_club_id) VALUES (?, ?, ?, ?, ?)",
@@ -316,7 +354,17 @@ def _insert_club(
     ).lastrowid
     _insert_sponsor(conn, club_id, club.sponsor)
     _insert_facilities(conn, club_id, club)
+    _insert_movements(conn, club_id, club)
     return club_id
+
+
+def _insert_movements(conn: sqlite3.Connection, club_id: int, club: Club) -> None:
+    """Guarda el libro de caja del club (solo el del jugador suele tener filas)."""
+    rows = [(club_id, _iso(mv.date), mv.concept, mv.amount) for mv in club.movements]
+    if rows:
+        conn.executemany(
+            "INSERT INTO movements (club_id, date, concept, amount) VALUES (?,?,?,?)",
+            rows)
 
 
 def _insert_facilities(conn: sqlite3.Connection, club_id: int, club: Club) -> None:
@@ -409,6 +457,41 @@ def _insert_offers(
             "counter_amount, days_left) VALUES (?,?,?,?,?,?)", rows)
 
 
+def _insert_friendlies(
+    conn: sqlite3.Connection, game: GameState, club_ids: dict[int, int]
+) -> None:
+    """Guarda los amistosos del jugador (con su resultado si ya se jugaron)."""
+    rows = [
+        (
+            m.matchday, club_ids[id(m.home)], club_ids[id(m.away)], m.kind.value,
+            _iso(m.match_date), m.home_goals, m.away_goals, int(m.played),
+        )
+        for m in game.friendlies
+    ]
+    if rows:
+        conn.executemany(
+            """
+            INSERT INTO friendlies (
+                matchday, home_club_id, away_club_id, kind, match_date,
+                home_goals, away_goals, played
+            ) VALUES (?,?,?,?,?,?,?,?)
+            """,
+            rows,
+        )
+
+
+def _insert_notifications(conn: sqlite3.Connection, game: GameState) -> None:
+    """Guarda el registro de notificaciones (en orden de llegada)."""
+    rows = [
+        (n.subject, n.message, _iso(n.date), n.category, int(n.read))
+        for n in game.notifications
+    ]
+    if rows:
+        conn.executemany(
+            "INSERT INTO notifications (subject, message, date, category, read) "
+            "VALUES (?,?,?,?,?)", rows)
+
+
 def _insert_players(
     conn: sqlite3.Connection, club_id: int, players: list[Player]
 ) -> None:
@@ -474,7 +557,40 @@ def read_game(conn: sqlite3.Connection) -> GameState:
         player_club=player_club,
         manager_name=meta["manager_name"],
         offers=_offers_from_db(conn, club_by_id),
+        friendlies=_friendlies_from_db(conn, club_by_id),
+        notifications=_notifications_from_db(conn),
     )
+
+
+def _friendlies_from_db(
+    conn: sqlite3.Connection, club_by_id: dict[int, Club]
+) -> list[Match]:
+    """Reconstruye los amistosos del jugador, reconectando local/visitante."""
+    out: list[Match] = []
+    for m in conn.execute("SELECT * FROM friendlies ORDER BY matchday, id"):
+        home = club_by_id.get(m["home_club_id"])
+        away = club_by_id.get(m["away_club_id"])
+        if home is None or away is None:
+            continue
+        out.append(Match(
+            home=home, away=away, matchday=m["matchday"],
+            kind=MatchKind(m["kind"]), match_date=_date(m["match_date"]),
+            home_goals=m["home_goals"], away_goals=m["away_goals"],
+            played=bool(m["played"]),
+        ))
+    return out
+
+
+def _notifications_from_db(conn: sqlite3.Connection) -> list[Notification]:
+    """Reconstruye el registro de notificaciones (en orden de id)."""
+    return [
+        Notification(
+            subject=r["subject"], message=r["message"],
+            date=date.fromisoformat(r["date"]), category=r["category"],
+            read=bool(r["read"]),
+        )
+        for r in conn.execute("SELECT * FROM notifications ORDER BY id")
+    ]
 
 
 def _offers_from_db(
@@ -559,6 +675,11 @@ def _club_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Club:
             for f in conn.execute(
                 "SELECT * FROM formation_training WHERE club_id = ?", (row["id"],))
         },
+        movements=[
+            Movement(date=_date(mv["date"]), concept=mv["concept"], amount=mv["amount"])
+            for mv in conn.execute(
+                "SELECT * FROM movements WHERE club_id = ? ORDER BY id", (row["id"],))
+        ],
     )
 
 

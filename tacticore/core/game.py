@@ -14,6 +14,8 @@ from ..domain.club import Club
 from ..domain.country import Country
 from ..domain.enums import LeagueTier
 from ..domain.league import League
+from ..domain.match import Match
+from ..domain.notification import Notification
 from ..domain.transfer import TransferOffer
 from .calendar import GameCalendar
 
@@ -28,6 +30,8 @@ class GameState:
     player_club: Club | None = None      # el club que dirige el jugador
     manager_name: str = ""               # nombre del manager humano (el jugador)
     offers: list[TransferOffer] = field(default_factory=list)  # ofertas del jugador
+    friendlies: list[Match] = field(default_factory=list)      # amistosos del jugador (miercoles)
+    notifications: list[Notification] = field(default_factory=list)  # registro de novedades
 
     @classmethod
     def new(cls, seed: int, start_date: date, countries: list[Country] | None = None) -> "GameState":

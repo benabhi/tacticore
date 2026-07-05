@@ -69,6 +69,7 @@ class SectionScreen(BaseScreen):
     def on_mount(self) -> None:
         self._refresh_topbar()
         self._refresh_content()
+        self.on_tab_shown(self._active_tab)
 
     # --- Contenido: lo provee la subclase ---
     def render_tab(self, index: int) -> Text:
@@ -77,6 +78,12 @@ class SectionScreen(BaseScreen):
 
     def on_content_key(self, event) -> None:
         """Teclas que no maneja el frame; las usa la pestaña interactiva activa."""
+
+    def on_tab_shown(self, index: int) -> None:
+        """Se llama al mostrar una pestaña (al montar y al cambiar de pestaña).
+
+        Las subclases lo usan para efectos al entrar (ej. marcar notificaciones
+        como leidas). Por defecto no hace nada."""
 
     def content_captures_keys(self) -> bool:
         """Si la pestaña activa quiere TODO el teclado (ej. un buscador abierto).
@@ -101,6 +108,7 @@ class SectionScreen(BaseScreen):
         if len(self.tabs) > 1:  # la barra solo existe con mas de una pestaña
             self.query_one("#tabbar", TabBar).set_active(index)
         self._refresh_content()
+        self.on_tab_shown(index)
 
     def _cycle_tab(self, delta: int) -> None:
         if len(self.tabs) > 1:

@@ -6,6 +6,7 @@ from .coach import Coach
 from .enums import LeagueTier
 from .facility import Construction
 from .manager import Manager
+from .movement import Movement
 from .player import Player
 from .sponsor import SponsorContract
 from .stadium import Stadium
@@ -32,6 +33,7 @@ class Club:
     stands_built: int = 0           # gradas de estadio construidas (ocupan parcela)
     constructions: list[Construction] = field(default_factory=list)  # obras en curso
     formation_training: dict[str, float] = field(default_factory=dict)  # formacion -> nivel 1-100
+    movements: list[Movement] = field(default_factory=list)  # libro de caja (solo el club del jugador)
 
     @property
     def squad_size(self) -> int:

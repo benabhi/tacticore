@@ -1,9 +1,19 @@
-"""Pantalla del partido en tiempo real (version minima, C8 en progreso).
+"""Pantalla del partido en tiempo real.
 
 Corre el `MatchEngine` con un temporizador y refresca la cancha en cada frame:
-se ven los 22 numeros y la pelota moverse. Arriba, un HUD con marcador y reloj.
-Por ahora: pausa (ESPACIO) y salir (Q). Faltan velocidad x2/x4 y los controles
-del manager (cambios, zonas, eventos), que llegan en el resto de la Fase C.
+se ven los 22 numeros y la pelota moverse. Arriba, un HUD con marcador, reloj y
+velocidad; abajo, el relato del ultimo evento.
+
+Dos modos, segun se pase `on_finish`:
+
+- Modo DEMO (sin `on_finish`, ej. `scripts/watch_match.py`): Q sale de la app.
+- Modo JUEGO (con `on_finish`): es el partido del club del jugador dentro del
+  flujo. NO se puede saltar: Q no hace nada; cuando termina, con Enter se
+  confirma el resultado (via `on_finish`) y se vuelve a la seccion.
+
+En ambos: ESPACIO pausa y +/- cambian la velocidad (x1 .. x16). La velocidad es
+cuantos ticks de simulacion se avanzan por frame; no altera el resultado (mismo
+seed -> mismo partido), solo lo rapido que se ve.
 """
 
 from rich.text import Text
@@ -14,13 +24,14 @@ from ...core.rng import new_rng
 from ...domain.club import Club
 from ...simulation.match import MatchEngine, MatchPhase, Side, kickoff_state
 from ...simulation.match.narration import narrate_segments
+from ..format import hint
 from ..palette import AWAY, HOME, MUTED
 from ..widgets.pitch import MatchPitch
 from .base_screen import BaseScreen
 
-# Ritmo de juego del demo.
+# Ritmo de juego.
 _FRAME_INTERVAL = 0.05   # segundos reales por frame (20 fps)
-_STEPS_PER_FRAME = 1     # ticks de simulacion por frame (~0.67x tiempo real)
+_SPEEDS = (1, 2, 4, 8, 16)  # ticks de simulacion por frame (multiplicador de velocidad)
 _FULL_TIME = 600.0       # futbol simulado (calibrado para totales realistas por partido)
 # El RELOJ del partido corre mas rapido que la animacion: esos 600 s de juego se
 # muestran como 90 minutos (los dos tiempos), para que el reloj llegue a 90:00.
@@ -33,6 +44,10 @@ class MatchScreen(BaseScreen):
 
     BINDINGS = [
         ("space", "toggle_pause", "Pausa"),
+        ("plus", "faster", "Mas rapido"),
+        ("equals_sign", "faster", "Mas rapido"),
+        ("minus", "slower", "Mas lento"),
+        ("enter", "advance", "Continuar"),
         ("q", "leave", "Salir"),
     ]
 
@@ -54,16 +69,24 @@ class MatchScreen(BaseScreen):
     """
 
     def __init__(self, home: Club, away: Club, seed: int = 0,
-                 home_formation=None, away_formation=None, **kwargs) -> None:
+                 home_formation=None, away_formation=None, on_finish=None,
+                 start_speed=None, **kwargs) -> None:
         super().__init__(**kwargs)
         self._home = home
         self._away = away
         self._seed = seed
         self._home_formation = home_formation
         self._away_formation = away_formation
+        self._on_finish = on_finish   # callback(home_goals, away_goals) en modo juego
         self._paused = False
+        self._finished = False
         self._timer = None
         self._log_shown = 0  # cuantos eventos del relato ya mostramos
+        # En modo juego arranca acelerado (un partido completo a x1 seria largo);
+        # el modo demo respeta el ritmo calibrado de watch_match (x1).
+        default_speed = 4 if on_finish is not None else 1
+        speed = start_speed if start_speed is not None else default_speed
+        self._speed_idx = _SPEEDS.index(speed) if speed in _SPEEDS else 0
 
     def compose_viewport(self) -> ComposeResult:
         yield Static("", id="hud")
@@ -87,12 +110,15 @@ class MatchScreen(BaseScreen):
         state = self._engine.state
         if state.clock >= _FULL_TIME:
             state.phase = MatchPhase.FINISHED
+            self._finished = True
             if self._timer is not None:
                 self._timer.stop()
             self._update_hud()
             return
-        for _ in range(_STEPS_PER_FRAME):
+        for _ in range(_SPEEDS[self._speed_idx]):
             self._engine.step()
+            if state.clock >= _FULL_TIME:
+                break
         self.query_one("#pitch", MatchPitch).refresh()
         self._update_hud()
         self._update_commentary()
@@ -119,6 +145,7 @@ class MatchScreen(BaseScreen):
         state = self._engine.state
         clock = min(state.clock, _FULL_TIME) * _CLOCK_SCALE  # reloj de partido (hasta 90:00)
         mm, ss = int(clock // 60), int(clock % 60)
+        speed = f"  x{_SPEEDS[self._speed_idx]}"
         if state.phase is MatchPhase.FINISHED:
             tag = "  FINAL"
         elif self._paused:
@@ -126,17 +153,44 @@ class MatchScreen(BaseScreen):
         else:
             tag = ""
         event = f"  {state.last_event}" if state.last_event else ""
+        # Ayuda de teclas segun el modo (juego = no se puede salir; demo = Q sale).
+        if self._on_finish is not None:
+            keys = " [Enter] continuar" if self._finished else "  [ESP] pausa  [+/-] velocidad"
+        else:
+            keys = "  [ESP] pausa  [+/-] velocidad  [Q] salir"
         hud = (
             f" {self._home.short_name} {state.score_home} - "
             f"{state.score_away} {self._away.short_name}"
-            f"    {mm:02d}:{ss:02d}{tag}{event}"
-            f"    [ESPACIO] pausa  [Q] salir"
+            f"    {mm:02d}:{ss:02d}{speed}{tag}{event}"
+            f"    {keys}"
         )
         self.query_one("#hud", Static).update(hud)
 
     def action_toggle_pause(self) -> None:
+        if self._finished:
+            return
         self._paused = not self._paused
         self._update_hud()
 
+    def action_faster(self) -> None:
+        self._speed_idx = min(self._speed_idx + 1, len(_SPEEDS) - 1)
+        self._update_hud()
+
+    def action_slower(self) -> None:
+        self._speed_idx = max(self._speed_idx - 1, 0)
+        self._update_hud()
+
+    def action_advance(self) -> None:
+        """En modo juego, tras el final Enter confirma el resultado y vuelve."""
+        if self._on_finish is None or not self._finished:
+            return
+        state = self._engine.state
+        home_goals, away_goals = state.score_home, state.score_away
+        on_finish = self._on_finish
+        self.app.pop_screen()
+        on_finish(home_goals, away_goals)
+
     def action_leave(self) -> None:
-        self.app.exit()
+        # Modo demo: Q sale de la app. Modo juego: el partido no se puede saltar.
+        if self._on_finish is None:
+            self.app.exit()

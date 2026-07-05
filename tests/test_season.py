@@ -70,7 +70,7 @@ def test_fixture_is_deterministic():
            [(m.home.name, m.away.name, m.matchday) for m in b]
 
 
-def test_fixture_dates_are_weekly_saturdays():
+def test_fixture_dates_are_weekly_sundays():
     from datetime import date
 
     league = _league()
@@ -78,7 +78,7 @@ def test_fixture_dates_are_weekly_saturdays():
     by_round = {}
     for m in matches:
         assert m.match_date is not None
-        assert m.match_date.weekday() == 5  # sabado
+        assert m.match_date.weekday() == 6  # domingo
         by_round.setdefault(m.matchday, m.match_date)
     # Jornadas consecutivas: una semana de diferencia.
     assert by_round[2] - by_round[1] == timedelta(days=7)

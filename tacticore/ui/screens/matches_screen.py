@@ -7,6 +7,8 @@ Pestañas:
 - Historial: partidos ya jugados del club.
 """
 
+from datetime import date
+
 from rich.text import Text
 
 from ..format import hint
@@ -47,12 +49,15 @@ class MatchesScreen(SectionScreen):
 
     def _club_matches(self):
         league, club = self._league, self._club
-        if league is None or club is None:
+        if club is None:
             return []
-        return sorted(
-            (m for m in league.matches if m.home is club or m.away is club),
-            key=lambda m: m.matchday,
-        )
+        game = self.app.game
+        league_matches = league.matches if league is not None else []
+        # Liga + amistosos del jugador, ordenados por fecha (no por jornada: las
+        # numeraciones de liga y amistoso se solaparian).
+        mine = [m for m in league_matches if m.home is club or m.away is club]
+        mine += list(game.friendlies) if game else []
+        return sorted(mine, key=lambda m: (m.match_date or date.max, m.matchday))
 
     def _upcoming(self):
         return [m for m in self._club_matches() if not m.played]

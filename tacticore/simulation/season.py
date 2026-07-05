@@ -15,6 +15,7 @@ from datetime import date, timedelta
 
 from .. import config
 from ..domain.club import Club
+from ..domain.enums import MatchKind
 from ..domain.league import League
 from ..domain.match import Match
 
@@ -22,11 +23,19 @@ from ..domain.match import Match
 _WIN_POINTS = 3
 _DRAW_POINTS = 1
 
+_LEAGUE_DOW = 6     # domingo: dia de la fecha de liga
+_FRIENDLY_DOW = 2   # miercoles: dia de los amistosos
+
+
+def _first_weekday_after(start_date: date, weekday: int) -> date:
+    """Primer `weekday` (0=lunes..6=domingo) estrictamente posterior a `start_date`."""
+    days = (weekday - start_date.weekday()) % 7
+    return start_date + timedelta(days=days or 7)
+
 
 def _matchday_date(start_date: date, matchday: int) -> date:
-    """Fecha de una jornada: se juega los sabados, una jornada por semana."""
-    days_to_saturday = (5 - start_date.weekday()) % 7  # 5 = sabado
-    first = start_date + timedelta(days=days_to_saturday or 7)  # el proximo sabado
+    """Fecha de una jornada: se juega los domingos, una jornada por semana."""
+    first = _first_weekday_after(start_date, _LEAGUE_DOW)  # el proximo domingo
     return first + timedelta(weeks=matchday - 1)
 
 
@@ -107,6 +116,51 @@ def ensure_all_fixtures(game, start_date: date | None = None) -> None:
             index += 1
 
 
+def ensure_player_friendlies(game, start_date: date | None = None) -> None:
+    """Genera los amistosos del club del jugador (uno por miercoles) si faltan.
+
+    Cada amistoso es contra un club AL AZAR del MISMO nivel (tier) de OTRO pais.
+    Hay uno por semana, la misma cantidad de semanas que dura la temporada de liga.
+    Se guardan en `game.friendlies` (no en la liga, para no ensuciar la tabla).
+    Determinista por semilla; idempotente (si ya hay amistosos, no hace nada).
+    """
+    from ..core.rng import new_rng
+
+    if game.friendlies:
+        return
+    club = game.player_club
+    league = game.player_league
+    if club is None or league is None:
+        return
+    weeks = max((m.matchday for m in league.matches), default=0)
+    if weeks == 0:
+        return
+    # Rivales posibles: clubes del mismo tier, de otro pais.
+    pool = [
+        c
+        for co in game.countries
+        for lg in co.leagues
+        for c in lg.clubs
+        if lg.tier is club.tier and c.country_code != club.country_code
+    ]
+    if not pool:
+        return
+    start = start_date or config.SEASON_START_DATE
+    first_wed = _first_weekday_after(start, _FRIENDLY_DOW)
+    rng = new_rng(game.seed + 90_001)  # corriente propia para no desfasar el resto
+    for week in range(weeks):
+        when = first_wed + timedelta(weeks=week)
+        rival = rng.choice(pool)
+        if rng.random() < 0.5:
+            home, away = club, rival
+        else:
+            home, away = rival, club
+        game.friendlies.append(Match(
+            home=home, away=away, matchday=week + 1, kind=MatchKind.FRIENDLY,
+            match_date=when,
+        ))
+
+
 @dataclass
 class Standing:
     """Fila de la tabla de posiciones de un club."""
@@ -146,7 +200,7 @@ def compute_standings(league: League, upto_matchday: int | None = None) -> list[
     history: dict[int, list[tuple[int, str]]] = {id(club): [] for club in league.clubs}
 
     for m in league.matches:
-        if not m.played:
+        if not m.played or m.kind is not MatchKind.LEAGUE:
             continue
         if upto_matchday is not None and m.matchday > upto_matchday:
             continue

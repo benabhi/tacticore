@@ -14,7 +14,9 @@ from ..domain.player import Player
 from ..domain.positions import is_goalkeeper
 from ..domain.transfer import (
     ACCEPTED, COUNTERED, PENDING, REJECTED, WITHDRAWN, TransferOffer)
+from . import notifications as notif
 from .economy import asking_price
+from .finance_log import record_movement
 
 MIN_SQUAD = 14   # nadie vende por debajo de esto
 MAX_SQUAD = 24   # nadie compra por encima de esto
@@ -133,7 +135,32 @@ def execute_transfer(game, buyer: Club, seller: Club, player: Player, fee: int) 
     for o in game.offers:
         if o.target is player and o.status in (PENDING, COUNTERED):
             o.status = REJECTED
+    _report_transfer(game, buyer, seller, player, fee)
     return True
+
+
+def _money(amount: int) -> str:
+    return "$" + f"{amount:,}".replace(",", ".")
+
+
+def _report_transfer(game, buyer: Club, seller: Club, player: Player, fee: int) -> None:
+    """Si el club del jugador entra en la operacion, deja movimiento y notificacion."""
+    pc = game.player_club
+    when = game.calendar.current_date
+    if buyer is pc:
+        record_movement(pc, when, f"Fichaje de {player.full_name}", -fee)
+        notif.notify(
+            game, "Fichaje concretado",
+            f"Incorporamos a {player.full_name} desde {seller.name} por {_money(fee)}.",
+            notif.MARKET,
+        )
+    elif seller is pc:
+        record_movement(pc, when, f"Venta de {player.full_name}", fee)
+        notif.notify(
+            game, "Venta concretada",
+            f"Vendimos a {player.full_name} a {buyer.name} por {_money(fee)}.",
+            notif.MARKET,
+        )
 
 
 # --- Actividad semanal de la IA ---
