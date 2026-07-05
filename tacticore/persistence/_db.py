@@ -14,9 +14,10 @@ from ..core.game import GameState
 from ..domain.club import Club
 from ..domain.coach import Coach
 from ..domain.country import Country
+from ..domain.employee import Employee
 from ..domain.enums import (
-    Foot, InjurySeverity, InjuryType, LeagueTier, Mentality, MatchKind, Morale,
-    Position, Specialty)
+    EmployeeRole, Foot, InjurySeverity, InjuryType, LeagueTier, Mentality,
+    MatchKind, Morale, Position, Specialty)
 from ..domain.facility import Construction
 from ..domain.injury import Injury
 from ..domain.league import League
@@ -29,11 +30,12 @@ from ..domain.sponsor import Sponsor, SponsorContract
 from ..domain.stadium import Stadium
 from ..domain.transfer import TransferOffer
 
-# v10: lesion activa + tarjetas/suspension por jugador (se quita la tabla injuries
+# v11: cuerpo de trabajo (tabla employees: medico, director financiero, ...). v10:
+# lesion activa + tarjetas/suspension por jugador (se quita la tabla injuries
 # huerfana). v9: notificaciones, amistosos y libro de caja; v8 entrenamiento de
 # formaciones; v7 liderazgo/caracter; v6 mercado; v5 instalaciones; v4 estadio por
 # sectores + patrocinadores; v3 el DT.
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 class IncompatibleSaveError(Exception):
@@ -165,6 +167,20 @@ CREATE TABLE facilities (
     level       INTEGER NOT NULL
 );
 
+-- Cuerpo de trabajo de cada club (medico, director financiero, ...). Variable por
+-- club; hoy solo el club del jugador tiene empleados.
+CREATE TABLE employees (
+    id          INTEGER PRIMARY KEY,
+    club_id     INTEGER NOT NULL REFERENCES clubs(id),
+    role        TEXT NOT NULL,
+    first_name  TEXT NOT NULL,
+    last_name   TEXT NOT NULL,
+    nationality TEXT NOT NULL,
+    birth_date  TEXT,
+    skill       REAL NOT NULL,
+    weekly_wage INTEGER NOT NULL
+);
+
 -- Obras en curso de cada club (bajan un dia por vez en el loop diario).
 CREATE TABLE constructions (
     id             INTEGER PRIMARY KEY,
@@ -248,6 +264,7 @@ CREATE INDEX idx_leagues_country ON leagues(country_id);
 CREATE INDEX idx_clubs_league    ON clubs(league_id);
 CREATE INDEX idx_players_club       ON players(club_id);
 CREATE INDEX idx_sponsors_club      ON sponsors(club_id);
+CREATE INDEX idx_employees_club     ON employees(club_id);
 CREATE INDEX idx_facilities_club    ON facilities(club_id);
 CREATE INDEX idx_constructions_club ON constructions(club_id);
 CREATE INDEX idx_ftrain_club        ON formation_training(club_id);
@@ -352,9 +369,29 @@ def _insert_club(
         ),
     ).lastrowid
     _insert_sponsor(conn, club_id, club.sponsor)
+    _insert_employees(conn, club_id, club)
     _insert_facilities(conn, club_id, club)
     _insert_movements(conn, club_id, club)
     return club_id
+
+
+def _insert_employees(conn: sqlite3.Connection, club_id: int, club: Club) -> None:
+    """Guarda el cuerpo de trabajo del club (medico, director financiero, ...)."""
+    rows = [
+        (club_id, e.role.value, e.first_name, e.last_name, e.nationality,
+         _iso(e.birth_date), e.skill, e.weekly_wage)
+        for e in club.employees
+    ]
+    if rows:
+        conn.executemany(
+            """
+            INSERT INTO employees (
+                club_id, role, first_name, last_name, nationality, birth_date,
+                skill, weekly_wage
+            ) VALUES (?,?,?,?,?,?,?,?)
+            """,
+            rows,
+        )
 
 
 def _insert_movements(conn: sqlite3.Connection, club_id: int, club: Club) -> None:
@@ -661,6 +698,7 @@ def _club_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Club:
         manager=manager,
         players=players,
         coach=coach,
+        employees=_employees_from_db(conn, row["id"]),
         sponsor=_sponsor_from_db(conn, row["id"]),
         plots=row["plots"],
         stands_built=row["stands_built"],
@@ -706,6 +744,23 @@ def _matches_for_league(
             played=bool(m["played"]),
         ))
     return out
+
+
+def _employees_from_db(conn: sqlite3.Connection, club_id: int) -> list[Employee]:
+    """Reconstruye el cuerpo de trabajo del club (medico, director financiero, ...)."""
+    return [
+        Employee(
+            role=EmployeeRole(e["role"]),
+            first_name=e["first_name"],
+            last_name=e["last_name"],
+            nationality=e["nationality"],
+            birth_date=_date(e["birth_date"]),
+            skill=e["skill"],
+            weekly_wage=e["weekly_wage"],
+        )
+        for e in conn.execute(
+            "SELECT * FROM employees WHERE club_id = ? ORDER BY id", (club_id,))
+    ]
 
 
 def _sponsor_from_db(conn: sqlite3.Connection, club_id: int) -> SponsorContract | None:

@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 
 from .coach import Coach
+from .employee import Employee
 from .enums import LeagueTier
 from .facility import Construction
 from .manager import Manager
@@ -27,6 +28,7 @@ class Club:
     manager: Manager | None = None  # quien dirige la institucion (el jugador o un IA)
     players: list[Player] = field(default_factory=list)
     coach: Coach | None = None      # director tecnico (dirige al equipo)
+    employees: list[Employee] = field(default_factory=list)  # cuerpo de trabajo (medico, etc.)
     sponsor: SponsorContract | None = None  # contrato de patrocinio principal
     plots: int = 0                  # parcelas de terreno (limitan cuanto se construye)
     facilities: dict[str, int] = field(default_factory=dict)  # id edificio -> nivel

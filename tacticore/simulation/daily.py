@@ -31,6 +31,7 @@ from .finance_log import record_movement
 from .formation_training import train_formation
 from .match_engine import simulate_match
 from . import notifications as notif
+from . import staff
 from .transfers import ai_market_step, resolve_offers
 
 # Etiqueta del evento de cada dia de la semana (0=lunes .. 6=domingo).
@@ -176,15 +177,20 @@ def _weekly_economy(game, today: date, rng: random.Random, progress) -> None:
             spon.weeks_remaining -= 1
         wages = squad_wage_bill(club.players, today)
         upkeep = stadium_upkeep(club.stadium.capacity)
-        income = dues + facs + spon_pay
-        expenses = wages + upkeep
+        # Cuerpo de trabajo: el director financiero suma ingreso; todos cobran sueldo.
+        fin_bonus = round((dues + facs) * staff.finance_income_bonus(club))
+        staff_wages = staff.staff_wage_bill(club)
+        income = dues + facs + spon_pay + fin_bonus
+        expenses = wages + upkeep + staff_wages
         club.capital += income - expenses
         _drift_morale(club, rng)
         if club is pc:  # solo el club del jugador lleva libro y recibe notificacion
             record_movement(club, today, "Cuota de socios", dues)
             record_movement(club, today, "Instalaciones", facs)
             record_movement(club, today, "Patrocinador", spon_pay)
+            record_movement(club, today, "Gestion financiera", fin_bonus)
             record_movement(club, today, "Sueldos", -wages)
+            record_movement(club, today, "Empleados", -staff_wages)
             record_movement(club, today, "Mantenimiento estadio", -upkeep)
             _notify_weekly_economy(game, club, income - expenses)
         if progress is not None and (i % 50 == 0 or i == total):

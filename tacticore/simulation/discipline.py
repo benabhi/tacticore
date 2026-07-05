@@ -23,6 +23,7 @@ from ..domain.enums import InjurySeverity, InjuryType, MatchKind
 from ..domain.injury import Injury
 from ..domain.player import Player
 from . import notifications as notif
+from . import staff
 from .match.formation import FORMATION_11, get_formation, pick_lineup
 
 # Probabilidades por jugador y por partido (tuneables).
@@ -68,12 +69,16 @@ def _weighted_severity(rng: random.Random) -> InjurySeverity:
     return InjurySeverity.MINOR
 
 
-def generate_injury(rng: random.Random, today: date) -> tuple[Injury, int]:
-    """Crea una lesion al azar y devuelve (lesion, semanas de baja)."""
+def generate_injury(rng: random.Random, today: date,
+                    weeks_factor: float = 1.0) -> tuple[Injury, int]:
+    """Crea una lesion al azar y devuelve (lesion, semanas de baja).
+
+    `weeks_factor` (<=1) acorta la baja: lo aporta el medico del club (recuperacion
+    mas rapida). La baja nunca baja de 1 semana."""
     itype = rng.choice(list(InjuryType))
     severity = _weighted_severity(rng)
     lo, hi = _SEVERITY_WEEKS[severity]
-    weeks = rng.randint(lo, hi)
+    weeks = max(1, round(rng.randint(lo, hi) * weeks_factor))
     injury = Injury(
         type=itype, severity=severity, start_date=today,
         expected_return=today + timedelta(weeks=weeks),
@@ -87,11 +92,14 @@ def roll_match_events(game, club: Club, xi: list[Player], is_league: bool,
 
     Deja notificaciones en el estado. Un jugador que se lesiona no recibe ademas
     tarjeta en el mismo partido."""
+    # El cuerpo medico del club baja la probabilidad y acorta las bajas.
+    inj_factor = staff.injury_factor(club)
+    weeks_factor = staff.injury_weeks_factor(club)
     for p in xi:
         if p.injury is None:
-            p_inj = _INJURY_BASE * (0.5 + p.injury_proneness / 100)
+            p_inj = _INJURY_BASE * (0.5 + p.injury_proneness / 100) * inj_factor
             if rng.random() < p_inj:
-                injury, weeks = generate_injury(rng, today)
+                injury, weeks = generate_injury(rng, today, weeks_factor)
                 p.injury = injury
                 notif.notify(
                     game, "Lesion en el plantel",

@@ -108,6 +108,20 @@ class Marking(Enum):
     PERSONAL = "Personal"
 
 
+class EmployeeRole(Enum):
+    """Rol de un empleado del cuerpo de trabajo (aparte del DT).
+
+    El nombre del miembro va en ingles (directiva 4); el valor es la etiqueta en
+    espanol que se muestra en pantalla. Cada rol engancha con un sistema vivo: el
+    Medico baja las lesiones, el Director financiero mejora las finanzas. Otros
+    roles (asistente, psicologo, cazatalentos) llegaran cuando su sistema tenga
+    efecto en el juego.
+    """
+
+    DOCTOR = "Medico"
+    FINANCE = "Director financiero"
+
+
 class Morale(Enum):
     """Estado animico del jugador (de peor a mejor)."""
 
