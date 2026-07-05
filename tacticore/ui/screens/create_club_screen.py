@@ -283,10 +283,14 @@ class CreateClubScreen(BaseScreen):
         game.install_player_club(club)
         game.manager_name = manager_name
 
-        # Fixtures de TODAS las ligas (deterministas) para que el mundo progrese.
-        from ...simulation.season import ensure_all_fixtures
+        # Fixtures de TODAS las ligas (deterministas) para que el mundo progrese,
+        # y los amistosos del jugador, para que aparezcan en Partidos desde el
+        # arranque (sin esperar a avanzar el primer dia).
+        from ...simulation.season import (
+            ensure_all_fixtures, ensure_player_friendlies)
 
         ensure_all_fixtures(game)
+        ensure_player_friendlies(game)
 
         # Patrocinador elegido: se firma aca mismo y su bono de firma entra a la caja.
         club.sponsor = self._offers[self._sponsor]

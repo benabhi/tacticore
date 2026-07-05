@@ -162,11 +162,14 @@ class TitleScreen(BaseScreen):
         elif savegame.compatible_save_exists():
             # Continuar: cargar la partida guardada y entrar a la Oficina.
             self.app.game = savegame.load_game()
-            # Los fixtures ya vienen persistidos; por las dudas, aseguramos que
-            # toda liga tenga el suyo (idempotente).
-            from ...simulation.season import ensure_all_fixtures
+            # Los fixtures y amistosos ya vienen persistidos; por las dudas,
+            # aseguramos que existan (idempotente) para saves viejos que nunca
+            # avanzaron un dia.
+            from ...simulation.season import (
+                ensure_all_fixtures, ensure_player_friendlies)
 
             ensure_all_fixtures(self.app.game)
+            ensure_player_friendlies(self.app.game)
             self.app.switch_screen(OfficeScreen())
         else:
             # Partida nueva: generar el mundo.
