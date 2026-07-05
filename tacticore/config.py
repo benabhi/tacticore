@@ -5,12 +5,20 @@ futuro hace falta otra constante global (rutas, version del formato de
 guardado, etc.) tambien vive aca.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
-# Fecha en la que arranca una partida nueva (las edades se calculan contra la
-# fecha del juego, que avanza con el calendario; ver core/calendar.py).
-SEASON_START_DATE = date(2025, 7, 1)
+
+def _first_monday_of_january(year: int) -> date:
+    """Primer lunes de enero de `year` (lunes = weekday 0)."""
+    jan1 = date(year, 1, 1)
+    return jan1 + timedelta(days=(7 - jan1.weekday()) % 7)
+
+
+# Fecha en la que arranca una partida nueva: el PRIMER LUNES DE ENERO del anio
+# actual (real). Las edades se calculan contra la fecha del juego, que avanza con
+# el calendario (ver core/calendar.py).
+SEASON_START_DATE = _first_monday_of_january(date.today().year)
 
 # --- Resolucion objetivo de la terminal ---
 # El juego completo se disena para este tamano exacto.
