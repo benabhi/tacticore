@@ -2,9 +2,13 @@
 
 Pestañas:
 - Proximos: los proximos partidos con su FECHA, el tipo (Liga/Amistoso/Copa) y si
-  ya tienen tactica asignada. Es una lista navegable: con Enter se abre la
-  pantalla de tactica de ESE partido (la tactica es por partido).
-- Historial: partidos ya jugados del club.
+  ya tienen tactica asignada. Es una lista navegable (arriba/abajo) y PAGINADA: con
+  Enter se abre la pantalla de tactica de ESE partido (la tactica es por partido).
+- Historial: partidos ya jugados del club (del mas nuevo al mas viejo), paginado.
+
+Layout de la pestaña: la TABLA queda arriba y la ayuda ABAJO, pegada al menu
+(tabs / espacio / tabla / espacio / ayuda / espacio / menu). En vez de desplazarse,
+la lista se divide en PAGINAS (izq/der cambian de pagina), como en Jugadores.
 """
 
 from datetime import date
@@ -15,6 +19,11 @@ from ..format import hint
 from .section_screen import SectionScreen
 
 _WIDTH = 78
+
+# Geometria del area de contenido (25 - barra - separador - pestañas - menu - 1 de
+# padding superior = 20 filas). Se reparten en: encabezado + regla (2), la pagina
+# de datos (_PAGE_SIZE), un blanco, la ayuda y un blanco final (separan del menu).
+_PAGE_SIZE = 15
 
 # Color por tipo de partido (para leer de un vistazo de que competicion es).
 _KIND_STYLE = {"Liga": "green", "Amistoso": "grey70", "Copa": "yellow"}
@@ -27,7 +36,7 @@ _COLUMNS = [
 
 
 class MatchesScreen(SectionScreen):
-    """Proximos partidos (navegables) e historial del club."""
+    """Proximos partidos (navegables, paginados) e historial del club."""
 
     section_key = "P"
     section_title = "Partidos"
@@ -35,7 +44,8 @@ class MatchesScreen(SectionScreen):
 
     def __init__(self) -> None:
         super().__init__()
-        self._selected = 0  # indice del partido resaltado en Proximos
+        self._selected = 0   # indice del partido resaltado en Proximos
+        self._hist_page = 0  # pagina del Historial (0 = mas recientes)
 
     @property
     def _club(self):
@@ -62,33 +72,68 @@ class MatchesScreen(SectionScreen):
     def _upcoming(self):
         return [m for m in self._club_matches() if not m.played]
 
+    def _history(self):
+        club = self._club
+        played = [m for m in self._club_matches() if m.played] if club else []
+        return list(reversed(played))  # del mas nuevo al mas viejo
+
+    @staticmethod
+    def _pages(total: int) -> int:
+        return max(1, (total + _PAGE_SIZE - 1) // _PAGE_SIZE)
+
+    # --- Ensamblado: tabla arriba, ayuda abajo (pegada al menu) ---
     def render_tab(self, index: int) -> Text:
         if index == 1:
-            return self._history_text()
-        return self._upcoming_text()
+            table, page, pages = self._history_page()
+            help_line = hint(("1/2", "pestaña"), ("izq/der", "pagina"))
+        else:
+            table, page, pages = self._upcoming_page()
+            help_line = hint(("arr/aba", "elegir partido"), ("Enter", "armar tactica"),
+                             ("izq/der", "pagina"))
+        if pages > 1:
+            help_line.append(f"   Pag {page}/{pages}", style="grey62")
+        return self._frame(table, help_line)
 
-    # --- Proximos (navegable) ---
-    def _upcoming_text(self) -> Text:
+    def _frame(self, table_lines: list[Text], help_line: Text) -> Text:
+        """Une la tabla (arriba) con la ayuda (abajo): encabezado + pagina, un blanco,
+        la ayuda y un blanco final (que la separa del menu)."""
+        out = Text()
+        for line in table_lines:
+            out.append_text(line if isinstance(line, Text) else Text(str(line)))
+            out.append("\n")
+        out.append("\n")            # espacio entre la tabla y la ayuda
+        out.append_text(help_line)  # ayuda pegada al menu (un blanco la separa)
+        return out
+
+    # --- Proximos (navegable, paginado) ---
+    def _upcoming_page(self):
         club = self._club
         if club is None:
-            return Text("Sin club todavia.", style="white")
+            return [Text("Sin club todavia.", style="white")], 1, 1
         upcoming = self._upcoming()
         if not upcoming:
-            return Text("No hay proximos partidos.", style="grey62")
+            return [Text("No hay proximos partidos.", style="grey62")], 1, 1
 
         self._selected = max(0, min(len(upcoming) - 1, self._selected))
-        t = Text()
-        t.append_text(hint(("arr/aba", "elegir partido"), ("Enter", "armar tactica")))
-        t.append("\n\n")
-        # Encabezado.
-        cells = [f"{h:<{w}}" if a == "l" else f"{h:>{w}}" for h, w, a in _COLUMNS]
-        t.append("  " + " ".join(cells) + "\n", style="bold green")
-        t.append("-" * _WIDTH + "\n", style="grey50")
-        for i, m in enumerate(upcoming):
-            self._append_match_row(t, m, club, i == self._selected)
-        return t
+        pages = self._pages(len(upcoming))
+        page = self._selected // _PAGE_SIZE
+        start = page * _PAGE_SIZE
+        rows = list(enumerate(upcoming))[start:start + _PAGE_SIZE]
 
-    def _append_match_row(self, t: Text, m, club, selected: bool) -> None:
+        lines = self._table_header()
+        for i, m in rows:
+            lines.append(self._match_row(m, club, i == self._selected))
+        lines += [Text("")] * (_PAGE_SIZE - len(rows))  # relleno hasta la pagina llena
+        return lines, page + 1, pages
+
+    def _table_header(self) -> list[Text]:
+        cells = [f"{h:<{w}}" if a == "l" else f"{h:>{w}}" for h, w, a in _COLUMNS]
+        return [
+            Text("  " + " ".join(cells), style="bold green"),
+            Text("-" * _WIDTH, style="grey50"),
+        ]
+
+    def _match_row(self, m, club, selected: bool) -> Text:
         when = m.match_date.strftime("%d-%m-%Y") if m.match_date else f"J{m.matchday}"
         rival = m.away if m.home is club else m.home
         sede = "Local" if m.home is club else "Visita"
@@ -100,9 +145,8 @@ class MatchesScreen(SectionScreen):
         ]
         if selected:
             line = ("> " + " ".join(cells)).ljust(_WIDTH)
-            t.append(line + "\n", style="bold black on green")
-            return
-        t.append("  ")
+            return Text(line, style="bold black on green")
+        t = Text("  ")
         for i, cell in enumerate(cells):
             title = _COLUMNS[i][0]
             if title == "TIPO":
@@ -114,32 +158,47 @@ class MatchesScreen(SectionScreen):
             t.append(cell, style=style)
             if i < len(cells) - 1:
                 t.append(" ")
-        t.append("\n")
+        return t
 
-    # --- Historial ---
-    def _history_text(self) -> Text:
+    # --- Historial (paginado, del mas nuevo al mas viejo) ---
+    def _history_page(self):
         club = self._club
-        played = [m for m in self._club_matches() if m.played] if club else []
-        if not played:
-            return Text("Todavia no se jugaron partidos.", style="grey62")
-        t = Text()
-        t.append("Resultados:\n\n", style="grey62")
-        for m in played[-16:]:
+        history = self._history()
+        if not history:
+            return [Text("Todavia no se jugaron partidos.", style="grey62")], 1, 1
+        pages = self._pages(len(history))
+        self._hist_page = max(0, min(pages - 1, self._hist_page))
+        start = self._hist_page * _PAGE_SIZE
+        rows = history[start:start + _PAGE_SIZE]
+
+        lines = [
+            Text("  FECHA        RES    RIVAL", style="bold green"),
+            Text("-" * _WIDTH, style="grey50"),
+        ]
+        for m in rows:
             rival = m.away if m.home is club else m.home
             gf = m.home_goals if m.home is club else m.away_goals
             gc = m.away_goals if m.home is club else m.home_goals
             res = "G" if gf > gc else "P" if gf < gc else "E"
             style = {"G": "green", "E": "yellow", "P": "red"}[res]
             when = m.match_date.strftime("%d-%m-%Y") if m.match_date else f"J{m.matchday}"
-            t.append(f"  {when}  {gf}-{gc}  ", style=style)
-            t.append(f"vs {rival.name}\n", style="white")
-        return t
+            t = Text(f"  {when}   ", style="grey62")
+            t.append(f"{res} {gf}-{gc}".ljust(7), style=style)
+            t.append(f"vs {rival.name}", style="white")
+            lines.append(t)
+        lines += [Text("")] * (_PAGE_SIZE - len(rows))
+        return lines, self._hist_page + 1, pages
 
-    # --- Interaccion (solo en Proximos) ---
+    # --- Interaccion ---
     def _move(self, delta: int) -> None:
         total = len(self._upcoming())
         if total:
             self._selected = max(0, min(total - 1, self._selected + delta))
+        self._refresh_content()
+
+    def _turn_history(self, delta: int) -> None:
+        pages = self._pages(len(self._history()))
+        self._hist_page = max(0, min(pages - 1, self._hist_page + delta))
         self._refresh_content()
 
     def _open_tactic(self) -> None:
@@ -154,12 +213,20 @@ class MatchesScreen(SectionScreen):
         )
 
     def on_content_key(self, event) -> None:
-        if self._active_tab != 0:
-            return
         key = event.key
-        if key == "up":
-            event.stop(); self._move(-1)
-        elif key == "down":
-            event.stop(); self._move(1)
-        elif key == "enter":
-            event.stop(); self._open_tactic()
+        if self._active_tab == 0:  # Proximos: cursor + paginas
+            if key == "up":
+                event.stop(); self._move(-1)
+            elif key == "down":
+                event.stop(); self._move(1)
+            elif key in ("left", "pageup"):
+                event.stop(); self._move(-_PAGE_SIZE)
+            elif key in ("right", "pagedown"):
+                event.stop(); self._move(_PAGE_SIZE)
+            elif key == "enter":
+                event.stop(); self._open_tactic()
+        else:  # Historial: solo paginas
+            if key in ("left", "pageup"):
+                event.stop(); self._turn_history(-1)
+            elif key in ("right", "pagedown"):
+                event.stop(); self._turn_history(1)
