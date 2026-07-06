@@ -38,16 +38,17 @@ CATALOG: tuple[FacilitySpec, ...] = (
                  (("parking", 1),), 2, 3, 120_000, 9, 3_000, 0.0),
     FacilitySpec("hotel", "Hotel del club", "Comercial", LeagueTier.A, (("mall", 1),),
                  2, 3, 400_000, 12, 8_000, 0.08),
-    # --- Referencias (proximamente) ---
+    # --- Deportivo / Gestion (efecto especial, no ingreso: ver funciones abajo) ---
     FacilitySpec("training", "Centro de entrenamiento", "Deportivo", LeagueTier.E, (),
-                 1, 3, 0, 0, 0, 0.0, buildable=False,
-                 future_note="Mejorara el entrenamiento del plantel."),
+                 1, 3, 10_000, 5, 0, 0.0),
+    FacilitySpec("medical", "Enfermeria", "Deportivo", LeagueTier.D, (), 1, 3,
+                 15_000, 6, 0, 0.0),
+    FacilitySpec("oficina", "Oficinas administrativas", "Gestion", LeagueTier.D, (),
+                 1, 3, 12_000, 5, 0, 0.0),
+    # --- Referencias (proximamente) ---
     FacilitySpec("youth", "Complejo juvenil", "Deportivo", LeagueTier.C, (), 1, 3,
                  0, 0, 0, 0.0, buildable=False,
                  future_note="Alimentara la cantera con juveniles."),
-    FacilitySpec("medical", "Enfermeria", "Deportivo", LeagueTier.D, (), 1, 3,
-                 0, 0, 0, 0.0, buildable=False,
-                 future_note="Acelerara la recuperacion de lesionados."),
 )
 _BY_ID: dict[str, FacilitySpec] = {s.id: s for s in CATALOG}
 
@@ -219,3 +220,41 @@ def facility_income(club: Club) -> int:
 def facility_popularity(club: Club) -> float:
     """Bonus de popularidad total (multiplica la asistencia)."""
     return sum(_BY_ID[fid].popularity * lv for fid, lv in club.facilities.items() if lv > 0)
+
+
+# --- Efectos especiales de instalaciones deportivas/gestion (por id + nivel) ---
+# Estas instalaciones no dan ingreso directo: su efecto se computa aca y lo consumen
+# staff.py (lesiones/cupos/ingresos) y formation_training (entrenamiento).
+_MEDICAL_PREVENT_PER_LVL = 0.06   # -6% probabilidad de lesion por nivel (multiplicativo)
+_MEDICAL_RECOVER_PER_LVL = 0.08   # -8% tiempo de baja por nivel
+_TRAINING_BOOST_PER_LVL = 0.15    # +15% ganancia de entrenamiento por nivel
+_OFFICE_INCOME_PER_LVL = 0.03     # +3% ingreso semanal por nivel
+
+
+def medical_injury_factor(club: Club) -> float:
+    """Factor (0,1] sobre la probabilidad de lesion por la Enfermeria."""
+    return 1 - _MEDICAL_PREVENT_PER_LVL * level(club, "medical")
+
+
+def medical_recover_factor(club: Club) -> float:
+    """Factor (0,1] sobre el tiempo de baja por la Enfermeria."""
+    return 1 - _MEDICAL_RECOVER_PER_LVL * level(club, "medical")
+
+
+def training_boost(club: Club) -> float:
+    """Multiplicador de la ganancia de entrenamiento por el Centro de entrenamiento."""
+    return 1 + _TRAINING_BOOST_PER_LVL * level(club, "training")
+
+
+def office_income_bonus(club: Club) -> float:
+    """Fraccion extra de ingreso semanal por las Oficinas administrativas."""
+    return _OFFICE_INCOME_PER_LVL * level(club, "oficina")
+
+
+def facility_effect_desc(facility_id: str) -> str:
+    """Texto del efecto POR NIVEL de una instalacion deportiva/gestion (o '' si no tiene)."""
+    return {
+        "medical": "+1 cupo Medico y -6% lesiones por nivel",
+        "training": "+15% entrenamiento por nivel",
+        "oficina": "+1 cupo Dir. financiero y +3% ingresos por nivel",
+    }.get(facility_id, "")

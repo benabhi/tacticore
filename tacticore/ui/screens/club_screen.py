@@ -211,13 +211,19 @@ class ClubScreen(SectionScreen):
             for wl in _wrap(s.future_note, _FAC_RIGHT - 2):
                 lines.append(Text(f"  {wl}", style="grey62"))
             return lines
-        eff = []
-        if s.weekly_income:
-            eff.append(f"+{money(s.weekly_income)}/sem")
-        if s.popularity:
-            eff.append(f"+{s.popularity:.2f} pop")
-        lines.append(Text("Efecto x nivel: " + (", ".join(eff) if eff else "-"),
-                          style="grey70"))
+        special = fac.facility_effect_desc(key)
+        if special:  # instalaciones deportivas/gestion: efecto especial (cupos/lesiones/...)
+            lines.append(Text("Efecto x nivel:", style="grey70"))
+            for wl in _wrap(special, _FAC_RIGHT - 2):
+                lines.append(Text(f"  {wl}", style="grey70"))
+        else:
+            eff = []
+            if s.weekly_income:
+                eff.append(f"+{money(s.weekly_income)}/sem")
+            if s.popularity:
+                eff.append(f"+{s.popularity:.2f} pop")
+            lines.append(Text("Efecto x nivel: " + (", ".join(eff) if eff else "-"),
+                              style="grey70"))
         if status in ("buildable", "upgradable"):
             target = lv + 1
             cost = fac.build_cost(s, target)
@@ -371,7 +377,7 @@ class ClubScreen(SectionScreen):
         idx = 0
         for role in EmployeeRole:
             emps = staff.employees_of(club, role)
-            slots = staff.staff_slots(role, club.tier)
+            slots = staff.staff_slots(club, role)
             lines.append(Text(f"{_ROLE_SECTION[role]} ({len(emps)}/{slots})",
                               style="bold green"))
             role_items = ([("staff", e) for e in emps]

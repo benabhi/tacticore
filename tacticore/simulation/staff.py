@@ -12,6 +12,7 @@ Logica pura (sin Textual).
 from ..domain.club import Club
 from ..domain.employee import Employee
 from ..domain.enums import BonusType, EmployeeRole, LeagueTier
+from . import facilities as fac
 
 B = BonusType
 
@@ -45,10 +46,14 @@ _TIER_WAGE_MULT: dict[LeagueTier, float] = {
 }
 _WAGE_MIN = 300
 
-# --- Cupos por rol segun el nivel de liga ---
-_TIER_SLOTS: dict[LeagueTier, int] = {
-    LeagueTier.A: 3, LeagueTier.B: 2, LeagueTier.C: 2, LeagueTier.D: 1, LeagueTier.E: 1,
+# --- Cupos por rol: base fijo + nivel de la instalacion "hogar" del rol ---
+# Siempre podes tener 1; construir la instalacion (con su min_tier de ancla) sube el tope.
+_BASE_SLOTS = 1
+_HOME_FACILITY: dict[EmployeeRole, str] = {
+    EmployeeRole.DOCTOR: "medical",     # Enfermeria
+    EmployeeRole.FINANCE: "oficina",    # Oficinas administrativas
 }
+_INCOME_COMBINED_CAP = 0.20  # tope del bonus de ingresos (empleados + oficina)
 
 
 def role_primary(role: EmployeeRole) -> BonusType:
@@ -86,8 +91,9 @@ def bonus_desc(t: BonusType, strength: float) -> str:
 
 
 # --- Cupos, contratacion, sueldos ---
-def staff_slots(role: EmployeeRole, tier: LeagueTier) -> int:
-    return _TIER_SLOTS[tier]
+def staff_slots(club: Club, role: EmployeeRole) -> int:
+    """Cupos de `role`: base + nivel de la instalacion hogar del rol (Enfermeria/Oficina)."""
+    return _BASE_SLOTS + fac.level(club, _HOME_FACILITY[role])
 
 
 def employees_of(club: Club, role: EmployeeRole) -> list[Employee]:
@@ -99,7 +105,7 @@ def role_count(club: Club, role: EmployeeRole) -> int:
 
 
 def can_hire(club: Club, role: EmployeeRole) -> bool:
-    return role_count(club, role) < staff_slots(role, club.tier)
+    return role_count(club, role) < staff_slots(club, role)
 
 
 def hire(game, employee: Employee) -> bool:
@@ -150,17 +156,20 @@ def _add(club: Club, t: BonusType) -> float:
     return min(_CAP[t], total)
 
 
-# API que consumen los sistemas del juego.
+# API que consumen los sistemas del juego (combinan empleados + instalaciones).
 def injury_factor(club: Club) -> float:
-    return _reduce_mult(club, B.INJURY_PREVENT)
+    """Prob. de lesion: empleados (prevencion) x la Enfermeria."""
+    return _reduce_mult(club, B.INJURY_PREVENT) * fac.medical_injury_factor(club)
 
 
 def injury_weeks_factor(club: Club) -> float:
-    return _reduce_best(club, B.INJURY_RECOVER)
+    """Tiempo de baja: mejor medico x la Enfermeria."""
+    return _reduce_best(club, B.INJURY_RECOVER) * fac.medical_recover_factor(club)
 
 
 def income_bonus(club: Club) -> float:
-    return _add(club, B.INCOME)
+    """Ingresos extra: empleados (income) + las Oficinas, con tope combinado."""
+    return min(_INCOME_COMBINED_CAP, _add(club, B.INCOME) + fac.office_income_bonus(club))
 
 
 def gate_bonus(club: Club) -> float:

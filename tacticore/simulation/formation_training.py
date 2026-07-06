@@ -73,8 +73,10 @@ def training_level(club: Club, name: str) -> float:
 
 def train_formation(club: Club, name: str, coach: Coach | None) -> None:
     """Sube el entrenamiento de una formacion al jugar con ella (rinde menos cerca
-    de 100; un DT con mas habilidad entrena mas rapido)."""
+    de 100; un DT con mas habilidad y el Centro de entrenamiento entrenan mas rapido)."""
+    from .facilities import training_boost
+
     level = club.formation_training.get(name, _NEUTRAL_BASE)
     skill = coach.skill if coach else 40.0
-    gain = _BASE_GAIN * (0.6 + skill / 100) * (100 - level) / 100
+    gain = _BASE_GAIN * (0.6 + skill / 100) * (100 - level) / 100 * training_boost(club)
     club.formation_training[name] = _clamp(level + gain)

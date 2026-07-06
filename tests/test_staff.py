@@ -47,10 +47,17 @@ def test_wage_convex_in_power_and_grows_by_tier():
             < staff.staff_wage(100, LeagueTier.A))
 
 
+def test_slots_from_base_plus_home_facility(monkeypatch):
+    game, club = _game(11, monkeypatch)
+    assert staff.staff_slots(club, EmployeeRole.DOCTOR) == 1     # base, sin enfermeria
+    club.facilities["medical"] = 2                               # Enfermeria nivel 2
+    assert staff.staff_slots(club, EmployeeRole.DOCTOR) == 3     # base + nivel
+    club.facilities["oficina"] = 1
+    assert staff.staff_slots(club, EmployeeRole.FINANCE) == 2
+
+
 def test_slots_and_hire_fire(monkeypatch):
     game, club = _game(11, monkeypatch)
-    assert staff.staff_slots(EmployeeRole.DOCTOR, LeagueTier.E) == 1
-    assert staff.staff_slots(EmployeeRole.DOCTOR, LeagueTier.A) == 3
     doc = _emp(EmployeeRole.DOCTOR, {B.INJURY_PREVENT: 60})
     assert staff.hire(game, doc)
     assert not staff.can_hire(club, EmployeeRole.DOCTOR)             # cupo lleno en E
@@ -75,6 +82,7 @@ def test_doctor_prevent_and_recover(monkeypatch):
 def test_multiple_doctors_stack_prevention(monkeypatch):
     game, club = _game(11, monkeypatch)
     club.tier = LeagueTier.A
+    club.facilities["medical"] = 3          # cupos para varios medicos
     staff.hire(game, _emp(EmployeeRole.DOCTOR, {B.INJURY_PREVENT: 80}, LeagueTier.A))
     f1 = staff.injury_factor(club)
     staff.hire(game, _emp(EmployeeRole.DOCTOR, {B.INJURY_PREVENT: 80}, LeagueTier.A))
