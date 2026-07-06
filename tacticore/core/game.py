@@ -27,6 +27,7 @@ class GameState:
     seed: int
     calendar: GameCalendar
     countries: list[Country] = field(default_factory=list)
+    season: int = 1                      # numero de temporada (sube al cerrar la temporada)
     player_club: Club | None = None      # el club que dirige el jugador
     manager_name: str = ""               # nombre del manager humano (el jugador)
     offers: list[TransferOffer] = field(default_factory=list)  # ofertas del jugador

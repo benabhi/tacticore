@@ -313,7 +313,9 @@ class LeaguePanel:
     # --- Franja de estadisticas de liga ---
     def _append_stats(self, t: Text, league) -> None:
         injured = sum(1 for cl in league.clubs for p in cl.players if p.is_injured)
-        t.append("ESTADISTICAS DE LIGA\n", style="bold green")
+        t.append("ESTADISTICAS DE LIGA", style="bold green")
+        season = self.app.game.season if self.app.game else 1
+        t.append(f"   Temporada {season}\n", style="grey70")
         # Disciplina y mercado: 0 hasta que existan el motor de partido y el mercado.
         parts = [
             ("Rojas", 0), ("Amarillas", 0), ("Lesionados", injured),

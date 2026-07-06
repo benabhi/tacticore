@@ -30,12 +30,13 @@ from ..domain.sponsor import Sponsor, SponsorContract
 from ..domain.stadium import Stadium
 from ..domain.transfer import TransferOffer
 
+# v12: numero de temporada en meta (ascensos/descensos al cerrar la temporada).
 # v11: cuerpo de trabajo (tabla employees: medico, director financiero, ...). v10:
 # lesion activa + tarjetas/suspension por jugador (se quita la tabla injuries
 # huerfana). v9: notificaciones, amistosos y libro de caja; v8 entrenamiento de
 # formaciones; v7 liderazgo/caracter; v6 mercado; v5 instalaciones; v4 estadio por
 # sectores + patrocinadores; v3 el DT.
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 
 class IncompatibleSaveError(Exception):
@@ -63,7 +64,8 @@ CREATE TABLE meta (
     seed           INTEGER NOT NULL,
     current_date   TEXT NOT NULL,
     manager_name   TEXT NOT NULL,
-    player_club_id INTEGER
+    player_club_id INTEGER,
+    season         INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE countries (
@@ -319,13 +321,14 @@ def write_game(conn: sqlite3.Connection, game: GameState) -> None:
     _insert_notifications(conn, game)
     conn.execute(
         "INSERT INTO meta (schema_version, seed, current_date, manager_name, "
-        "player_club_id) VALUES (?, ?, ?, ?, ?)",
+        "player_club_id, season) VALUES (?, ?, ?, ?, ?, ?)",
         (
             SCHEMA_VERSION,
             game.seed,
             game.calendar.current_date.isoformat(),
             game.manager_name,
             player_club_id,
+            game.season,
         ),
     )
     conn.commit()
@@ -595,6 +598,7 @@ def read_game(conn: sqlite3.Connection) -> GameState:
         seed=meta["seed"],
         calendar=GameCalendar(current_date=date.fromisoformat(meta["current_date"])),
         countries=countries,
+        season=meta["season"],
         player_club=player_club,
         manager_name=meta["manager_name"],
         offers=_offers_from_db(conn, club_by_id),

@@ -132,6 +132,10 @@ def advance_day(game, rng: random.Random | None = None, progress=None,
         _play_matchday(game, today, rng, progress, skip=skip)
     elif progress is not None:  # dias sin proceso: la barra igual se completa
         progress(day_event(today), 1, 1)
+    # Si se jugo la ultima fecha de todas las ligas, cerrar la temporada
+    # (ascensos/descensos + fixture nuevo). Idempotente: solo corre con todo jugado.
+    from .promotion import maybe_end_season
+    maybe_end_season(game, rng)
     return today
 
 
