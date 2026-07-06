@@ -129,6 +129,7 @@ class ClubScreen(SectionScreen):
         t = Text()
         t.append("INSTALACIONES   ", style="bold green")
         t.append(f"Parcelas {fac.plots_free(club)}/{club.plots}    ", style="white")
+        t.append(f"Parcela: {money(fac.plot_cost(club))}    ", style="grey70")
         t.append(f"Ingreso {money(fac.facility_income(club))}/sem\n", style="grey70")
         t.append("-" * 80 + "\n", style="grey50")
         left = self._fac_left_lines(club, items)

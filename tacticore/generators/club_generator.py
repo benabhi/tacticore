@@ -120,6 +120,7 @@ class ClubGenerator:
         # Presupuesto inicial chico (estilo Hattrick) y entrenamiento inicial segun
         # la mentalidad del DT elegido.
         from ..simulation.economy import STARTING_BUDGET
+        from ..simulation.facilities import START_PLOTS
         from ..simulation.formation_training import initial_training
 
         coach = self._coaches.generate(country_code, tier, today, mentality=coach_mentality)
@@ -140,7 +141,7 @@ class ClubGenerator:
             coach=coach,
             # El patrocinador lo ELIGE el jugador al crear el club (queda None aca).
             sponsor=None,
-            plots=4,  # parcelas iniciales (facilities.START_PLOTS)
+            plots=START_PLOTS,  # arranca sin parcelas: hay que comprarlas
             formation_training=initial_training(coach.mentality),
         )
         return club

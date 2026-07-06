@@ -24,6 +24,7 @@ from datetime import date
 from ..core.rng import new_rng
 from ..domain.enums import MatchKind, Morale
 from .discipline import apply_player_match_discipline, recover_injuries
+from . import economy
 from .economy import (
     matchday_income, membership_income, squad_wage_bill, stadium_upkeep)
 from .facilities import facility_income, tick_constructions
@@ -199,6 +200,9 @@ def _weekly_economy(game, today: date, rng: random.Random, progress) -> None:
             _notify_weekly_economy(game, club, income - expenses)
         if progress is not None and (i % 50 == 0 or i == total):
             progress(label, i, total)
+    # Tras el cierre, si el club del jugador quedo muy en rojo, ventas forzadas.
+    from .finance_health import enforce_solvency
+    enforce_solvency(game, today)
 
 
 def _money(amount: int) -> str:
@@ -262,8 +266,12 @@ def _play_matchday(game, today: date, rng: random.Random, progress, skip=None) -
 
 def _credit_matchday_income(game, match, when: date) -> int:
     """Acredita la taquilla al local. Si el local es el club del jugador, lo anota
-    como movimiento (economia en tiempo real). Devuelve el monto."""
+    como movimiento (economia en tiempo real). Devuelve el monto.
+
+    Los amistosos convocan menos: su taquilla es una fraccion (FRIENDLY_GATE_FACTOR)."""
     gate = matchday_income(match.home, match.away)
+    if match.kind is MatchKind.FRIENDLY:
+        gate = round(gate * economy.FRIENDLY_GATE_FACTOR)
     match.home.capital += gate
     if match.home is game.player_club:
         record_movement(match.home, when, f"Taquilla vs {match.away.name}", gate)

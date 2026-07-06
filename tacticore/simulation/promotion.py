@@ -14,6 +14,7 @@ from datetime import date, timedelta
 
 from ..core.rng import new_rng
 from ..domain.enums import LeagueTier, MatchKind
+from .finance_log import record_movement
 from . import notifications as notif
 
 # Cuantos clubes ascienden/descienden por frontera (de 8 por liga -> 25% de recambio).
@@ -94,6 +95,11 @@ def run_season_transition(game, rng, today: date | None = None) -> None:
             dst.clubs.append(club)
             club.tier = dst.tier
 
+    # Premio por ascenso y sancion por quiebra: ANTES de armar el fixture nuevo, para
+    # que el descenso forzado (que mueve al club de liga) quede reflejado en el fixture.
+    _credit_promotion_bonus(game, before)
+    _force_relegate_if_insolvent(game)
+
     # Fixture nuevo para todas las ligas + amistosos del jugador (temporada nueva).
     new_start = today + timedelta(days=_OFFSEASON_GAP)
     index = 0
@@ -107,6 +113,57 @@ def run_season_transition(game, rng, today: date | None = None) -> None:
     ensure_player_friendlies(game, new_start)
 
     _notify_player(game, before)
+
+
+def _credit_promotion_bonus(game, before) -> None:
+    """Si el club del jugador ascendio y su patrocinador paga premio, lo acredita."""
+    pc = game.player_club
+    if pc is None or before is None:
+        return
+    old_tier = before[0]
+    if _TIER_ORDER.index(pc.tier) >= _TIER_ORDER.index(old_tier):
+        return  # no ascendio
+    spon = pc.sponsor
+    if spon is None or not spon.active or spon.promotion_bonus <= 0:
+        return
+    pc.capital += spon.promotion_bonus
+    record_movement(pc, game.calendar.current_date, "Premio por ascenso",
+                    spon.promotion_bonus)
+    notif.notify(
+        game, "Premio por ascenso",
+        f"El patrocinador pago ${spon.promotion_bonus:,} por el ascenso.".replace(",", "."),
+        notif.FINANCE,
+    )
+
+
+def _force_relegate_if_insolvent(game) -> None:
+    """Sancion deportiva: si el club termino insolvente, un descenso administrativo.
+
+    Intercambia al club del jugador con el mejor de la division de abajo (mantiene 8
+    por liga). En E no hay division mas baja: solo un aviso."""
+    from .finance_health import is_insolvent
+
+    pc = game.player_club
+    country = game.player_country
+    if pc is None or country is None or not is_insolvent(pc):
+        return
+    idx = _TIER_ORDER.index(pc.tier)
+    if idx >= len(_TIER_ORDER) - 1:  # ya en la liga mas baja (E)
+        notif.notify(
+            game, "Alerta de quiebra",
+            "El club cerro la temporada en rojo. No hay division mas baja: ordena "
+            "las finanzas o seguiran las ventas forzadas.", notif.FINANCE)
+        return
+    leagues = {lg.tier: lg for lg in country.leagues}
+    upper = leagues[pc.tier]
+    lower = leagues[_TIER_ORDER[idx + 1]]
+    swap = max(lower.clubs, key=lambda c: c.overall)  # sube el mejor de abajo
+    upper.clubs.remove(pc); lower.clubs.append(pc); pc.tier = lower.tier
+    lower.clubs.remove(swap); upper.clubs.append(swap); swap.tier = upper.tier
+    notif.notify(
+        game, "Descenso por quiebra",
+        f"El club termino insolvente y sufrio un descenso administrativo a la liga "
+        f"{pc.tier.value}.", notif.FINANCE)
 
 
 def _notify_player(game, before) -> None:

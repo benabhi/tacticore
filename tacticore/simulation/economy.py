@@ -33,10 +33,14 @@ _SPECIALTY_MULT = 1.15   # una especialidad encarece al jugador
 # --- Valor de mercado ---
 _VALUE_K = 6
 
-# --- Asistencia y economia semanal (primer tanteo, escala chica) ---
-_ATTEND_RATE = 0.55     # fraccion de socios que va a un partido tipico de local
+# --- Asistencia y economia semanal (calibrado a "break-even por defecto") ---
+_ATTEND_RATE = 0.42     # fraccion de socios que va a un partido tipico de local
 _MEMBER_DUES = 5        # ingreso semanal por socio (cuota)
 _STADIUM_UPKEEP = 0.15  # gasto semanal de mantenimiento por butaca
+# Los amistosos son exhibicion: convocan mucho menos que un partido oficial, asi que
+# su taquilla es una fraccion de la de un partido de liga (si no, duplicarian el
+# ingreso de local y el club nadaria en plata).
+FRIENDLY_GATE_FACTOR = 0.30
 
 
 def _age_salary_factor(age: int) -> float:

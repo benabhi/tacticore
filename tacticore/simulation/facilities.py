@@ -62,8 +62,9 @@ STANDS: dict[str, tuple[int, int, int, LeagueTier]] = {
 _STAND_LABEL = {"general": "Grada general", "preferente": "Grada preferente",
                 "tribuna": "Grada tribuna", "palco": "Palcos"}
 
-# Parcelas: se arranca con estas y comprar cuesta segun el tier (crece con cada una).
-START_PLOTS = 4
+# Parcelas: se arranca SIN parcelas (hay que comprarlas). El costo depende del tier y
+# crece con cada parcela comprada (`plot_cost`).
+START_PLOTS = 0
 _PLOT_BASE: dict[LeagueTier, int] = {
     LeagueTier.E: 15_000, LeagueTier.D: 30_000, LeagueTier.C: 60_000,
     LeagueTier.B: 120_000, LeagueTier.A: 250_000,
