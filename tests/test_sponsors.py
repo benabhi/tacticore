@@ -93,12 +93,14 @@ def test_accept_signs_and_reject_keeps_slot(monkeypatch):
 
 def test_offer_quality_scales_with_finance_and_commercial(monkeypatch):
     from tacticore.domain.employee import Employee
+    from tacticore.domain.enums import BonusType
     from datetime import date as _d
     game, club = _game(5, monkeypatch)
     base = sp.offer_quality(club)
     assert base == 1.0
     club.employees.append(Employee(role=EmployeeRole.FINANCE, first_name="N",
-        last_name="N", nationality="AR", birth_date=_d(1980, 1, 1), skill=100, weekly_wage=1))
+        last_name="N", nationality="AR", birth_date=_d(1980, 1, 1),
+        bonuses={BonusType.INCOME: 100}, weekly_wage=1))
     club.facilities["shop"] = 3
     assert sp.offer_quality(club) > 1.0
 

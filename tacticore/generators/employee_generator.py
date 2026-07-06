@@ -1,11 +1,11 @@
 """Generador de empleados del cuerpo de trabajo (medico, director financiero, ...).
 
-Mismo molde que el `CoachGenerator`: identidad del pool de nombres, habilidad
-sesgada por el nivel de liga (mejor liga -> mejores empleados) con ruido, y una
-edad de adulto. El sueldo se fija con `staff.staff_wage` (fuente unica). Los
-candidatos que se ofrecen al contratar (`candidates`) vienen en variantes para que
-la eleccion importe: uno barato flojo, uno medio, uno caro competente. Determinista:
-comparte el rng que se le pasa.
+Identidad del pool de nombres y una edad de adulto. Cada empleado lleva 1-3 BONUS: el
+primario del rol (fuerza sesgada por el nivel de liga, con ruido) mas 0-2 extras
+SORTEADOS de la bolsa de SU rol (mas debiles). El sueldo se fija con `staff.staff_wage`
+segun el PODER total (fuente unica). Los candidatos que se ofrecen al contratar
+(`candidates`) vienen en variantes para que la eleccion importe. Determinista: comparte
+el rng que se le pasa.
 """
 
 import random
@@ -13,10 +13,13 @@ from datetime import date
 
 from .. import config
 from ..domain.employee import Employee
-from ..domain.enums import EmployeeRole, LeagueTier
-from ..simulation.staff import staff_wage
+from ..domain.enums import BonusType, EmployeeRole, LeagueTier
+from ..simulation.staff import role_extras, role_primary, staff_wage
 from ._people import birth_date_for_age
 from .name_generator import NameGenerator
+
+# Peso de la cantidad de bonus EXTRA (0/1/2): la mayoria trae 1, algunos 2, pocos 0.
+_EXTRA_COUNT_WEIGHTS = (0.30, 0.45, 0.25)
 
 # Rango de edad de un empleado (adulto profesional).
 _MIN_AGE, _MAX_AGE = 30, 63
@@ -48,27 +51,39 @@ class EmployeeGenerator:
         self._rng = rng or random.Random()
         self._names = names or NameGenerator(self._rng)
 
+    def _bonuses(self, role: EmployeeRole, primary_strength: float) -> dict[BonusType, float]:
+        """Bonus del empleado: primario del rol + 0-2 extras de la bolsa de su rol."""
+        rng = self._rng
+        bonuses = {role_primary(role): _clamp(primary_strength)}
+        n_extra = rng.choices((0, 1, 2), weights=_EXTRA_COUNT_WEIGHTS)[0]
+        pool = [t for t in role_extras(role)]
+        rng.shuffle(pool)
+        for t in pool[:n_extra]:
+            bonuses[t] = _clamp(primary_strength * rng.uniform(0.4, 0.7))
+        return bonuses
+
     def _make(
         self,
         role: EmployeeRole,
         country_code: str | None,
         tier: LeagueTier,
         today: date,
-        skill: float,
+        primary_strength: float,
     ) -> Employee:
         rng = self._rng
         first, last = self._names.player_first_last(country_code)
         age = rng.randint(_MIN_AGE, _MAX_AGE)
         birth_date = birth_date_for_age(rng, today, age)
-        skill = _clamp(skill)
+        bonuses = self._bonuses(role, primary_strength)
+        power = sum(bonuses.values())
         return Employee(
             role=role,
             first_name=first,
             last_name=last,
             nationality=country_code or "FAN",
             birth_date=birth_date,
-            skill=skill,
-            weekly_wage=staff_wage(role, skill, tier),
+            bonuses=bonuses,
+            weekly_wage=staff_wage(power, tier),
         )
 
     def generate(

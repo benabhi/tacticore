@@ -122,6 +122,24 @@ class EmployeeRole(Enum):
     FINANCE = "Director financiero"
 
 
+class BonusType(Enum):
+    """Tipo de bonus que puede aportar un empleado (valor = etiqueta en pantalla).
+
+    Un empleado lleva 1-3 bonus (tipo -> fuerza 1-100). Los VIVOS enganchan con un
+    sistema real; los INERTES (entrenamiento, moral) todavia no tienen efecto y se
+    muestran marcados 'proximo' hasta que exista su sistema.
+    """
+
+    INJURY_PREVENT = "Prevencion lesiones"  # baja la probabilidad de lesion
+    INJURY_RECOVER = "Recuperacion"         # acorta las bajas
+    INCOME = "Ingresos"                     # +% ingreso semanal (y calidad de sponsors)
+    GATE = "Taquilla"                       # +% recaudacion de local
+    TRANSFERS = "Ventas"                    # +% en la venta de jugadores
+    WAGES = "Sueldos"                       # -% masa salarial
+    TRAINING = "Entrenamiento"              # INERTE: llega con el entrenamiento
+    MORALE = "Moral"                        # INERTE: llega cuando la moral pese
+
+
 class Morale(Enum):
     """Estado animico del jugador (de peor a mejor)."""
 

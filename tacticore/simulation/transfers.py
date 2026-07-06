@@ -126,7 +126,12 @@ def execute_transfer(game, buyer: Club, seller: Club, player: Player, fee: int) 
         return False
     seller.players.remove(player)
     buyer.players.append(player)
-    seller.capital += fee
+    # Si vende el club del jugador, su bonus de "ventas" mejora lo que recibe.
+    seller_gain = fee
+    if seller is game.player_club:
+        from . import staff
+        seller_gain = round(fee * (1 + staff.transfer_bonus(seller)))
+    seller.capital += seller_gain
     buyer.capital -= fee
     player.asking_price = None
     player.shirt_number = _next_shirt(buyer)

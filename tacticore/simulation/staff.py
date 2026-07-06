@@ -1,82 +1,110 @@
-"""Cuerpo de trabajo del club: sueldos, cupos, contratacion y efectos.
+"""Cuerpo de trabajo del club: bonus, sueldos, cupos, contratacion y efectos.
 
-Los empleados (`domain/employee.py`) son un framework aparte del DT. Cada rol
-engancha con un sistema vivo del juego:
-- MEDICO -> baja la probabilidad de lesion y acorta las bajas (ver discipline.py).
-- DIRECTOR FINANCIERO -> mejora los ingresos semanales (ver daily._weekly_economy).
+Cada empleado (`domain/employee.py`) tiene un ROL (titulo + cupo) y 1-3 BONUS (tipo ->
+fuerza 1-100): el primario del rol mas 0-2 extra de la BOLSA de su rol. Los efectos se
+agregan POR TIPO sobre todos los empleados; el sueldo escala con el PODER total (suma de
+fuerzas), convexo y por tier, como barrera economica. Los bonus de entrenamiento/moral
+existen pero todavia son INERTES (sin sistema que los consuma).
 
-Todo es logica pura (sin Textual). El sueldo (`staff_wage`) es la BARRERA: escala
-convexo con el skill y por nivel de liga, asi un empleado mejor pesa mucho mas en la
-caja. Se pueden tener VARIOS empleados por rol, con un tope por tier (`_TIER_SLOTS`);
-cuando se apilan, su efecto tiene rendimiento decreciente (no suma lineal).
+Logica pura (sin Textual).
 """
 
 from ..domain.club import Club
 from ..domain.employee import Employee
-from ..domain.enums import EmployeeRole, LeagueTier
+from ..domain.enums import BonusType, EmployeeRole, LeagueTier
 
-# --- Sueldo semanal (barrera; convexo en skill, escalado por tier) ---
-# Base ~ el sueldo de un empleado de skill 50 en la liga E; crece fuerte hacia arriba.
-_ROLE_BASE: dict[EmployeeRole, int] = {
-    EmployeeRole.DOCTOR: 600,
-    EmployeeRole.FINANCE: 600,
+B = BonusType
+
+# --- Roles: bonus primario y BOLSA de extras (ligada al rol) ---
+_ROLE_PRIMARY: dict[EmployeeRole, BonusType] = {
+    EmployeeRole.DOCTOR: B.INJURY_PREVENT,
+    EmployeeRole.FINANCE: B.INCOME,
 }
+_ROLE_EXTRAS: dict[EmployeeRole, list[BonusType]] = {
+    EmployeeRole.DOCTOR: [B.INJURY_RECOVER, B.TRAINING, B.MORALE],   # salud/bienestar
+    EmployeeRole.FINANCE: [B.GATE, B.TRANSFERS, B.WAGES],            # dinero
+}
+
+# --- Magnitud y modo de agregacion de cada tipo de bonus ---
+# rate = cuanto aporta una fuerza 100; cap = tope al apilar (para los aditivos).
+_RATE: dict[BonusType, float] = {
+    B.INJURY_PREVENT: 0.50, B.INJURY_RECOVER: 0.35, B.INCOME: 0.12,
+    B.GATE: 0.10, B.TRANSFERS: 0.15, B.WAGES: 0.08, B.TRAINING: 0.0, B.MORALE: 0.0,
+}
+_CAP: dict[BonusType, float] = {
+    B.INCOME: 0.15, B.GATE: 0.12, B.TRANSFERS: 0.20, B.WAGES: 0.10,
+}
+# Tipos con efecto real hoy (los demas se muestran marcados "proximo").
+_LIVE = {B.INJURY_PREVENT, B.INJURY_RECOVER, B.INCOME, B.GATE, B.TRANSFERS, B.WAGES}
+
+# --- Sueldo (barrera; convexo en el poder total, escalado por tier) ---
+_WAGE_BASE = 600   # sueldo de un empleado de poder 50 en la liga E
 _TIER_WAGE_MULT: dict[LeagueTier, float] = {
-    LeagueTier.A: 6.0,
-    LeagueTier.B: 4.0,
-    LeagueTier.C: 2.5,
-    LeagueTier.D: 1.5,
-    LeagueTier.E: 1.0,
+    LeagueTier.A: 6.0, LeagueTier.B: 4.0, LeagueTier.C: 2.5,
+    LeagueTier.D: 1.5, LeagueTier.E: 1.0,
 }
-_WAGE_MIN = 300  # piso: ningun empleado cobra menos
+_WAGE_MIN = 300
 
-# --- Cupos por rol segun el nivel de liga (varios por rol en tiers altos) ---
+# --- Cupos por rol segun el nivel de liga ---
 _TIER_SLOTS: dict[LeagueTier, int] = {
-    LeagueTier.A: 3,
-    LeagueTier.B: 2,
-    LeagueTier.C: 2,
-    LeagueTier.D: 1,
-    LeagueTier.E: 1,
+    LeagueTier.A: 3, LeagueTier.B: 2, LeagueTier.C: 2, LeagueTier.D: 1, LeagueTier.E: 1,
 }
 
-# --- Magnitud de los efectos (tuneables) ---
-_DOC_PREVENT = 0.5   # un medico de 100 reduce ~50% la probabilidad de lesion
-_DOC_HEAL = 0.35     # y acorta ~35% las semanas de baja (del mejor medico)
-_FIN_RATE = 0.12     # un director de 100 suma ~12% de ingresos...
-_FIN_CAP = 0.15      # ...con tope 15% aun apilando varios
+
+def role_primary(role: EmployeeRole) -> BonusType:
+    return _ROLE_PRIMARY[role]
 
 
-def staff_wage(role: EmployeeRole, skill: float, tier: LeagueTier) -> int:
-    """Sueldo semanal de un empleado (convexo en skill, escalado por tier)."""
-    base = _ROLE_BASE[role]
-    return max(_WAGE_MIN, round(base * (0.5 + skill / 100) ** 2 * _TIER_WAGE_MULT[tier]))
+def role_extras(role: EmployeeRole) -> list[BonusType]:
+    return _ROLE_EXTRAS[role]
 
 
+def is_live(t: BonusType) -> bool:
+    """True si el tipo de bonus tiene efecto real hoy."""
+    return t in _LIVE
+
+
+def staff_wage(power: float, tier: LeagueTier) -> int:
+    """Sueldo semanal por poder total (convexo), escalado por tier."""
+    return max(_WAGE_MIN, round(_WAGE_BASE * (0.5 + power / 100) ** 2 * _TIER_WAGE_MULT[tier]))
+
+
+def bonus_desc(t: BonusType, strength: float) -> str:
+    """Texto corto del efecto de UN bonus (para la UI). Inerte -> '(proximo)'."""
+    pct = round(_RATE[t] * strength)
+    text = {
+        B.INJURY_PREVENT: f"-{pct}% lesiones",
+        B.INJURY_RECOVER: f"-{pct}% tiempo de baja",
+        B.INCOME: f"+{pct}% ingresos",
+        B.GATE: f"+{pct}% taquilla",
+        B.TRANSFERS: f"+{pct}% en ventas",
+        B.WAGES: f"-{pct}% sueldos",
+    }.get(t)
+    if text is None:  # inerte
+        return f"{t.value} (proximo)"
+    return text
+
+
+# --- Cupos, contratacion, sueldos ---
 def staff_slots(role: EmployeeRole, tier: LeagueTier) -> int:
-    """Cuantos empleados de `role` puede tener un club de la liga `tier`."""
     return _TIER_SLOTS[tier]
 
 
 def employees_of(club: Club, role: EmployeeRole) -> list[Employee]:
-    """Empleados del club con ese rol."""
     return [e for e in club.employees if e.role is role]
 
 
 def role_count(club: Club, role: EmployeeRole) -> int:
-    """Cuantos empleados de `role` tiene contratados el club."""
     return len(employees_of(club, role))
 
 
 def can_hire(club: Club, role: EmployeeRole) -> bool:
-    """True si al club le queda cupo libre para contratar otro empleado de `role`."""
     return role_count(club, role) < staff_slots(role, club.tier)
 
 
 def hire(game, employee: Employee) -> bool:
-    """Contrata a `employee` en el club del jugador si hay cupo. Devuelve si pudo.
-
-    No cobra prima de fichaje: la barrera es el sueldo semanal (se descuenta en el
-    cierre economico de los viernes)."""
+    """Contrata a `employee` en el club del jugador si hay cupo (sin prima; la barrera
+    es el sueldo semanal)."""
     club = game.player_club
     if club is None or not can_hire(club, employee.role):
         return False
@@ -85,60 +113,63 @@ def hire(game, employee: Employee) -> bool:
 
 
 def fire(game, employee: Employee) -> None:
-    """Despide a `employee` del club del jugador (libera cupo; sin indemnizacion)."""
     club = game.player_club
     if club is not None and employee in club.employees:
         club.employees.remove(employee)
 
 
 def staff_wage_bill(club: Club) -> int:
-    """Masa salarial semanal del cuerpo de trabajo."""
     return sum(e.weekly_wage for e in club.employees)
 
 
-# --- Agregadores de efecto (rendimiento decreciente al apilar) ---
-def injury_factor(club: Club) -> float:
-    """Factor multiplicativo (0,1] sobre la probabilidad de lesion.
+# --- Agregacion de efectos POR TIPO (sobre todos los empleados) ---
+def _strengths(club: Club, t: BonusType) -> list[float]:
+    """Fuerzas del bonus `t` en el plantel de empleados, de mayor a menor."""
+    return sorted((e.bonuses[t] for e in club.employees if t in e.bonuses), reverse=True)
 
-    Cada medico multiplica por `(1 - _DOC_PREVENT*skill/100)`; al apilar, el efecto
-    se compone (decreciente y acotado, nunca baja de 0)."""
+
+def _reduce_mult(club: Club, t: BonusType) -> float:
+    """Reduccion multiplicativa (0,1]: cada empleado compone su factor (para lesiones)."""
     factor = 1.0
-    for doc in employees_of(club, EmployeeRole.DOCTOR):
-        factor *= 1 - _DOC_PREVENT * doc.skill / 100
+    for s in _strengths(club, t):
+        factor *= 1 - _RATE[t] * s / 100
     return factor
 
 
+def _reduce_best(club: Club, t: BonusType) -> float:
+    """Reduccion del MEJOR empleado (no se apila): factor (0,1]."""
+    ss = _strengths(club, t)
+    return 1 - _RATE[t] * ss[0] / 100 if ss else 1.0
+
+
+def _add(club: Club, t: BonusType) -> float:
+    """Bonus aditivo con rendimiento decreciente y tope (para ingresos/taquilla/...)."""
+    total = 0.0
+    for i, s in enumerate(_strengths(club, t)):
+        total += _RATE[t] * s / 100 * (1.0 if i == 0 else 0.5)
+    return min(_CAP[t], total)
+
+
+# API que consumen los sistemas del juego.
+def injury_factor(club: Club) -> float:
+    return _reduce_mult(club, B.INJURY_PREVENT)
+
+
 def injury_weeks_factor(club: Club) -> float:
-    """Factor (0,1] sobre las semanas de baja de una lesion nueva.
-
-    Lo aporta el MEJOR medico (no se apila la recuperacion)."""
-    docs = employees_of(club, EmployeeRole.DOCTOR)
-    if not docs:
-        return 1.0
-    best = max(d.skill for d in docs)
-    return 1 - _DOC_HEAL * best / 100
+    return _reduce_best(club, B.INJURY_RECOVER)
 
 
-def role_effect_desc(role: EmployeeRole, skill: float) -> str:
-    """Texto corto del aporte de UN empleado de ese rol y habilidad (para la UI)."""
-    if role is EmployeeRole.DOCTOR:
-        return (f"-{round(_DOC_PREVENT * skill)}% riesgo de lesion, "
-                f"-{round(_DOC_HEAL * skill)}% tiempo de baja")
-    if role is EmployeeRole.FINANCE:
-        return f"+{round(_FIN_RATE * skill)}% ingresos (cuota + instalaciones)"
-    return ""
+def income_bonus(club: Club) -> float:
+    return _add(club, B.INCOME)
 
 
-def finance_income_bonus(club: Club) -> float:
-    """Fraccion extra de ingreso semanal por la direccion financiera.
+def gate_bonus(club: Club) -> float:
+    return _add(club, B.GATE)
 
-    El mejor director aporta `_FIN_RATE*skill/100`; los siguientes, la mitad; todo
-    acotado a `_FIN_CAP`."""
-    dirs = sorted(
-        (e.skill for e in employees_of(club, EmployeeRole.FINANCE)), reverse=True
-    )
-    bonus = 0.0
-    for i, skill in enumerate(dirs):
-        weight = 1.0 if i == 0 else 0.5
-        bonus += _FIN_RATE * skill / 100 * weight
-    return min(_FIN_CAP, bonus)
+
+def transfer_bonus(club: Club) -> float:
+    return _add(club, B.TRANSFERS)
+
+
+def wage_reduction(club: Club) -> float:
+    return _add(club, B.WAGES)

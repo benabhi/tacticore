@@ -17,7 +17,7 @@ from ..domain.coach import Coach
 from ..domain.country import Country
 from ..domain.employee import Employee
 from ..domain.enums import (
-    EmployeeRole, Foot, InjurySeverity, InjuryType, LeagueTier, Mentality,
+    BonusType, EmployeeRole, Foot, InjurySeverity, InjuryType, LeagueTier, Mentality,
     MatchKind, Morale, Position, Specialty)
 from ..domain.facility import Construction
 from ..domain.injury import Injury
@@ -31,6 +31,7 @@ from ..domain.sponsor import Sponsor, SponsorContract
 from ..domain.stadium import Stadium
 from ..domain.transfer import TransferOffer
 
+# v14: empleados con multiples bonus (employees.bonuses JSON en vez de skill).
 # v13: eventos accionables (notifications kind/payload/status) + patrocinadores
 # multiples (club.sponsors, cupos por tier).
 # v12: numero de temporada en meta (ascensos/descensos al cerrar la temporada).
@@ -39,7 +40,7 @@ from ..domain.transfer import TransferOffer
 # huerfana). v9: notificaciones, amistosos y libro de caja; v8 entrenamiento de
 # formaciones; v7 liderazgo/caracter; v6 mercado; v5 instalaciones; v4 estadio por
 # sectores + patrocinadores; v3 el DT.
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 class IncompatibleSaveError(Exception):
@@ -182,7 +183,7 @@ CREATE TABLE employees (
     last_name   TEXT NOT NULL,
     nationality TEXT NOT NULL,
     birth_date  TEXT,
-    skill       REAL NOT NULL,
+    bonuses     TEXT NOT NULL,
     weekly_wage INTEGER NOT NULL
 );
 
@@ -388,7 +389,8 @@ def _insert_employees(conn: sqlite3.Connection, club_id: int, club: Club) -> Non
     """Guarda el cuerpo de trabajo del club (medico, director financiero, ...)."""
     rows = [
         (club_id, e.role.value, e.first_name, e.last_name, e.nationality,
-         _iso(e.birth_date), e.skill, e.weekly_wage)
+         _iso(e.birth_date), json.dumps({t.value: v for t, v in e.bonuses.items()}),
+         e.weekly_wage)
         for e in club.employees
     ]
     if rows:
@@ -396,7 +398,7 @@ def _insert_employees(conn: sqlite3.Connection, club_id: int, club: Club) -> Non
             """
             INSERT INTO employees (
                 club_id, role, first_name, last_name, nationality, birth_date,
-                skill, weekly_wage
+                bonuses, weekly_wage
             ) VALUES (?,?,?,?,?,?,?,?)
             """,
             rows,
@@ -768,7 +770,7 @@ def _employees_from_db(conn: sqlite3.Connection, club_id: int) -> list[Employee]
             last_name=e["last_name"],
             nationality=e["nationality"],
             birth_date=_date(e["birth_date"]),
-            skill=e["skill"],
+            bonuses={BonusType(k): v for k, v in json.loads(e["bonuses"]).items()},
             weekly_wage=e["weekly_wage"],
         )
         for e in conn.execute(

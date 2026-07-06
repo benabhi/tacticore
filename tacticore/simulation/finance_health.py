@@ -16,6 +16,7 @@ from .economy import player_value
 from .finance_log import record_movement
 from .transfers import MIN_SQUAD
 from . import notifications as notif
+from . import staff
 
 
 def is_insolvent(club) -> bool:
@@ -34,9 +35,10 @@ def enforce_solvency(game, today: date) -> None:
     if club is None or not is_insolvent(club):
         return
     sold = []
+    gain_mult = 1 + staff.transfer_bonus(club)  # el bonus de "ventas" mejora la venta
     while club.capital < 0 and len(club.players) > MIN_SQUAD:
         victim = min(club.players, key=lambda p: player_value(p, today))
-        fee = player_value(victim, today)
+        fee = round(player_value(victim, today) * gain_mult)
         club.players.remove(victim)
         club.capital += fee
         record_movement(club, today, f"Venta forzada: {victim.full_name}", fee)

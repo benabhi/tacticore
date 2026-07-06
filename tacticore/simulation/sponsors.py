@@ -57,7 +57,7 @@ def _commercial_factor(club) -> float:
 
 def offer_quality(club) -> float:
     """Multiplicador (1.0-1.6) de calidad de una oferta: director financiero + comercio."""
-    extra = staff.finance_income_bonus(club) + _commercial_factor(club)
+    extra = staff.income_bonus(club) + _commercial_factor(club)
     return 1.0 + min(_QUALITY_CAP, extra)
 
 

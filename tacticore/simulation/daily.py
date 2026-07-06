@@ -183,10 +183,10 @@ def _weekly_economy(game, today: date, rng: random.Random, progress) -> None:
             if spon.active:
                 spon_pay += spon.weekly_pay
                 spon.weeks_remaining -= 1
-        wages = squad_wage_bill(club.players, today)
+        # Cuerpo de trabajo: bonus de ingresos, reduccion de sueldos y el costo del staff.
+        wages = round(squad_wage_bill(club.players, today) * (1 - staff.wage_reduction(club)))
         upkeep = stadium_upkeep(club.stadium.capacity)
-        # Cuerpo de trabajo: el director financiero suma ingreso; todos cobran sueldo.
-        fin_bonus = round((dues + facs) * staff.finance_income_bonus(club))
+        fin_bonus = round((dues + facs) * staff.income_bonus(club))
         staff_wages = staff.staff_wage_bill(club)
         income = dues + facs + spon_pay + fin_bonus
         expenses = wages + upkeep + staff_wages
@@ -275,6 +275,7 @@ def _credit_matchday_income(game, match, when: date) -> int:
     gate = matchday_income(match.home, match.away)
     if match.kind is MatchKind.FRIENDLY:
         gate = round(gate * economy.FRIENDLY_GATE_FACTOR)
+    gate = round(gate * (1 + staff.gate_bonus(match.home)))  # bonus de taquilla del staff
     match.home.capital += gate
     if match.home is game.player_club:
         record_movement(match.home, when, f"Taquilla vs {match.away.name}", gate)

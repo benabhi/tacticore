@@ -386,7 +386,8 @@ class ClubScreen(SectionScreen):
 
     def _emp_left_row(self, kind, e, selected: bool) -> Text:
         mark = " " if kind == "staff" else "+"
-        text = f" {mark}{e.full_name:<20.20} Hab {e.skill:>3.0f}  {money(e.weekly_wage)}"
+        nb = len(e.bonuses)  # cuantos bonus trae (para leer de un vistazo el "build")
+        text = f" {mark}{e.full_name:<19.19} {nb}b Pod {e.power:>3.0f} {money(e.weekly_wage)}"
         if selected:
             return Text(text[:_FAC_LEFT].ljust(_FAC_LEFT), style="bold black on green")
         return Text(text[:_FAC_LEFT], style="white" if kind == "staff" else "green")
@@ -403,13 +404,14 @@ class ClubScreen(SectionScreen):
             Text(e.full_name, style="bold white"),
             Text(role.value, style="white"),
             Text(f"Nacion: {e.nationality}   Edad: {e.age_on(today)}", style="grey70"),
-            Text(f"Habilidad: {e.skill:.1f}", style="white"),
-            Text(f"Sueldo: {money(e.weekly_wage)}/sem", style="white"),
+            Text(f"Poder {e.power:.0f}    Sueldo {money(e.weekly_wage)}/sem", style="white"),
             Text(""),
-            Text("Aporta:", style="grey70"),
+            Text("Bonus:", style="grey70"),
         ]
-        for wl in _wrap(staff.role_effect_desc(role, e.skill), _FAC_RIGHT - 2):
-            lines.append(Text(f"  {wl}", style="grey70"))
+        for btype, strength in e.bonuses.items():  # primario primero (orden de insercion)
+            live = staff.is_live(btype)
+            lines.append(Text(f"  {staff.bonus_desc(btype, strength)}",
+                              style="grey70" if live else "grey50"))
         lines.append(Text(""))
         if kind == "staff":
             lines.append(Text("[Supr] despedir", style="red"))
