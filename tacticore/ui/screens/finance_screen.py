@@ -57,10 +57,10 @@ class FinanceScreen(SectionScreen):
             return Text("Sin club todavia.", style="white")
 
         wages = squad_wage_bill(club.players, self._today)
-        sponsor = club.sponsor.weekly_pay if (club.sponsor and club.sponsor.active) else 0
+        sponsor = sum(s.weekly_pay for s in club.sponsors if s.active)
         incomes = [
             ("Cuota de socios", membership_income(club.members)),
-            ("Patrocinador", sponsor),
+            ("Patrocinadores", sponsor),
             ("Instalaciones", facility_income(club)),
         ]
         expenses = [
@@ -135,27 +135,31 @@ class FinanceScreen(SectionScreen):
         return t
 
     def _sponsors_text(self) -> Text:
+        from ...simulation import sponsors as sp
+
         club = self._club
         t = Text()
-        contract = club.sponsor if club else None
-        if contract is None:
-            append_section(t, "PATROCINADOR", [("Sin patrocinador.", "grey62")])
+        if club is None:
+            append_section(t, "PATROCINADORES", [("Sin club todavia.", "grey62")])
             return t
-        s = contract.sponsor
-        rows = [
-            (f"{'Marca':<14}{s.name}  ({s.sector})", "bold white"),
-            (f"{'Tier':<14}{s.tier}", "white"),
-            (f"{'Contrato':<14}{contract.weeks_remaining}/{contract.weeks_total} semanas restantes",
-             "white"),
-            (f"{'Pago semanal':<14}{money(contract.weekly_pay)}", "green"),
-        ]
-        if contract.promotion_bonus:
-            rows.append((f"{'Bonus ascenso':<14}{money(contract.promotion_bonus)}", "grey70"))
-        if contract.streak_bonus:
+        active = [s for s in club.sponsors if s.active]
+        slots = sp.slots_for_tier(club.tier)
+        rows = []
+        for c in active:
+            s = c.sponsor
+            extra = ""
+            if c.promotion_bonus:
+                extra += f"  asc {money(c.promotion_bonus)}"
+            if c.streak_bonus:
+                extra += f"  racha {money(c.streak_bonus)}/{c.streak_len}v"
             rows.append(
-                (f"{'Bonus racha':<14}{money(contract.streak_bonus)}  "
-                 f"(cada {contract.streak_len} victorias)", "grey70"))
-        append_section(t, "PATROCINADOR", rows)
+                (f"{s.name:<16.16} {money(c.weekly_pay):>8}/sem  "
+                 f"{c.weeks_remaining:>2}/{c.weeks_total} sem{extra}", "white"))
+        for _ in range(slots - len(active)):
+            rows.append(("(cupo libre: llegara una oferta en Notificaciones)", "grey62"))
+        if not rows:
+            rows.append(("Sin patrocinadores.", "grey62"))
+        append_section(t, f"PATROCINADORES  ({len(active)}/{slots} cupos)", rows)
         return t
 
     def _movements_text(self) -> Text:

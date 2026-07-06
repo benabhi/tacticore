@@ -7,9 +7,14 @@ no leidas se cuentan en la barra superior para que no se le pase nada por alto.
 
 Cada notificacion tiene un `subject` (titulo corto) y un `message` (detalle), la
 fecha en que se genero, una `category` (para colorear/filtrar) y si ya fue leida.
+
+Ademas de las informativas, hay EVENTOS accionables: notificaciones con un `kind`
+(ej. "sponsor_offer"), un `payload` con los datos del evento y un `status`
+("pending" hasta que el manager decide; luego "accepted"/"rejected"/"expired"). El
+sistema es generico: se despacha por `kind` y sirve para futuros eventos aleatorios.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 
@@ -22,3 +27,11 @@ class Notification:
     date: date
     category: str = "general"  # finanzas, partido, mercado, entrenamiento, ...
     read: bool = False
+    kind: str = ""             # ""=info; "sponsor_offer"=evento accionable
+    payload: dict | None = None  # datos del evento (ej. la oferta de patrocinio)
+    status: str = ""           # "pending"/"accepted"/"rejected"/"expired" (solo eventos)
+
+    @property
+    def is_pending_event(self) -> bool:
+        """True si es un evento que el manager todavia no resolvio."""
+        return bool(self.kind) and self.status == "pending"

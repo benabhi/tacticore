@@ -292,9 +292,12 @@ class CreateClubScreen(BaseScreen):
         ensure_all_fixtures(game)
         ensure_player_friendlies(game)
 
-        # Patrocinador elegido: se firma aca mismo y su bono de firma entra a la caja.
-        club.sponsor = self._offers[self._sponsor]
-        club.capital += club.sponsor.signing_bonus
+        # Patrocinador elegido: se firma aca mismo (primer cupo) y su bono de firma
+        # entra a la caja. Los cupos que se desbloquean al ascender y las renovaciones
+        # llegan despues como ofertas-evento en Notificaciones.
+        chosen = self._offers[self._sponsor]
+        club.sponsors = [chosen]
+        club.capital += chosen.signing_bonus
 
         savegame.save_game(game)
         app.switch_screen(OfficeScreen())

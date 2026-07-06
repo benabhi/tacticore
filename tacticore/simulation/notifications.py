@@ -20,21 +20,52 @@ TRAINING = "entrenamiento"
 SQUAD = "plantel"      # lesiones, tarjetas, suspensiones
 GENERAL = "general"
 
+# Tipos de EVENTO accionable (kind). "" = notificacion informativa comun.
+EVENT_SPONSOR_OFFER = "sponsor_offer"
 
-def notify(game, subject: str, message: str, category: str = GENERAL) -> Notification:
-    """Agrega una notificacion fechada al dia actual del juego."""
+
+def notify(game, subject: str, message: str, category: str = GENERAL,
+           kind: str = "", payload: dict | None = None) -> Notification:
+    """Agrega una notificacion fechada al dia actual del juego.
+
+    Con `kind` (ej. EVENT_SPONSOR_OFFER) y `payload` crea un EVENTO accionable que
+    arranca en status "pending" hasta que el manager lo resuelva."""
     n = Notification(
         subject=subject, message=message,
         date=game.calendar.current_date, category=category,
+        kind=kind, payload=payload, status="pending" if kind else "",
     )
     game.notifications.append(n)
-    if len(game.notifications) > _MAX:
-        del game.notifications[: len(game.notifications) - _MAX]
+    _trim(game)
     return n
 
 
+def _trim(game) -> None:
+    """Descarta las mas viejas si se pasa de `_MAX`, pero NUNCA un evento pendiente."""
+    excess = len(game.notifications) - _MAX
+    if excess <= 0:
+        return
+    keep = [n for n in game.notifications if n.is_pending_event]
+    droppable = [n for n in game.notifications if not n.is_pending_event]
+    del droppable[:excess]
+    # Reconstruye respetando el orden original (por fecha de llegada).
+    survivors = set(id(n) for n in keep) | set(id(n) for n in droppable)
+    game.notifications[:] = [n for n in game.notifications if id(n) in survivors]
+
+
+def pending_events(game) -> list[Notification]:
+    """Eventos accionables que el manager todavia no resolvio (mas nuevos primero)."""
+    return [n for n in reversed(game.notifications) if n.is_pending_event]
+
+
+def resolve(game, n: Notification, status: str) -> None:
+    """Cierra un evento ('accepted'/'rejected'/'expired') y lo marca leido."""
+    n.status = status
+    n.read = True
+
+
 def unread_count(game) -> int:
-    """Cantidad de notificaciones sin leer."""
+    """Cantidad de notificaciones sin leer (incluye eventos pendientes)."""
     return sum(1 for n in game.notifications if not n.read)
 
 
@@ -49,6 +80,8 @@ def all_newest_first(game) -> list[Notification]:
 
 
 def mark_all_read(game) -> None:
-    """Marca todas las notificaciones como leidas."""
+    """Marca leidas las notificaciones, salvo los eventos PENDIENTES (siguen avisando
+    en la barra hasta que el manager los resuelva)."""
     for n in game.notifications:
-        n.read = True
+        if not n.is_pending_event:
+            n.read = True

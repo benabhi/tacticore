@@ -123,15 +123,14 @@ def _credit_promotion_bonus(game, before) -> None:
     old_tier = before[0]
     if _TIER_ORDER.index(pc.tier) >= _TIER_ORDER.index(old_tier):
         return  # no ascendio
-    spon = pc.sponsor
-    if spon is None or not spon.active or spon.promotion_bonus <= 0:
+    bonus = sum(s.promotion_bonus for s in pc.sponsors if s.active and s.promotion_bonus > 0)
+    if bonus <= 0:
         return
-    pc.capital += spon.promotion_bonus
-    record_movement(pc, game.calendar.current_date, "Premio por ascenso",
-                    spon.promotion_bonus)
+    pc.capital += bonus
+    record_movement(pc, game.calendar.current_date, "Premio por ascenso", bonus)
     notif.notify(
         game, "Premio por ascenso",
-        f"El patrocinador pago ${spon.promotion_bonus:,} por el ascenso.".replace(",", "."),
+        f"Los patrocinadores pagaron ${bonus:,} por el ascenso.".replace(",", "."),
         notif.FINANCE,
     )
 

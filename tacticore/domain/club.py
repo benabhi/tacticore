@@ -29,7 +29,7 @@ class Club:
     players: list[Player] = field(default_factory=list)
     coach: Coach | None = None      # director tecnico (dirige al equipo)
     employees: list[Employee] = field(default_factory=list)  # cuerpo de trabajo (medico, etc.)
-    sponsor: SponsorContract | None = None  # contrato de patrocinio principal
+    sponsors: list[SponsorContract] = field(default_factory=list)  # contratos de patrocinio (cupos por tier)
     plots: int = 0                  # parcelas de terreno (limitan cuanto se construye)
     facilities: dict[str, int] = field(default_factory=dict)  # id edificio -> nivel
     stands_built: int = 0           # gradas de estadio construidas (ocupan parcela)

@@ -12,15 +12,16 @@ from rich.text import Text
 
 from ...simulation import notifications as notif
 from ...simulation.season import compute_standings
-from ..format import append_section, money
+from ..format import append_section, hint, money
 from .section_screen import SectionScreen
 
 # Color por categoria de notificacion (para leerlas de un vistazo).
 _CAT_STYLE = {
     notif.FINANCE: "green", notif.MATCH: "cyan", notif.MARKET: "yellow",
-    notif.TRAINING: "magenta", notif.GENERAL: "white",
+    notif.TRAINING: "magenta", notif.SQUAD: "red", notif.GENERAL: "white",
 }
-_NOTIF_TAB = 1  # indice de la pestaña Notificaciones
+_NOTIF_TAB = 1     # indice de la pestaña Notificaciones
+_NOTIF_PAGE = 8    # notificaciones por pagina (2 lineas c/u) en la pestaña
 
 
 class OfficeScreen(SectionScreen):
@@ -29,6 +30,10 @@ class OfficeScreen(SectionScreen):
     section_key = "O"
     section_title = "Oficina"
     tabs = ("Resumen", "Notificaciones", "Semana")
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._notif_sel = 0  # cursor en la lista de Notificaciones
 
     # --- Datos ---
     @property
@@ -71,10 +76,42 @@ class OfficeScreen(SectionScreen):
         return self._summary_text()
 
     def on_tab_shown(self, index: int) -> None:
-        # Al entrar a Notificaciones se dan por leidas (baja el contador de la barra).
+        # Al entrar a Notificaciones se dan por leidas las INFORMATIVAS (los eventos
+        # pendientes siguen avisando hasta que el manager los resuelva).
         if index == _NOTIF_TAB and self._game is not None:
             notif.mark_all_read(self._game)
             self._refresh_topbar()
+
+    def on_content_key(self, event) -> None:
+        if self._active_tab != _NOTIF_TAB or self._game is None:
+            return
+        total = len(notif.all_newest_first(self._game))
+        key = event.key
+        if key == "up":
+            event.stop(); self._notif_sel = max(0, self._notif_sel - 1); self._refresh_content()
+        elif key == "down":
+            event.stop(); self._notif_sel = min(total - 1, self._notif_sel + 1); self._refresh_content()
+        elif key in ("left", "pageup"):
+            event.stop(); self._notif_sel = max(0, self._notif_sel - _NOTIF_PAGE); self._refresh_content()
+        elif key in ("right", "pagedown"):
+            event.stop(); self._notif_sel = min(total - 1, self._notif_sel + _NOTIF_PAGE); self._refresh_content()
+        elif key == "enter":
+            event.stop(); self._open_selected()
+
+    def _open_selected(self) -> None:
+        """Abre el evento seleccionado (si es accionable). Despacha por `kind`."""
+        items = notif.all_newest_first(self._game)
+        if not (0 <= self._notif_sel < len(items)):
+            return
+        n = items[self._notif_sel]
+        if n.kind == notif.EVENT_SPONSOR_OFFER and n.status == "pending":
+            from .sponsor_offer_screen import SponsorOfferScreen
+
+            self.app.push_screen(SponsorOfferScreen(self._game, n, on_close=self._on_event_closed))
+
+    def _on_event_closed(self) -> None:
+        self._refresh_content()
+        self._refresh_topbar()
 
     def _summary_text(self) -> Text:
         game = self._game
@@ -139,20 +176,41 @@ class OfficeScreen(SectionScreen):
             append_section(t, "NOTIFICACIONES", [
                 ("Todavia no hay notificaciones.", "grey62"),
                 ("Aca vas a ver el cierre economico, resultados, fichajes,", "grey62"),
-                ("el resumen de entrenamiento y demas novedades del club.", "grey62"),
+                ("las ofertas de patrocinio y demas novedades del club.", "grey62"),
             ])
             return t
+        self._notif_sel = max(0, min(len(items) - 1, self._notif_sel))
+        pages = max(1, (len(items) + _NOTIF_PAGE - 1) // _NOTIF_PAGE)
+        page = self._notif_sel // _NOTIF_PAGE
+        rows = list(enumerate(items))[page * _NOTIF_PAGE: page * _NOTIF_PAGE + _NOTIF_PAGE]
+
         t.append("NOTIFICACIONES", style="bold green")
-        t.append(f"   ({len(items)} en total)\n", style="grey50")
-        t.append("-" * 76 + "\n", style="grey50")
-        for n in items[:18]:  # entran ~18 en la pantalla
-            when = n.date.strftime("%d-%m-%Y")
-            style = _CAT_STYLE.get(n.category, "white")
-            t.append(f"{when}  ", style="grey50")
-            t.append(n.subject, style=f"bold {style}")
-            t.append("\n")
-            t.append(f"          {n.message}\n", style="grey70")
+        t.append(f"   ({len(items)} en total)", style="grey50")
+        if pages > 1:
+            t.append(f"   Pag {page + 1}/{pages}", style="grey62")
+        t.append("\n")
+        t.append("-" * 80 + "\n", style="grey50")
+        for i, n in rows:
+            self._append_notif(t, n, i == self._notif_sel)
+        # relleno + ayuda al fondo (una linea antes del menu)
+        t.append("\n" * max(0, _NOTIF_PAGE - len(rows)) * 2)
+        t.append_text(hint(("arr/aba", "elegir"), ("izq/der", "pagina"),
+                           ("Enter", "abrir evento")))
         return t
+
+    def _append_notif(self, t: Text, n, selected: bool) -> None:
+        when = n.date.strftime("%d-%m-%Y")
+        pending = n.is_pending_event
+        mark = "[!]" if pending else "   "
+        style = "bold yellow" if pending else _CAT_STYLE.get(n.category, "white")
+        head = f"{mark} {when}  {n.subject}"
+        if selected:
+            t.append(("> " + head)[:80].ljust(80) + "\n", style="bold black on green")
+        else:
+            t.append(mark + " ", style="yellow" if pending else "grey50")
+            t.append(f"{when}  ", style="grey50")
+            t.append(n.subject + "\n", style=style)
+        t.append(f"          {n.message}"[:80] + "\n", style="grey70")
 
     def _week_text(self) -> Text:
         # El ciclo semanal: que se procesa cada dia al avanzar el calendario.

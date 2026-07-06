@@ -93,7 +93,7 @@ class ClubGenerator:
             manager=self._managers.generate(country_code, today),
             players=players,
             coach=self._coaches.generate(country_code, tier, today),
-            sponsor=self._sponsors.auto(tier),
+            sponsors=[self._sponsors.auto(tier)],
         )
 
     def player_club(
@@ -139,8 +139,8 @@ class ClubGenerator:
             manager=manager,
             players=players,
             coach=coach,
-            # El patrocinador lo ELIGE el jugador al crear el club (queda None aca).
-            sponsor=None,
+            # El patrocinador lo ELIGE el jugador al crear el club (se agrega alla).
+            sponsors=[],
             plots=START_PLOTS,  # arranca sin parcelas: hay que comprarlas
             formation_training=initial_training(coach.mentality),
         )

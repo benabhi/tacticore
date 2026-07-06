@@ -100,10 +100,10 @@ def test_no_relegation_below_E(monkeypatch):
 
 def test_promotion_bonus_credited_on_ascent(monkeypatch):
     game, club = _game(11, monkeypatch)
-    club.sponsor = SponsorContract(
+    club.sponsors = [SponsorContract(
         sponsor=Sponsor(name="X", sector="Y", tier=1),
         weeks_total=52, weeks_remaining=40, weekly_pay=500,
-        signing_bonus=0, promotion_bonus=50_000)
+        signing_bonus=0, promotion_bonus=50_000)]
     # simular que venia de E y ahora esta en D (ascendio)
     club.tier = LeagueTier.D
     cap0 = club.capital
@@ -114,10 +114,10 @@ def test_promotion_bonus_credited_on_ascent(monkeypatch):
 
 def test_promotion_bonus_not_credited_without_ascent(monkeypatch):
     game, club = _game(11, monkeypatch)
-    club.sponsor = SponsorContract(
+    club.sponsors = [SponsorContract(
         sponsor=Sponsor(name="X", sector="Y", tier=1),
         weeks_total=52, weeks_remaining=40, weekly_pay=500,
-        signing_bonus=0, promotion_bonus=50_000)
+        signing_bonus=0, promotion_bonus=50_000)]
     cap0 = club.capital  # sigue en E (before == E, actual == E: no ascendio)
     promotion._credit_promotion_bonus(game, before=(LeagueTier.E, 4, 8))
     assert club.capital == cap0

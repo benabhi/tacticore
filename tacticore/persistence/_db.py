@@ -6,6 +6,7 @@ van inline en la fila del club (hoy son 1:1, asi evitamos joins). Los enums se
 guardan por su `.value` y las fechas en ISO (`YYYY-MM-DD`).
 """
 
+import json
 import sqlite3
 from datetime import date
 
@@ -30,13 +31,15 @@ from ..domain.sponsor import Sponsor, SponsorContract
 from ..domain.stadium import Stadium
 from ..domain.transfer import TransferOffer
 
+# v13: eventos accionables (notifications kind/payload/status) + patrocinadores
+# multiples (club.sponsors, cupos por tier).
 # v12: numero de temporada en meta (ascensos/descensos al cerrar la temporada).
 # v11: cuerpo de trabajo (tabla employees: medico, director financiero, ...). v10:
 # lesion activa + tarjetas/suspension por jugador (se quita la tabla injuries
 # huerfana). v9: notificaciones, amistosos y libro de caja; v8 entrenamiento de
 # formaciones; v7 liderazgo/caracter; v6 mercado; v5 instalaciones; v4 estadio por
 # sectores + patrocinadores; v3 el DT.
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 
 class IncompatibleSaveError(Exception):
@@ -235,7 +238,10 @@ CREATE TABLE notifications (
     message  TEXT NOT NULL,
     date     TEXT NOT NULL,
     category TEXT NOT NULL,
-    read     INTEGER NOT NULL
+    read     INTEGER NOT NULL,
+    kind     TEXT NOT NULL DEFAULT '',
+    payload  TEXT,
+    status   TEXT NOT NULL DEFAULT ''
 );
 
 -- Libro de caja del club del jugador (movimientos en tiempo real). Orden = id.
@@ -371,7 +377,7 @@ def _insert_club(
             club.plots, club.stands_built,
         ),
     ).lastrowid
-    _insert_sponsor(conn, club_id, club.sponsor)
+    _insert_sponsors(conn, club_id, club)
     _insert_employees(conn, club_id, club)
     _insert_facilities(conn, club_id, club)
     _insert_movements(conn, club_id, club)
@@ -424,24 +430,24 @@ def _insert_facilities(conn: sqlite3.Connection, club_id: int, club: Club) -> No
             "VALUES (?,?,?)", ftrain)
 
 
-def _insert_sponsor(conn: sqlite3.Connection, club_id: int, contract) -> None:
-    """Guarda el contrato de patrocinio del club (si tiene)."""
-    if contract is None:
-        return
-    s = contract.sponsor
-    conn.execute(
-        """
-        INSERT INTO sponsors (
-            club_id, name, sector, tier, weeks_total, weeks_remaining, weekly_pay,
-            signing_bonus, promotion_bonus, streak_bonus, streak_len
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
-        """,
-        (
-            club_id, s.name, s.sector, s.tier, contract.weeks_total,
-            contract.weeks_remaining, contract.weekly_pay, contract.signing_bonus,
-            contract.promotion_bonus, contract.streak_bonus, contract.streak_len,
-        ),
-    )
+def _insert_sponsors(conn: sqlite3.Connection, club_id: int, club: Club) -> None:
+    """Guarda los contratos de patrocinio del club (0..N, cupos por tier)."""
+    rows = [
+        (club_id, c.sponsor.name, c.sponsor.sector, c.sponsor.tier, c.weeks_total,
+         c.weeks_remaining, c.weekly_pay, c.signing_bonus, c.promotion_bonus,
+         c.streak_bonus, c.streak_len)
+        for c in club.sponsors
+    ]
+    if rows:
+        conn.executemany(
+            """
+            INSERT INTO sponsors (
+                club_id, name, sector, tier, weeks_total, weeks_remaining, weekly_pay,
+                signing_bonus, promotion_bonus, streak_bonus, streak_len
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            rows,
+        )
 
 
 def _insert_matches(
@@ -522,13 +528,14 @@ def _insert_friendlies(
 def _insert_notifications(conn: sqlite3.Connection, game: GameState) -> None:
     """Guarda el registro de notificaciones (en orden de llegada)."""
     rows = [
-        (n.subject, n.message, _iso(n.date), n.category, int(n.read))
+        (n.subject, n.message, _iso(n.date), n.category, int(n.read),
+         n.kind, json.dumps(n.payload) if n.payload is not None else None, n.status)
         for n in game.notifications
     ]
     if rows:
         conn.executemany(
-            "INSERT INTO notifications (subject, message, date, category, read) "
-            "VALUES (?,?,?,?,?)", rows)
+            "INSERT INTO notifications (subject, message, date, category, read, "
+            "kind, payload, status) VALUES (?,?,?,?,?,?,?,?)", rows)
 
 
 def _insert_players(
@@ -632,7 +639,9 @@ def _notifications_from_db(conn: sqlite3.Connection) -> list[Notification]:
         Notification(
             subject=r["subject"], message=r["message"],
             date=date.fromisoformat(r["date"]), category=r["category"],
-            read=bool(r["read"]),
+            read=bool(r["read"]), kind=r["kind"],
+            payload=json.loads(r["payload"]) if r["payload"] is not None else None,
+            status=r["status"],
         )
         for r in conn.execute("SELECT * FROM notifications ORDER BY id")
     ]
@@ -703,7 +712,7 @@ def _club_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Club:
         players=players,
         coach=coach,
         employees=_employees_from_db(conn, row["id"]),
-        sponsor=_sponsor_from_db(conn, row["id"]),
+        sponsors=_sponsors_from_db(conn, row["id"]),
         plots=row["plots"],
         stands_built=row["stands_built"],
         facilities={
@@ -767,23 +776,19 @@ def _employees_from_db(conn: sqlite3.Connection, club_id: int) -> list[Employee]
     ]
 
 
-def _sponsor_from_db(conn: sqlite3.Connection, club_id: int) -> SponsorContract | None:
-    """Reconstruye el contrato de patrocinio del club (o None si no tiene)."""
-    srow = conn.execute(
-        "SELECT * FROM sponsors WHERE club_id = ?", (club_id,)
-    ).fetchone()
-    if srow is None:
-        return None
-    return SponsorContract(
-        sponsor=Sponsor(name=srow["name"], sector=srow["sector"], tier=srow["tier"]),
-        weeks_total=srow["weeks_total"],
-        weeks_remaining=srow["weeks_remaining"],
-        weekly_pay=srow["weekly_pay"],
-        signing_bonus=srow["signing_bonus"],
-        promotion_bonus=srow["promotion_bonus"],
-        streak_bonus=srow["streak_bonus"],
-        streak_len=srow["streak_len"],
-    )
+def _sponsors_from_db(conn: sqlite3.Connection, club_id: int) -> list[SponsorContract]:
+    """Reconstruye los contratos de patrocinio del club (0..N)."""
+    return [
+        SponsorContract(
+            sponsor=Sponsor(name=r["name"], sector=r["sector"], tier=r["tier"]),
+            weeks_total=r["weeks_total"], weeks_remaining=r["weeks_remaining"],
+            weekly_pay=r["weekly_pay"], signing_bonus=r["signing_bonus"],
+            promotion_bonus=r["promotion_bonus"], streak_bonus=r["streak_bonus"],
+            streak_len=r["streak_len"],
+        )
+        for r in conn.execute(
+            "SELECT * FROM sponsors WHERE club_id = ? ORDER BY id", (club_id,))
+    ]
 
 
 def _player_from_row(row: sqlite3.Row) -> Player:

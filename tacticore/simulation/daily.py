@@ -115,8 +115,10 @@ def advance_day(game, rng: random.Random | None = None, progress=None,
     # Las ofertas del jugador maduran un dia por vez (el vendedor responde).
     resolve_offers(game)
     wd = today.weekday()
-    if wd == 0:  # lunes: los socios reaccionan al partido del domingo
+    if wd == 0:  # lunes: reaccion de socios + ciclo de ofertas de patrocinio
         _fans_update(game, rng, progress)
+        from .sponsors import tick_sponsor_offers
+        tick_sponsor_offers(game, today, rng)
     elif wd == 2:  # miercoles: mercado + amistoso del jugador
         ai_market_step(game, rng)
         _play_friendly(game, today, rng, skip_player_match)
@@ -175,11 +177,12 @@ def _weekly_economy(game, today: date, rng: random.Random, progress) -> None:
     for i, club in enumerate(clubs, start=1):
         dues = membership_income(club.members)
         facs = facility_income(club)
-        spon = club.sponsor
+        # Patrocinadores (varios): suma de los pagos activos; cada contrato corre su cuenta.
         spon_pay = 0
-        if spon is not None and spon.active:
-            spon_pay = spon.weekly_pay
-            spon.weeks_remaining -= 1
+        for spon in club.sponsors:
+            if spon.active:
+                spon_pay += spon.weekly_pay
+                spon.weeks_remaining -= 1
         wages = squad_wage_bill(club.players, today)
         upkeep = stadium_upkeep(club.stadium.capacity)
         # Cuerpo de trabajo: el director financiero suma ingreso; todos cobran sueldo.
@@ -337,13 +340,14 @@ def _win_streak(league, club) -> int:
 
 
 def _maybe_streak_bonus(league, club) -> None:
-    """Paga el bonus del patrocinador si el club acaba de completar una racha."""
-    spon = club.sponsor
-    if spon is None or spon.streak_len <= 0 or spon.streak_bonus <= 0:
-        return
+    """Paga el bonus por racha de los patrocinadores que lo tengan."""
     streak = _win_streak(league, club)
-    if streak > 0 and streak % spon.streak_len == 0:
-        club.capital += spon.streak_bonus
+    if streak <= 0:
+        return
+    for spon in club.sponsors:
+        if spon.active and spon.streak_len > 0 and spon.streak_bonus > 0 \
+                and streak % spon.streak_len == 0:
+            club.capital += spon.streak_bonus
 
 
 # --- Domingo: reaccion de los hinchas ---
