@@ -36,7 +36,11 @@ _CAP: dict[BonusType, float] = {
     B.INCOME: 0.15, B.GATE: 0.12, B.TRANSFERS: 0.20, B.WAGES: 0.10,
 }
 # Tipos con efecto real hoy (los demas se muestran marcados "proximo").
-_LIVE = {B.INJURY_PREVENT, B.INJURY_RECOVER, B.INCOME, B.GATE, B.TRANSFERS, B.WAGES}
+_LIVE = {B.INJURY_PREVENT, B.INJURY_RECOVER, B.INCOME, B.GATE, B.TRANSFERS, B.WAGES,
+         B.TRAINING}
+# El bonus de entrenamiento aporta PUNTOS a la capacidad de entreno (no un %).
+_TRAIN_PTS_RATE = 0.20   # una fuerza 100 -> ~20 puntos de capacidad
+_TRAIN_PTS_CAP = 25
 
 # --- Sueldo (barrera; convexo en el poder total, escalado por tier) ---
 _WAGE_BASE = 600   # sueldo de un empleado de poder 50 en la liga E
@@ -76,6 +80,8 @@ def staff_wage(power: float, tier: LeagueTier) -> int:
 
 def bonus_desc(t: BonusType, strength: float) -> str:
     """Texto corto del efecto de UN bonus (para la UI). Inerte -> '(proximo)'."""
+    if t is B.TRAINING:
+        return f"+{round(_TRAIN_PTS_RATE * strength)} de entrenamiento"
     pct = round(_RATE[t] * strength)
     text = {
         B.INJURY_PREVENT: f"-{pct}% lesiones",
@@ -85,9 +91,17 @@ def bonus_desc(t: BonusType, strength: float) -> str:
         B.TRANSFERS: f"+{pct}% en ventas",
         B.WAGES: f"-{pct}% sueldos",
     }.get(t)
-    if text is None:  # inerte
+    if text is None:  # inerte (moral)
         return f"{t.value} (proximo)"
     return text
+
+
+def training_bonus(club: Club) -> float:
+    """Puntos de capacidad de entrenamiento que aportan los empleados (bonus TRAINING)."""
+    total = 0.0
+    for i, s in enumerate(_strengths(club, B.TRAINING)):
+        total += _TRAIN_PTS_RATE * s * (1.0 if i == 0 else 0.5)
+    return min(_TRAIN_PTS_CAP, total)
 
 
 # --- Cupos, contratacion, sueldos ---

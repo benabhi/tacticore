@@ -111,13 +111,13 @@ def test_new_live_bonuses_aggregate(monkeypatch):
     assert 0 < staff.wage_reduction(club) <= 0.10
 
 
-def test_inert_bonuses_have_no_hook(monkeypatch):
+def test_training_live_and_morale_inert(monkeypatch):
     game, club = _game(11, monkeypatch)
-    # un medico con extras inertes (entreno/moral): no cambian ningun agregado vivo
     staff.hire(game, _emp(EmployeeRole.DOCTOR,
                           {B.INJURY_PREVENT: 40, B.TRAINING: 90, B.MORALE: 90}))
-    assert not staff.is_live(B.TRAINING) and not staff.is_live(B.MORALE)
-    assert staff.income_bonus(club) == 0 and staff.gate_bonus(club) == 0
+    assert staff.is_live(B.TRAINING) and not staff.is_live(B.MORALE)   # TRAINING ya vive
+    assert staff.training_bonus(club) > 0                              # aporta capacidad
+    assert staff.income_bonus(club) == 0 and staff.gate_bonus(club) == 0  # moral no hace nada
 
 
 def test_weekly_economy_uses_staff_bonuses(monkeypatch):

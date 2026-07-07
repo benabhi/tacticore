@@ -242,8 +242,16 @@ def medical_recover_factor(club: Club) -> float:
 
 
 def training_boost(club: Club) -> float:
-    """Multiplicador de la ganancia de entrenamiento por el Centro de entrenamiento."""
+    """Multiplicador de la ganancia de familiaridad de formaciones (Centro de entreno)."""
     return 1 + _TRAINING_BOOST_PER_LVL * level(club, "training")
+
+
+_TRAINING_CAP_PTS_PER_LVL = 5  # puntos de capacidad de entreno por atributo, por nivel
+
+
+def training_capacity_pts(club: Club) -> int:
+    """Puntos que suma el Centro de entrenamiento al techo de entreno por atributo."""
+    return _TRAINING_CAP_PTS_PER_LVL * level(club, "training")
 
 
 def office_income_bonus(club: Club) -> float:

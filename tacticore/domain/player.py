@@ -90,6 +90,7 @@ class Player:
     potential: float = 1.0          # techo de habilidad (1-100)
     injury_proneness: float = 50.0  # propension a lesionarse (1-100)
     injury_history: list[Injury] = field(default_factory=list)
+    training_focus: str | None = None  # atributo que entrena esta semana (o None)
 
     # --- Mercado ---
     asking_price: int | None = None  # si esta seteado, esta a la venta a ese precio

@@ -124,8 +124,9 @@ def advance_day(game, rng: random.Random | None = None, progress=None,
         _play_friendly(game, today, rng, skip_player_match)
         if progress is not None:
             progress(day_event(today), 1, 1)
-    elif wd == 3:  # jueves: entrenamiento (resumen)
-        _training_summary(game)
+    elif wd == 3:  # jueves: entrenamiento por atributo del club del jugador
+        from .training import run_training
+        run_training(game, rng, today)
         if progress is not None:
             progress(day_event(today), 1, 1)
     elif wd == 4:  # viernes: cierre economico
@@ -153,19 +154,6 @@ def _play_friendly(game, today: date, rng: random.Random, skip: bool) -> None:
         return
     res = simulate_match(match.home, match.away, rng)
     finish_player_match(game, match, res.home_goals, res.away_goals)
-
-
-# --- Jueves: resumen de entrenamiento (por ahora, solo una notificacion) ---
-def _training_summary(game) -> None:
-    """Deja el resumen de entrenamiento como notificacion (contenido a futuro)."""
-    club = game.player_club
-    if club is None or club.coach is None:
-        return
-    notif.notify(
-        game, "Resumen de entrenamiento",
-        f"El plantel entreno esta semana bajo {club.coach.full_name}.",
-        notif.TRAINING,
-    )
 
 
 # --- Viernes: economia semanal ---

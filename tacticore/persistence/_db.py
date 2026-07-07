@@ -31,6 +31,7 @@ from ..domain.sponsor import Sponsor, SponsorContract
 from ..domain.stadium import Stadium
 from ..domain.transfer import TransferOffer
 
+# v15: entrenamiento por atributo (players.training_focus).
 # v14: empleados con multiples bonus (employees.bonuses JSON en vez de skill).
 # v13: eventos accionables (notifications kind/payload/status) + patrocinadores
 # multiples (club.sponsors, cupos por tier).
@@ -40,7 +41,7 @@ from ..domain.transfer import TransferOffer
 # huerfana). v9: notificaciones, amistosos y libro de caja; v8 entrenamiento de
 # formaciones; v7 liderazgo/caracter; v6 mercado; v5 instalaciones; v4 estadio por
 # sectores + patrocinadores; v3 el DT.
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 
 class IncompatibleSaveError(Exception):
@@ -54,6 +55,7 @@ _PLAYER_BASE_COLS = [
     "injury_proneness", "asking_price", "leadership", "character",
     "yellow_cards", "matches_suspended",
     "injury_type", "injury_severity", "injury_start", "injury_return",
+    "training_focus",
 ]
 _PLAYER_COLS = _PLAYER_BASE_COLS + list(ALL_ATTRS)
 
@@ -146,6 +148,7 @@ CREATE TABLE players (
     injury_severity    INTEGER,
     injury_start       TEXT,
     injury_return      TEXT,
+    training_focus     TEXT,
     {_PLAYER_ATTR_DDL}
 );
 
@@ -563,6 +566,7 @@ def _player_row(club_id: int, p: Player) -> tuple:
         inj.type.value if inj else None, inj.severity.value if inj else None,
         _iso(inj.start_date) if inj else None,
         _iso(inj.expected_return) if inj else None,
+        p.training_focus,
     )
     attrs = tuple(getattr(p, attr) for attr in ALL_ATTRS)
     return (club_id, *base, *attrs)
@@ -827,5 +831,6 @@ def _player_from_row(row: sqlite3.Row) -> Player:
         yellow_cards=row["yellow_cards"],
         matches_suspended=row["matches_suspended"],
         injury=injury,
+        training_focus=row["training_focus"],
         **{attr: row[attr] for attr in ALL_ATTRS},
     )
