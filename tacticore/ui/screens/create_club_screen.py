@@ -256,7 +256,7 @@ class CreateClubScreen(BaseScreen):
         self._show_help()
 
     def _create(self) -> None:
-        from .office_screen import OfficeScreen
+        from .club_screen import ClubScreen
 
         missing = self._missing_fields()
         if missing:
@@ -300,4 +300,4 @@ class CreateClubScreen(BaseScreen):
         club.capital += chosen.signing_bonus
 
         savegame.save_game(game)
-        app.switch_screen(OfficeScreen())
+        app.switch_screen(ClubScreen())

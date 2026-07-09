@@ -2,7 +2,7 @@
 
 La simulacion deja notificaciones (subject + message) cuando pasa algo de interes
 para el jugador: cierre economico, resultado de un partido, fichajes, resumen de
-entrenamiento, etc. La UI las muestra en Oficina > Notificaciones y cuenta las no
+entrenamiento, etc. La UI las muestra en Club > Notificaciones y cuenta las no
 leidas en la barra superior. Funciones puras sobre el estado (sin UI).
 """
 

@@ -16,10 +16,12 @@ from ...domain.enums import EmployeeRole
 from ...generators.employee_generator import EmployeeGenerator
 from ...persistence import savegame
 from ...simulation import facilities as fac
+from ...simulation import notifications as notif
 from ...simulation import staff
 from ...simulation import training as tr
 from ...simulation.economy import (
     membership_income, player_value, squad_wage_bill, stadium_upkeep)
+from ...simulation.season import compute_standings
 from ..format import append_section, hint, money
 from ..identicon import emblem_lines
 from .section_screen import SectionScreen
@@ -54,6 +56,12 @@ _FAC_LEFT = 40  # ancho de la columna izquierda (lista) en Instalaciones
 _FAC_RIGHT = 38  # ancho de la columna derecha (detalle): 80 - _FAC_LEFT - "| "
 _FAC_PAGE = 12  # edificios por pagina en la columna (paginada; escala al sumar edificios)
 _FAC_ROWS = 16  # alto del bloque de dos columnas (empuja la ayuda al fondo, con aire)
+# Color por categoria de notificacion (para leerlas de un vistazo).
+_CAT_STYLE = {
+    notif.FINANCE: "green", notif.MATCH: "cyan", notif.MARKET: "yellow",
+    notif.TRAINING: "magenta", notif.SQUAD: "red", notif.GENERAL: "white",
+}
+_NOTIF_PAGE = 8  # notificaciones por pagina (2 lineas c/u) en la pestana
 
 
 def _wrap(text: str, width: int) -> list[str]:
@@ -76,12 +84,14 @@ class ClubScreen(SectionScreen):
 
     section_key = "C"
     section_title = "Club"
-    tabs = ("Resumen", "Instalaciones", "Empleados", "Aficionados")
-    _FAC_TAB = 1    # indice de la pestana Instalaciones (interactiva)
-    _STAFF_TAB = 2  # indice de la pestana Empleados (interactiva)
+    tabs = ("Resumen", "Notificaciones", "Instalaciones", "Empleados")
+    _NOTIF_TAB = 1  # indice de la pestana Notificaciones (interactiva)
+    _FAC_TAB = 2    # indice de la pestana Instalaciones (interactiva)
+    _STAFF_TAB = 3  # indice de la pestana Empleados (interactiva)
 
     def __init__(self) -> None:
         super().__init__()
+        self._notif_sel = 0     # cursor en Notificaciones
         self._fac_sel = 0       # item seleccionado en Instalaciones (lista paginada)
         self._fac_plan: list = []  # cambios en borrador (se confirman con G)
         self._fac_msg = ""      # aviso (rechazo / confirmado)
@@ -93,12 +103,12 @@ class ClubScreen(SectionScreen):
         return game.player_club if game else None
 
     def render_tab(self, index: int) -> Text:
-        if index == 1:
+        if index == self._NOTIF_TAB:
+            return self._notifications_text()
+        if index == self._FAC_TAB:
             return self._facilities_text()
-        if index == 2:
+        if index == self._STAFF_TAB:
             return self._staff_text()
-        if index == 3:
-            return self._fans_text()
         return self._summary_text()
 
     def _summary_text(self) -> Text:
@@ -110,24 +120,31 @@ class ClubScreen(SectionScreen):
         cap = f"{club.stadium.capacity:,}".replace(",", ".")
         manager = club.manager.full_name if club.manager else "-"
 
-        # --- Cabecera: emblema (7 filas) al costado de la identidad ---
+        # --- Cabecera a tres columnas: emblema | identidad | pantallazo ---
         identity = [
             "",
-            (f"{club.name}  ({club.short_name})", "bold white"),
-            (f"Liga {club.tier.value}   {club.country_code}   Temporada {game.season}", "grey62"),
-            (f"Manager: {manager}", "white"),
-            (f"Estadio: {club.stadium.name}", "white"),
-            (f"Capacidad: {cap}   Socios: {club.members}", "grey70"),
-            (f"Hinchada: {club.fans_name}", "grey70"),
+            (f"{club.name}  ({club.short_name})"[:30], "bold white"),
+            (f"Liga {club.tier.value}   {club.country_code}   Temp {game.season}", "grey62"),
+            (f"Manager: {manager}"[:30], "white"),
+            (f"Estadio: {club.stadium.name}"[:30], "white"),
+            (f"Socios: {club.members}", "grey70"),
+            (f"Hinchada: {club.fans_name}"[:30], "grey70"),
         ]
+        glance = self._glance_lines(club, game)  # 7 filas (texto, estilo) para cols 44-80
         t = Text()
         emblem = emblem_lines(club.name)
         emb_w = max(len(r.plain) for r in emblem)
-        for i, row in enumerate(emblem):
-            t.append_text(row)
-            t.append(" " * (emb_w - len(row.plain) + 3))
+        _GLANCE_COL = 44
+        for i in range(len(emblem)):
+            row = Text()
+            row.append_text(emblem[i])
+            row.append(" " * (emb_w - len(emblem[i].plain) + 2))
             text, style = identity[i] if isinstance(identity[i], tuple) else (identity[i], "white")
-            t.append(text + "\n", style=style)
+            row.append(text, style=style)
+            t.append_text(row)
+            t.append(" " * max(1, _GLANCE_COL - len(row.plain)))
+            gtext, gstyle = glance[i]
+            t.append(gtext[:80 - _GLANCE_COL] + "\n", style=gstyle)
         t.append("-" * 80 + "\n", style="grey50")
 
         # --- Datos para el tablero ---
@@ -145,15 +162,23 @@ class ClubScreen(SectionScreen):
         from ...simulation import sponsors as sp
         n_spon, slots = sum(1 for s in club.sponsors if s.active), sp.slots_for_tier(club.tier)
         assigned = sum(tr.group_counts(club).values())
+        # Mercado y obras: un vistazo rapido (el detalle esta en sus pantallas).
+        on_sale = sum(1 for p in club.players if p.asking_price is not None)
+        n_offers = len(game.offers)
+        works = club.constructions
+        works_txt = (f"{len(works)} (prox {min(w.days_remaining for w in works)}d)"
+                     if works else "ninguna")
 
         left = self._sec("PLANTEL", [
             ("OVR medio", str(club.overall)),
             ("Jugadores", str(len(club.players))),
             ("Valor plantel", money(squad_value)),
             ("Baja/Sancion", f"{injured} les.  {suspended} susp."),
-        ]) + self._sec("INSTALACIONES", [
+        ]) + [Text("")] + self._sec("INSTALACIONES", [
             ("Construidas", f"{built}  (+{money(facs)}/sem)"),
+            ("Capacidad", cap),
             ("Parcelas", f"{fac.plots_free(club)}/{club.plots} libres"),
+            ("Obras", works_txt),
         ])
         right = self._sec("FINANZAS", [
             ("Caja", money(club.capital)),
@@ -161,7 +186,8 @@ class ClubScreen(SectionScreen):
             ("Semanal recur.", ("+" if net >= 0 else "-") + money(abs(net)),
              "green" if net >= 0 else "red"),
             ("Patrocinadores", f"{n_spon}/{slots} cupos"),
-        ]) + self._sec("STAFF Y ENTRENAMIENTO", [
+            ("Mercado", f"{on_sale} en venta, {n_offers} of."),
+        ]) + [Text("")] + self._sec("STAFF Y ENTRENAMIENTO", [
             ("Empleados", f"{staff.role_count(club, EmployeeRole.DOCTOR)} med, "
                           f"{staff.role_count(club, EmployeeRole.FINANCE)} fin"),
             ("Sueldo staff", f"{money(staff.staff_wage_bill(club))}/sem"),
@@ -176,8 +202,62 @@ class ClubScreen(SectionScreen):
             t.append("\n")
         return t
 
+    def _glance_lines(self, club, game) -> list:
+        """Pantallazo (7 filas) al costado de la identidad: proximo partido con
+        clima y tipo, posicion en la liga y ultima novedad."""
+        from ...simulation.weather import forecast
+
+        lines = [("PROXIMO PARTIDO", "bold green")]
+        m = self._next_match()
+        if m is None:
+            lines += [("  Sin proximos partidos", "grey62"), ("", "white"), ("", "white")]
+        else:
+            rival = m.away if m.home is club else m.home
+            sede = "Local" if m.home is club else "Visita"
+            when = m.match_date.strftime("%d-%m") if m.match_date else f"J{m.matchday}"
+            lines.append((f"  vs {rival.name}", "bold white"))
+            lines.append((f"  {sede}  {when}  {m.kind.value}", "white"))
+            lines.append((f"  Clima: {forecast(m, game.seed)}", "grey70"))
+        pos = self._position()
+        pos_txt = f"{pos[0]}/{pos[2]}  ({pos[1]} pts)" if pos else "-"
+        lines.append((f"  Posicion liga: {pos_txt}", "grey70"))
+        unread = notif.unread_count(game)
+        hdr = "NOVEDADES" + (f"  ({unread} sin leer)" if unread else "")
+        lines.append((hdr, "bold green"))
+        recent = notif.recent(game, 1)
+        lines.append((f"  {recent[0].subject}" if recent else "  (sin novedades)", "grey70"))
+        return lines
+
+    def _next_match(self):
+        from datetime import date
+
+        game = self.app.game
+        club = self._club
+        if club is None:
+            return None
+        league = game.player_league
+        mine = [m for m in (league.matches if league else [])
+                if m.home is club or m.away is club]
+        mine += list(game.friendlies)
+        pending = [m for m in mine if not m.played]
+        if not pending:
+            return None
+        return min(pending, key=lambda m: (m.match_date or date.max, m.matchday))
+
+    def _position(self):
+        game = self.app.game
+        league = game.player_league if game else None
+        club = self._club
+        if league is None or club is None:
+            return None
+        for pos, standing in enumerate(compute_standings(league), start=1):
+            if standing.club is club:
+                return pos, standing.points, len(league.clubs)
+        return None
+
     def _sec(self, title: str, rows: list) -> list:
-        """Un bloque del tablero: titulo + filas 'etiqueta valor' + una linea en blanco."""
+        """Un bloque del tablero: titulo + filas 'etiqueta valor' (sin blanco final;
+        el aire entre secciones lo agrega quien concatena)."""
         out = [Text(title, style="bold green")]
         for row in rows:
             label, value = row[0], row[1]
@@ -185,7 +265,6 @@ class ClubScreen(SectionScreen):
             line = Text(f"  {label:<15}", style="grey70")
             line.append(value, style=style)
             out.append(line)
-        out.append(Text(""))
         return out
 
     # --- Instalaciones (plan en borrador + lista paginada) ---
@@ -439,6 +518,9 @@ class ClubScreen(SectionScreen):
 
     # --- Teclado (pestanas interactivas: Instalaciones y Empleados) ---
     def on_content_key(self, event) -> None:
+        if self._active_tab == self._NOTIF_TAB:
+            self._notif_key(event)
+            return
         if self._club is None:
             return
         if self._active_tab == self._FAC_TAB:
@@ -477,9 +559,90 @@ class ClubScreen(SectionScreen):
             event.stop(); self._reset(); self._refresh_content()
 
     def on_tab_shown(self, index: int) -> None:
+        # Al entrar a Notificaciones se marcan leidas las informativas (baja el badge).
+        if index == self._NOTIF_TAB and self.app.game is not None:
+            notif.mark_all_read(self.app.game)
+            self._refresh_topbar()
         # Al salir de Instalaciones, se descartan los cambios en borrador no confirmados.
         if index != self._FAC_TAB and self._fac_plan:
             self._reset()
+
+    # --- Notificaciones (lista navegable + apertura de eventos accionables) ---
+    def _notif_key(self, event) -> None:
+        game = self.app.game
+        if game is None:
+            return
+        total = len(notif.all_newest_first(game))
+        key = event.key
+        if key == "up":
+            event.stop(); self._notif_sel = max(0, self._notif_sel - 1); self._refresh_content()
+        elif key == "down":
+            event.stop(); self._notif_sel = min(total - 1, self._notif_sel + 1); self._refresh_content()
+        elif key in ("left", "pageup"):
+            event.stop(); self._notif_sel = max(0, self._notif_sel - _NOTIF_PAGE); self._refresh_content()
+        elif key in ("right", "pagedown"):
+            event.stop(); self._notif_sel = min(total - 1, self._notif_sel + _NOTIF_PAGE); self._refresh_content()
+        elif key == "enter":
+            event.stop(); self._open_event()
+
+    def _open_event(self) -> None:
+        """Abre el evento seleccionado (si es accionable). Despacha por `kind`."""
+        game = self.app.game
+        items = notif.all_newest_first(game)
+        if not (0 <= self._notif_sel < len(items)):
+            return
+        n = items[self._notif_sel]
+        if n.kind == notif.EVENT_SPONSOR_OFFER and n.status == "pending":
+            from .sponsor_offer_screen import SponsorOfferScreen
+
+            self.app.push_screen(SponsorOfferScreen(game, n, on_close=self._on_event_closed))
+
+    def _on_event_closed(self) -> None:
+        self._refresh_content()
+        self._refresh_topbar()
+
+    def _notifications_text(self) -> Text:
+        game = self.app.game
+        items = notif.all_newest_first(game) if game else []
+        t = Text()
+        if not items:
+            append_section(t, "NOTIFICACIONES", [
+                ("Todavia no hay notificaciones.", "grey62"),
+                ("Aca vas a ver el cierre economico, resultados, fichajes,", "grey62"),
+                ("las ofertas de patrocinio y demas novedades del club.", "grey62"),
+            ])
+            return t
+        self._notif_sel = max(0, min(len(items) - 1, self._notif_sel))
+        pages = max(1, (len(items) + _NOTIF_PAGE - 1) // _NOTIF_PAGE)
+        page = self._notif_sel // _NOTIF_PAGE
+        rows = list(enumerate(items))[page * _NOTIF_PAGE: page * _NOTIF_PAGE + _NOTIF_PAGE]
+
+        t.append("NOTIFICACIONES", style="bold green")
+        t.append(f"   ({len(items)} en total)", style="grey50")
+        if pages > 1:
+            t.append(f"   Pag {page + 1}/{pages}", style="grey62")
+        t.append("\n")
+        t.append("-" * 80 + "\n", style="grey50")
+        for i, n in rows:
+            self._append_notif(t, n, i == self._notif_sel)
+        t.append("\n" * max(0, _NOTIF_PAGE - len(rows)) * 2)  # relleno para dejar aire
+        t.append_text(hint(("arr/aba", "elegir"), ("izq/der", "pagina"),
+                           ("Enter", "abrir evento")))
+        return t
+
+    def _append_notif(self, t: Text, n, selected: bool) -> None:
+        when = n.date.strftime("%d-%m-%Y")
+        pending = n.is_pending_event
+        mark = "[!]" if pending else "   "
+        style = "bold yellow" if pending else _CAT_STYLE.get(n.category, "white")
+        head = f"{mark} {when}  {n.subject}"
+        if selected:
+            t.append(("> " + head)[:80].ljust(80) + "\n", style="bold black on green")
+        else:
+            t.append(mark + " ", style="yellow" if pending else "grey50")
+            t.append(f"{when}  ", style="grey50")
+            t.append(n.subject + "\n", style=style)
+        t.append(f"          {n.message}"[:80] + "\n", style="grey70")
 
     def _staff_key(self, event) -> None:
         # OJO: el frame se queda con las letras de seccion (o/c/j/p/e/f) antes de
@@ -644,14 +807,3 @@ class ClubScreen(SectionScreen):
                               style="green" if can else "grey62"))
         return lines
 
-    def _fans_text(self) -> Text:
-        club = self._club
-        t = Text()
-        append_section(t, "AFICIONADOS", [
-            (f"Socios: {club.members if club else '-'}", "white"),
-            (f"Hinchada: {club.fans_name if club else '-'}", "white"),
-            "",
-            ("Proximamente: animo de la hinchada, altas y bajas de socios,", "grey62"),
-            ("expectativas y prensa del club (mas roleplay).", "grey62"),
-        ])
-        return t

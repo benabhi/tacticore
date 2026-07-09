@@ -1,6 +1,6 @@
 """Modal de una oferta de patrocinio (evento accionable).
 
-Se abre desde Oficina > Notificaciones con Enter sobre una oferta pendiente. Muestra
+Se abre desde Club > Notificaciones con Enter sobre una oferta pendiente. Muestra
 los terminos y deja ACEPTAR (firma el contrato, entra el bono de firma) o RECHAZAR
 (el cupo sigue libre y llegara otra oferta). Esc vuelve sin decidir (la oferta sigue
 pendiente hasta que caduque).

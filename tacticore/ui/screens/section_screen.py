@@ -1,13 +1,13 @@
 """Pantalla base de seccion con frame estandar (barra inferior + pestañas).
 
-Cada seccion del juego (Oficina, Club, Jugadores, Partidos, Entrenamiento,
-Finanzas) es una pantalla completa que comparte el mismo marco de 80x25:
+Cada seccion del juego (Club, Jugadores, Partidos, Entrenamiento, Finanzas) es
+una pantalla completa que comparte el mismo marco de 80x25:
 
     Fila 0 : TITULO ....................................  fecha   caja   (HUD)
     Fila 1 : [1] Pestaña  [2] Pestaña  ...                          (TabBar)
     Fila 2 : ======================================================  (separador)
     ...    : contenido de la pestaña activa
-    Fila 24: [O]ficina [C]lub ...                                   (NavBar)
+    Fila 24: [C]lub [J]ugadores ...                                 (NavBar)
 
 Las subclases declaran `section_key`, `title` y `tabs`, y devuelven el contenido
 de cada pestaña en `render_tab(index)`. La navegacion:
@@ -30,13 +30,13 @@ from ..widgets.top_bar import TopBar
 from .base_screen import BaseScreen
 
 # Letra de atajo -> clave de seccion (para la barra inferior).
-_SECTION_KEYS = {"o": "O", "c": "C", "j": "J", "p": "P", "e": "E", "f": "F"}
+_SECTION_KEYS = {"c": "C", "j": "J", "p": "P", "e": "E", "f": "F"}
 
 
 class SectionScreen(BaseScreen):
     """Base de las secciones: frame con HUD, pestañas, contenido y barra inferior."""
 
-    section_key = "O"
+    section_key = "C"
     section_title = ""
     tabs: tuple[str, ...] = ("Resumen",)
 
@@ -166,12 +166,10 @@ class SectionScreen(BaseScreen):
         from .club_screen import ClubScreen
         from .finance_screen import FinanceScreen
         from .matches_screen import MatchesScreen
-        from .office_screen import OfficeScreen
         from .players_screen import PlayersScreen
         from .training_screen import TrainingScreen
 
         screens = {
-            "O": OfficeScreen,
             "C": ClubScreen,
             "J": PlayersScreen,
             "P": MatchesScreen,

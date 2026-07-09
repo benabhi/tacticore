@@ -2,10 +2,10 @@
 
 Arranca en la pantalla de titulo. El flujo de una partida nueva es:
 
-    Titulo -> Carga (genera el mundo) -> Crea tu club -> Oficina
+    Titulo -> Carga (genera el mundo) -> Crea tu club -> Club (Resumen)
 
-Si hay una partida guardada, el Titulo ofrece "Continuar" y carga directo a la
-Oficina. Todo el estado vive en `self.game` (un `GameState`), que es lo que se
+Si hay una partida guardada, el Titulo ofrece "Continuar" y carga directo al
+Club. Todo el estado vive en `self.game` (un `GameState`), que es lo que se
 serializa a disco (ver persistence/savegame.py).
 """
 

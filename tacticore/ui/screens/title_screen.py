@@ -5,7 +5,7 @@ dibuja en una grilla de caracteres (con color por celda) y se vuelca a un unico
 `Static`. Asi el titulo va arriba, el slogan debajo, el prompt parpadeante mas
 abajo, y al pie una fila de cesped ASCII con la pelota apoyada en un costado.
 
-Al presionar Enter: si hay una partida guardada, la carga y va a la Oficina
+Al presionar Enter: si hay una partida guardada, la carga y va al Club
 ("Continuar"); si no, arranca una partida nueva (Carga -> Crea tu club).
 """
 
@@ -154,13 +154,13 @@ class TitleScreen(BaseScreen):
 
     def action_start(self) -> None:
         # Import local para evitar imports circulares.
-        from .office_screen import OfficeScreen
+        from .club_screen import ClubScreen
 
         if self.app.game is not None:
             # Ya hay una partida en curso en memoria.
-            self.app.switch_screen(OfficeScreen())
+            self.app.switch_screen(ClubScreen())
         elif savegame.compatible_save_exists():
-            # Continuar: cargar la partida guardada y entrar a la Oficina.
+            # Continuar: cargar la partida guardada y entrar al Club (Resumen).
             self.app.game = savegame.load_game()
             # Los fixtures y amistosos ya vienen persistidos; por las dudas,
             # aseguramos que existan (idempotente) para saves viejos que nunca
@@ -170,7 +170,7 @@ class TitleScreen(BaseScreen):
 
             ensure_all_fixtures(self.app.game)
             ensure_player_friendlies(self.app.game)
-            self.app.switch_screen(OfficeScreen())
+            self.app.switch_screen(ClubScreen())
         else:
             # Partida nueva: generar el mundo.
             from .loading_screen import LoadingScreen

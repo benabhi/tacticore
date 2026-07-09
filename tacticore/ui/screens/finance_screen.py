@@ -158,7 +158,7 @@ class FinanceScreen(SectionScreen):
             t.append("  (cupo libre: llegara una oferta en Notificaciones)\n", style="grey62")
         if not active and slots == 0:
             t.append("  Sin cupos de patrocinador en esta division.\n", style="grey62")
-        t.append("\n  Las ofertas llegan como evento a Oficina > Notificaciones cuando se\n"
+        t.append("\n  Las ofertas llegan como evento a Club > Notificaciones cuando se\n"
                  "  libera un cupo (al vencer un contrato o al ascender de division).",
                  style="grey50")
         return t

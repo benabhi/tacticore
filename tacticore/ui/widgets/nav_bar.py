@@ -12,7 +12,6 @@ from ..palette import ACCENT
 
 # Secciones: (tecla, etiqueta). El orden es el de la barra.
 SECTIONS: list[tuple[str, str]] = [
-    ("O", "Oficina"),
     ("C", "Club"),
     ("J", "Jugadores"),
     ("P", "Partidos"),
@@ -32,7 +31,7 @@ class NavBar(Static):
     }
     """
 
-    def __init__(self, active: str = "O", **kwargs) -> None:
+    def __init__(self, active: str = "C", **kwargs) -> None:
         super().__init__(**kwargs)
         self._active = active
 
@@ -49,7 +48,7 @@ class NavBar(Static):
         # del seleccionado (que se ve mas brillante). Los no seleccionados son
         # solo texto negro, sin fondo, asi se ve la barra debajo. El atajo lo
         # indican los corchetes [X] (ASCII), no un color. Separadores de 1 espacio
-        # para que las 7 secciones entren en 80 columnas.
+        # para que las secciones entren en 80 columnas.
         text = Text(no_wrap=True)
         text.append(" ")
         for i, (key, label) in enumerate(SECTIONS):
