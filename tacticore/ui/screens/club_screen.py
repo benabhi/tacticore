@@ -17,6 +17,9 @@ from ...generators.employee_generator import EmployeeGenerator
 from ...persistence import savegame
 from ...simulation import facilities as fac
 from ...simulation import staff
+from ...simulation import training as tr
+from ...simulation.economy import (
+    membership_income, player_value, squad_wage_bill, stadium_upkeep)
 from ..format import append_section, hint, money
 from ..identicon import emblem_lines
 from .section_screen import SectionScreen
@@ -102,32 +105,88 @@ class ClubScreen(SectionScreen):
         club = self._club
         if club is None:
             return Text("Sin club todavia.", style="white")
-
+        game = self.app.game
+        today = game.calendar.current_date
+        cap = f"{club.stadium.capacity:,}".replace(",", ".")
         manager = club.manager.full_name if club.manager else "-"
-        info = [
+
+        # --- Cabecera: emblema (7 filas) al costado de la identidad ---
+        identity = [
             "",
             (f"{club.name}  ({club.short_name})", "bold white"),
-            (f"Liga {club.tier.value}   Pais: {club.country_code}", "grey62"),
-            f"Manager: {manager}",
-            f"Socios: {club.members}",
-            f"Capital: {money(club.capital)}",
-            (f"OVR plantel: {club.overall}", "grey70"),
+            (f"Liga {club.tier.value}   {club.country_code}   Temporada {game.season}", "grey62"),
+            (f"Manager: {manager}", "white"),
+            (f"Estadio: {club.stadium.name}", "white"),
+            (f"Capacidad: {cap}   Socios: {club.members}", "grey70"),
+            (f"Hinchada: {club.fans_name}", "grey70"),
         ]
-        # El emblema (7 filas) al costado de la identidad, componiendo cada fila.
         t = Text()
-        rows = emblem_lines(club.name)
-        for i, emblem_row in enumerate(rows):
-            t.append_text(emblem_row)
-            t.append("   ")
-            text, style = info[i] if isinstance(info[i], tuple) else (info[i], "white")
-            t.append(text, style=style)
-            t.append("\n")
-        t.append("\n")
-        append_section(t, "ESTADIO E HINCHADA", [
-            f"Estadio: {club.stadium.name}  (cap. {club.stadium.capacity:,})".replace(",", "."),
-            f"Hinchada: {club.fans_name}",
+        emblem = emblem_lines(club.name)
+        emb_w = max(len(r.plain) for r in emblem)
+        for i, row in enumerate(emblem):
+            t.append_text(row)
+            t.append(" " * (emb_w - len(row.plain) + 3))
+            text, style = identity[i] if isinstance(identity[i], tuple) else (identity[i], "white")
+            t.append(text + "\n", style=style)
+        t.append("-" * 80 + "\n", style="grey50")
+
+        # --- Datos para el tablero ---
+        squad_value = sum(player_value(p, today) for p in club.players)
+        injured = sum(1 for p in club.players if p.injury is not None)
+        suspended = sum(1 for p in club.players if p.matches_suspended > 0)
+        built = sum(1 for lv in club.facilities.values() if lv > 0)
+        dues = membership_income(club.members)
+        facs = fac.facility_income(club)
+        spon = sum(s.weekly_pay for s in club.sponsors if s.active)
+        gestion = round((dues + facs) * staff.income_bonus(club))
+        wages = round(squad_wage_bill(club.players, today) * (1 - staff.wage_reduction(club)))
+        net = (dues + facs + spon + gestion) - (
+            wages + staff.staff_wage_bill(club) + stadium_upkeep(club.stadium.capacity))
+        from ...simulation import sponsors as sp
+        n_spon, slots = sum(1 for s in club.sponsors if s.active), sp.slots_for_tier(club.tier)
+        assigned = sum(tr.group_counts(club).values())
+
+        left = self._sec("PLANTEL", [
+            ("OVR medio", str(club.overall)),
+            ("Jugadores", str(len(club.players))),
+            ("Valor plantel", money(squad_value)),
+            ("Baja/Sancion", f"{injured} les.  {suspended} susp."),
+        ]) + self._sec("INSTALACIONES", [
+            ("Construidas", f"{built}  (+{money(facs)}/sem)"),
+            ("Parcelas", f"{fac.plots_free(club)}/{club.plots} libres"),
         ])
+        right = self._sec("FINANZAS", [
+            ("Caja", money(club.capital)),
+            ("Patrimonio", money(club.capital + squad_value)),
+            ("Semanal recur.", ("+" if net >= 0 else "-") + money(abs(net)),
+             "green" if net >= 0 else "red"),
+            ("Patrocinadores", f"{n_spon}/{slots} cupos"),
+        ]) + self._sec("STAFF Y ENTRENAMIENTO", [
+            ("Empleados", f"{staff.role_count(club, EmployeeRole.DOCTOR)} med, "
+                          f"{staff.role_count(club, EmployeeRole.FINANCE)} fin"),
+            ("Sueldo staff", f"{money(staff.staff_wage_bill(club))}/sem"),
+            ("Cap. entreno", f"{tr.capacity(club):.0f}  ({assigned} entrenando)"),
+        ])
+        for i in range(max(len(left), len(right))):
+            lline = left[i] if i < len(left) else Text("")
+            rline = right[i] if i < len(right) else Text("")
+            t.append_text(lline)
+            t.append(" " * max(0, 40 - len(lline.plain)))
+            t.append_text(rline)
+            t.append("\n")
         return t
+
+    def _sec(self, title: str, rows: list) -> list:
+        """Un bloque del tablero: titulo + filas 'etiqueta valor' + una linea en blanco."""
+        out = [Text(title, style="bold green")]
+        for row in rows:
+            label, value = row[0], row[1]
+            style = row[2] if len(row) > 2 else "white"
+            line = Text(f"  {label:<15}", style="grey70")
+            line.append(value, style=style)
+            out.append(line)
+        out.append(Text(""))
+        return out
 
     # --- Instalaciones (plan en borrador + lista paginada) ---
     def _fac_items(self) -> list:
