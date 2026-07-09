@@ -133,6 +133,12 @@ def execute_transfer(game, buyer: Club, seller: Club, player: Player, fee: int) 
         seller_gain = round(fee * (1 + staff.transfer_bonus(seller)))
     seller.capital += seller_gain
     buyer.capital -= fee
+    # Registrar el fichaje en el libro de caja del club del jugador (para Movimientos).
+    pc, when = game.player_club, game.calendar.current_date
+    if seller is pc:
+        record_movement(pc, when, f"Venta de {player.full_name}", seller_gain)
+    elif buyer is pc:
+        record_movement(pc, when, f"Compra de {player.full_name}", -fee)
     player.asking_price = None
     player.shirt_number = _next_shirt(buyer)
     player.origin_club = player.origin_club or seller.name

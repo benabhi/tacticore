@@ -192,12 +192,27 @@ class ClubScreen(SectionScreen):
         if not self._fac_plan:
             self._fac_msg = "No hay cambios para confirmar."
             return
+        from ...simulation.finance_log import record_movement
+
+        club = self._club
+        when = self.app.game.calendar.current_date
         n = len(self._fac_plan)
-        for act in self._fac_plan:
-            self._apply_action(self._club, act)
+        for act in self._fac_plan:  # aplicar y registrar el gasto en el libro de caja
+            before = club.capital
+            if self._apply_action(club, act):
+                spent = before - club.capital
+                if spent:
+                    record_movement(club, when, self._action_label(act), -spent)
         self._fac_plan = []
         savegame.save_game(self.app.game)
         self._fac_msg = f"{n} cambio(s) confirmado(s)."
+
+    def _action_label(self, action) -> str:
+        if action[0] == "build":
+            return f"Obra: {fac.spec(action[1]).name}"
+        if action[0] == "stand":
+            return f"Grada: {fac.stand_label(action[1])}"
+        return "Compra de parcela"
 
     def _reset(self) -> None:
         self._fac_plan = []
