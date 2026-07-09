@@ -7,6 +7,8 @@ Pestañas:
 - Aficionados: socios, animo de la hinchada y prensa (placeholder).
 """
 
+import copy
+
 from rich.text import Text
 
 from ...core.rng import new_rng
@@ -24,6 +26,16 @@ _ROLE_SECTION = {
     EmployeeRole.DOCTOR: "CUERPO MEDICO",
     EmployeeRole.FINANCE: "DIRECCION FINANCIERA",
 }
+# Roles que todavia no existen: se muestran como placeholder (con su detalle) para que
+# se vea que vienen. Cada uno: (titulo, descripcion de que hara).
+_FUTURE_ROLES = [
+    ("Asistente tecnico",
+     "Sumara a la capacidad de entrenamiento del plantel. Llega con el fichaje de DT."),
+    ("Psicologo deportivo",
+     "Subira la moral del plantel, cuando la moral pese en el rendimiento del partido."),
+    ("Cazatalentos",
+     "Ojeara juveniles para nutrir la Cantera (Complejo juvenil)."),
+]
 # Alto fijo del bloque de dos columnas de Empleados: empuja la ayuda al fondo del
 # area de contenido, dejando una linea en blanco antes del menu inferior (el total
 # queda en 19 lineas: cabecera + regla + _STAFF_ROWS + ayuda).
@@ -37,6 +49,8 @@ _FAC_STYLE = {
 }
 _FAC_LEFT = 40  # ancho de la columna izquierda (lista) en Instalaciones
 _FAC_RIGHT = 38  # ancho de la columna derecha (detalle): 80 - _FAC_LEFT - "| "
+_FAC_PAGE = 12  # edificios por pagina en la columna (paginada; escala al sumar edificios)
+_FAC_ROWS = 16  # alto del bloque de dos columnas (empuja la ayuda al fondo, con aire)
 
 
 def _wrap(text: str, width: int) -> list[str]:
@@ -65,8 +79,10 @@ class ClubScreen(SectionScreen):
 
     def __init__(self) -> None:
         super().__init__()
-        self._fac_sel = 0  # item seleccionado en Instalaciones
-        self._emp_sel = 0  # empleado seleccionado en Empleados
+        self._fac_sel = 0       # item seleccionado en Instalaciones (lista paginada)
+        self._fac_plan: list = []  # cambios en borrador (se confirman con G)
+        self._fac_msg = ""      # aviso (rechazo / confirmado)
+        self._emp_sel = 0       # empleado seleccionado en Empleados
 
     @property
     def _club(self):
@@ -113,49 +129,131 @@ class ClubScreen(SectionScreen):
         ])
         return t
 
-    # --- Instalaciones (interactiva: construir/mejorar edificios y gradas) ---
+    # --- Instalaciones (plan en borrador + lista paginada) ---
     def _fac_items(self) -> list:
-        """Lista ordenada de items navegables: edificios del catalogo + gradas."""
-        items = [("facility", s.id) for s in fac.CATALOG]
-        items += [("stand", sec) for sec in fac.STANDS]
-        return items
+        """Todos los items navegables: edificios del catalogo + gradas del estadio."""
+        return ([("facility", s.id) for s in fac.CATALOG]
+                + [("stand", sec) for sec in fac.STANDS])
 
+    # --- Plan en borrador (proyeccion sobre una copia; el club real no se toca) ---
+    def _apply_action(self, club, action) -> bool:
+        if action[0] == "build":
+            return fac.start_facility(club, action[1])
+        if action[0] == "stand":
+            return fac.start_stand(club, action[1])
+        return fac.buy_plot(club)  # ("plot",)
+
+    def _planned_club(self):
+        base = self._club
+        c = copy.copy(base)
+        c.facilities = dict(base.facilities)
+        c.constructions = list(base.constructions)
+        for act in self._fac_plan:
+            self._apply_action(c, act)
+        return c
+
+    def _item_action(self, kind, key):
+        return ("build", key) if kind == "facility" else ("stand", key)
+
+    def _plan_has(self, kind, key) -> bool:
+        return self._item_action(kind, key) in self._fac_plan
+
+    def _stage(self, action) -> None:
+        if self._apply_action(self._planned_club(), action):
+            self._fac_plan.append(action)
+            self._fac_msg = ""
+        else:
+            self._fac_msg = "No se puede: falta plata, parcela o no corresponde."
+
+    def _unstage_item(self, kind, key) -> None:
+        act = self._item_action(kind, key)
+        if act in self._fac_plan:
+            self._fac_plan.remove(act)
+            self._revalidate()
+            self._fac_msg = ""
+
+    def _unstage_plot(self) -> None:
+        for i in range(len(self._fac_plan) - 1, -1, -1):
+            if self._fac_plan[i] == ("plot",):
+                del self._fac_plan[i]
+                self._revalidate()
+                self._fac_msg = ""
+                return
+
+    def _revalidate(self) -> None:
+        """Deja en el plan solo las acciones que siguen aplicando (en orden)."""
+        base = self._club
+        c = copy.copy(base)
+        c.facilities = dict(base.facilities)
+        c.constructions = list(base.constructions)
+        self._fac_plan = [a for a in self._fac_plan if self._apply_action(c, a)]
+
+    def _confirm(self) -> None:
+        if not self._fac_plan:
+            self._fac_msg = "No hay cambios para confirmar."
+            return
+        n = len(self._fac_plan)
+        for act in self._fac_plan:
+            self._apply_action(self._club, act)
+        self._fac_plan = []
+        savegame.save_game(self.app.game)
+        self._fac_msg = f"{n} cambio(s) confirmado(s)."
+
+    def _reset(self) -> None:
+        self._fac_plan = []
+        self._fac_msg = ""
+
+    # --- Render ---
     def _facilities_text(self) -> Text:
         club = self._club
         if club is None:
             return Text("Sin club todavia.", style="white")
         items = self._fac_items()
         self._fac_sel = max(0, min(len(items) - 1, self._fac_sel))
+        planned = self._planned_club() if self._fac_plan else club
+        pages = max(1, (len(items) + _FAC_PAGE - 1) // _FAC_PAGE)
+        page = self._fac_sel // _FAC_PAGE
+
         t = Text()
         t.append("INSTALACIONES   ", style="bold green")
-        t.append(f"Parcelas {fac.plots_free(club)}/{club.plots}    ", style="white")
-        t.append(f"Parcela: {money(fac.plot_cost(club))}    ", style="grey70")
-        t.append(f"Ingreso {money(fac.facility_income(club))}/sem\n", style="grey70")
+        if self._fac_plan:
+            t.append(f"Caja {money(club.capital)}->{money(planned.capital)}   ", style="white")
+            t.append(f"Parc {fac.plots_free(club)}/{club.plots}->"
+                     f"{fac.plots_free(planned)}/{planned.plots}   ", style="grey70")
+        else:
+            t.append(f"Caja {money(club.capital)}   ", style="white")
+            t.append(f"Parc {fac.plots_free(club)}/{club.plots}   ", style="grey70")
+        t.append(f"Parcela {money(fac.plot_cost(planned))}\n", style="grey70")
         t.append("-" * 80 + "\n", style="grey50")
-        left = self._fac_left_lines(club, items)
-        right = self._fac_detail_lines(club, items)
-        for i in range(max(len(left), len(right))):
+
+        left = self._fac_left_lines(club, items, page)
+        # La paginacion va centrada al pie de la columna de edificios (ultima fila con "|"),
+        # asi no alarga el encabezado (que hace wrap con los valores proyectados).
+        while len(left) < _FAC_ROWS - 2:
+            left.append(Text(""))
+        left.append(Text(f"Pag {page + 1}/{pages}".center(_FAC_LEFT), style="grey62")
+                    if pages > 1 else Text(""))
+        right = self._fac_detail_lines(club, planned, items)
+        for i in range(_FAC_ROWS):
+            if i == _FAC_ROWS - 1:
+                t.append("\n")   # ultima fila en blanco: separa la ayuda del menu
+                continue
             lline = left[i] if i < len(left) else Text("")
             rline = right[i] if i < len(right) else Text("")
             t.append_text(lline)
-            t.append(" " * (_FAC_LEFT - len(lline.plain)))  # completa a _FAC_LEFT exacto
+            t.append(" " * max(0, _FAC_LEFT - len(lline.plain)))
             t.append("| ", style="grey50")
             t.append_text(rline)
             t.append("\n")
-        t.append_text(hint(("^v", "mover"), ("Enter", "construir/mejorar"),
-                           ("+", "comprar parcela")))
+        t.append_text(hint(("^v", "mover"), ("<>", "pagina"), ("Enter", "plan"),
+                           ("+/-", "parcela"), ("G", "confirmar"), ("Esc", "descartar"),
+                           sep="  "))
         return t
 
-    def _fac_left_lines(self, club, items) -> list:
-        lines = [Text("EDIFICIOS", style="bold green")]
-        for idx, (kind, key) in enumerate(items):
-            if kind == "facility":
-                lines.append(self._fac_row(club, idx, kind, key))
-        lines.append(Text("ESTADIO (gradas)", style="bold green"))
-        for idx, (kind, key) in enumerate(items):
-            if kind == "stand":
-                lines.append(self._fac_row(club, idx, kind, key))
-        return lines
+    def _fac_left_lines(self, club, items, page) -> list:
+        start = page * _FAC_PAGE
+        return [self._fac_row(club, idx, kind, key)
+                for idx, (kind, key) in list(enumerate(items))[start:start + _FAC_PAGE]]
 
     def _fac_row(self, club, idx, kind, key) -> Text:
         if kind == "facility":
@@ -168,7 +266,7 @@ class ClubScreen(SectionScreen):
                 "locked_req": "(requisito)", "coming_soon": "proximo",
             }[status]
             style = _FAC_STYLE[status]
-            text = f" {s.name:<24}{tag}"
+            name = s.name
         else:
             seats, _cost, _days, mt = fac.STANDS[key]
             status = fac.stand_status(club, key)
@@ -176,29 +274,39 @@ class ClubScreen(SectionScreen):
                    "locked_tier": f"(Liga {mt.value})"}[status]
             style = {"buildable": "green", "in_progress": "yellow",
                      "locked_tier": "grey50"}[status]
-            text = f" {fac.stand_label(key):<24}{tag}"
+            name = fac.stand_label(key)
+        plan = " [plan]" if self._plan_has(kind, key) else ""
+        text = f" {name:<20.20} {tag:<9}{plan}"
         if idx == self._fac_sel:
-            return Text(text.ljust(_FAC_LEFT), style="bold black on green")
-        return Text(text[:_FAC_LEFT], style=style)
+            return Text(text[:_FAC_LEFT].ljust(_FAC_LEFT), style="bold black on green")
+        return Text(text[:_FAC_LEFT], style="yellow" if plan else style)
 
-    def _fac_detail_lines(self, club, items) -> list:
-        kind, key = items[self._fac_sel]
+    def _fac_detail_lines(self, club, planned, items) -> list:
         lines = [Text("DETALLE", style="bold green")]
+        if not items:
+            lines.append(Text("Nada en esta categoria.", style="grey62"))
+            return lines
+        kind, key = items[self._fac_sel]
+        staged = self._plan_has(kind, key)
         if kind == "facility":
-            lines += self._fac_detail_facility(club, key)
+            lines += self._fac_detail_facility(club, key, staged)
         else:
-            lines += self._fac_detail_stand(club, key)
+            lines += self._fac_detail_stand(club, key, staged)
         lines.append(Text(""))
-        lines.append(Text("Obras en curso:", style="bold green"))
-        if club.constructions:
-            for c in club.constructions:
-                name = fac.spec(c.key).name if c.kind == "facility" else fac.stand_label(c.key)
-                lines.append(Text(f"  {name} ({c.days_remaining}d)", style="yellow"))
-        else:
-            lines.append(Text("  ninguna", style="grey62"))
+        if self._fac_plan:
+            lines.append(Text(f"PLAN: {len(self._fac_plan)} cambio(s)  "
+                              f"-{money(club.capital - planned.capital)}",
+                              style="bold yellow"))
+        if self._fac_msg:
+            for wl in _wrap(self._fac_msg, _FAC_RIGHT - 2):
+                lines.append(Text(wl, style="grey70"))
         return lines
 
-    def _fac_detail_facility(self, club, key) -> list:
+    def _plan_action_line(self, staged: bool) -> Text:
+        return (Text("[Enter] sacar del plan", style="yellow") if staged
+                else Text("[Enter] agregar al plan", style="green"))
+
+    def _fac_detail_facility(self, club, key, staged) -> list:
         s = fac.spec(key)
         lv = fac.level(club, key)
         status = fac.facility_status(club, key)
@@ -212,7 +320,7 @@ class ClubScreen(SectionScreen):
                 lines.append(Text(f"  {wl}", style="grey62"))
             return lines
         special = fac.facility_effect_desc(key)
-        if special:  # instalaciones deportivas/gestion: efecto especial (cupos/lesiones/...)
+        if special:
             lines.append(Text("Efecto x nivel:", style="grey70"))
             for wl in _wrap(special, _FAC_RIGHT - 2):
                 lines.append(Text(f"  {wl}", style="grey70"))
@@ -227,13 +335,10 @@ class ClubScreen(SectionScreen):
         if status in ("buildable", "upgradable"):
             target = lv + 1
             cost = fac.build_cost(s, target)
-            needs_plot = lv == 0
-            afford = club.capital >= cost and (not needs_plot or fac.plots_free(club) >= s.plots)
+            extra = f", {s.plots} parcela" if lv == 0 else ""
             verb = "Construir" if lv == 0 else f"Mejorar a Nv{target}"
-            extra = f", {s.plots} parcela" if needs_plot else ""
-            lines.append(Text(f"{verb}: {money(cost)} ({s.build_days}d{extra})",
-                              style="green" if afford else "red"))
-            lines.append(Text("[Enter] confirmar", style="grey62"))
+            lines.append(Text(f"{verb}: {money(cost)} ({s.build_days}d{extra})", style="white"))
+            lines.append(self._plan_action_line(staged))
         elif status == "locked_tier":
             lines.append(Text(f"Necesita liga {s.min_tier.value} o mejor", style="grey62"))
         elif status == "locked_req":
@@ -245,15 +350,13 @@ class ClubScreen(SectionScreen):
             lines.append(Text("En obra", style="yellow"))
         return lines
 
-    def _fac_detail_stand(self, club, key) -> list:
+    def _fac_detail_stand(self, club, key, staged) -> list:
         seats, cost, days, mt = fac.STANDS[key]
         status = fac.stand_status(club, key)
         lines = [Text(f"{fac.stand_label(key)}  (+{seats} asientos)", style="bold white")]
-        if status == "buildable":
-            afford = club.capital >= cost and fac.plots_free(club) >= 1
-            lines.append(Text(f"Construir: {money(cost)} ({days}d, 1 parcela)",
-                              style="green" if afford else "red"))
-            lines.append(Text("[Enter] confirmar", style="grey62"))
+        if status == "buildable" or staged:
+            lines.append(Text(f"Construir: {money(cost)} ({days}d, 1 parcela)", style="white"))
+            lines.append(self._plan_action_line(staged))
         elif status == "locked_tier":
             lines.append(Text(f"Necesita liga {mt.value} o mejor", style="grey62"))
         else:
@@ -270,22 +373,39 @@ class ClubScreen(SectionScreen):
             self._staff_key(event)
 
     def _facilities_key(self, event) -> None:
-        key = event.key
+        # OJO: 'g' no es letra de seccion (o/c/j/p/e/f), asi que llega aca para confirmar.
+        key, ch = event.key, event.character
         items = self._fac_items()
         if key == "up":
             event.stop(); self._fac_sel = max(0, self._fac_sel - 1); self._refresh_content()
         elif key == "down":
             event.stop(); self._fac_sel = min(len(items) - 1, self._fac_sel + 1); self._refresh_content()
+        elif key in ("left", "pageup"):
+            event.stop(); self._fac_sel = max(0, self._fac_sel - _FAC_PAGE); self._refresh_content()
+        elif key in ("right", "pagedown"):
+            event.stop(); self._fac_sel = min(len(items) - 1, self._fac_sel + _FAC_PAGE); self._refresh_content()
         elif key == "enter":
             event.stop()
-            kind, k = items[self._fac_sel]
-            if kind == "facility":
-                fac.start_facility(self._club, k)
-            else:
-                fac.start_stand(self._club, k)
-            self._refresh_content()
-        elif event.character == "+":
-            event.stop(); fac.buy_plot(self._club); self._refresh_content()
+            if items:
+                kind, k = items[self._fac_sel]
+                if self._plan_has(kind, k):
+                    self._unstage_item(kind, k)
+                else:
+                    self._stage(self._item_action(kind, k))
+                self._refresh_content()
+        elif ch == "+":
+            event.stop(); self._stage(("plot",)); self._refresh_content()
+        elif ch == "-":
+            event.stop(); self._unstage_plot(); self._refresh_content()
+        elif ch in ("g", "G"):
+            event.stop(); self._confirm(); self._refresh_content()
+        elif key == "escape":
+            event.stop(); self._reset(); self._refresh_content()
+
+    def on_tab_shown(self, index: int) -> None:
+        # Al salir de Instalaciones, se descartan los cambios en borrador no confirmados.
+        if index != self._FAC_TAB and self._fac_plan:
+            self._reset()
 
     def _staff_key(self, event) -> None:
         # OJO: el frame se queda con las letras de seccion (o/c/j/p/e/f) antes de
@@ -337,6 +457,7 @@ class ClubScreen(SectionScreen):
         for role in EmployeeRole:
             out += [("staff", role, e) for e in staff.employees_of(club, role)]
             out += [("cand", role, e) for e in self._candidates(role)]
+        out += [("future", i, None) for i in range(len(_FUTURE_ROLES))]  # placeholders
         return out
 
     def _staff_text(self) -> Text:
@@ -360,6 +481,9 @@ class ClubScreen(SectionScreen):
         left = self._emp_left_lines(club, today, items)
         right = self._emp_detail_lines(club, today, items)
         for i in range(_STAFF_ROWS):
+            if i == _STAFF_ROWS - 1:
+                t.append("\n")   # ultima fila en blanco: separa la ayuda del menu (sin "|")
+                continue
             lline = left[i] if i < len(left) else Text("")
             rline = right[i] if i < len(right) else Text("")
             t.append_text(lline)
@@ -388,6 +512,15 @@ class ClubScreen(SectionScreen):
                 lines.append(self._emp_left_row(kind, e, idx == self._emp_sel))
                 idx += 1
             lines.append(Text(""))
+        # Roles futuros (placeholder): titulo + una fila seleccionable por rol.
+        lines.append(Text("PROXIMAMENTE", style="bold grey62"))
+        for label, _desc in _FUTURE_ROLES:
+            text = f" {label}  (proximo)"
+            if idx == self._emp_sel:
+                lines.append(Text(text[:_FAC_LEFT].ljust(_FAC_LEFT), style="bold black on green"))
+            else:
+                lines.append(Text(text[:_FAC_LEFT], style="grey50"))
+            idx += 1
         return lines
 
     def _emp_left_row(self, kind, e, selected: bool) -> Text:
@@ -406,6 +539,16 @@ class ClubScreen(SectionScreen):
             lines.append(Text("Subi de division para mas cupos.", style="grey62"))
             return lines
         kind, role, e = items[self._emp_sel]
+        if kind == "future":                       # placeholder de un rol futuro
+            label, desc = _FUTURE_ROLES[role]
+            lines.append(Text(label, style="bold white"))
+            lines.append(Text("Rol futuro", style="grey70"))
+            lines.append(Text(""))
+            for wl in _wrap(desc, _FAC_RIGHT - 2):
+                lines.append(Text(wl, style="grey62"))
+            lines.append(Text(""))
+            lines.append(Text("Se implementara mas adelante.", style="yellow"))
+            return lines
         lines += [
             Text(e.full_name, style="bold white"),
             Text(role.value, style="white"),
