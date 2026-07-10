@@ -13,6 +13,7 @@ para pestañas, letras para secciones) las maneja `SectionScreen`.
 
 from rich.text import Text
 
+from ...domain.enums import Specialty
 from ...domain.player import (
     ALL_ATTRS, MENTAL_ATTRS, PHYSICAL_ATTRS, TECHNICAL_ATTRS)
 from ...domain.transfer import COUNTERED, PENDING
@@ -21,7 +22,8 @@ from ...simulation import transfers as T
 from ...simulation import youth
 from ..format import append_section, hint, money
 from ..player_labels import (
-    ATTR_GROUPS, ATTR_LABEL, ATTR_SHORT, FOOT_SHORT, SPECIALTY_SHORT)
+    ATTR_GROUPS, ATTR_LABEL, ATTR_SHORT, FOOT_SHORT, SPECIALTY_LABEL,
+    SPECIALTY_SHORT)
 from .section_screen import SectionScreen
 
 
@@ -42,16 +44,21 @@ def _mk_attr_key(attr: str):
     return lambda p, today: getattr(p, attr)
 
 
-# Campos por los que se puede ordenar la plantilla, agrupados (para el selector en
-# grilla). Cada campo: (id, etiqueta, funcion(player, today) -> valor comparable).
+# Campos por los que se puede ordenar la plantilla, agrupados en 5 columnas (para el
+# selector en grilla). Cada campo: (id, etiqueta, funcion(player, today) -> valor
+# comparable). La especialidad se ordena por su sigla ("-" para los sin especialidad).
 _SORT_GROUPS = [
-    ("RESUMEN", [
+    ("RENDIMIENTO", [
         ("ovr", "OVR", lambda p, t: p.overall),
         ("pot", "POT", lambda p, t: p.potential),
         ("form", "Forma", lambda p, t: p.form),
         ("fit", "Fitness", lambda p, t: p.fitness),
+    ]),
+    ("PERFIL", [
         ("age", "Edad", lambda p, t: p.age_on(t)),
         ("morale", "Moral", lambda p, t: p.morale.value),
+        ("specialty", "Especialidad",
+         lambda p, t: SPECIALTY_SHORT[p.specialty] if p.specialty else "-"),
         ("name", "Nombre", lambda p, t: p.last_name.lower()),
         ("pos", "Posicion", lambda p, t: p.position.value),
         ("shirt", "Dorsal", lambda p, t: p.shirt_number or 0),
@@ -114,9 +121,10 @@ class PlayersScreen(SectionScreen):
         # --- Orden de la plantilla ---
         self._sort_key = None  # id del campo por el que se ordena (None = orden de plantel)
         self._sort_desc = True  # True = descendente (mayor primero)
-        self._sorting = False  # selector de orden abierto
+        self._sorting = False  # selector de orden/filtro abierto
         self._sort_col = 0     # columna (grupo) resaltada en el selector
         self._sort_row = 0     # fila (campo) resaltada en el selector
+        self._spec_filter = None  # filtrar por especialidad (Specialty o None = todas)
         self._youth_sel = 0    # prospecto seleccionado en la Cantera
         # --- Estado del Mercado ---
         self._mkt_sel = 0      # listado seleccionado
@@ -138,20 +146,33 @@ class PlayersScreen(SectionScreen):
         return self.app.game.calendar.current_date
 
     def _haystack(self, p) -> str:
-        """Todos los valores visibles del jugador, en minusculas, para buscar."""
-        return " ".join(self._cell_values(p)).lower()
+        """Todos los valores visibles del jugador + su especialidad completa, para buscar."""
+        extra = SPECIALTY_LABEL[p.specialty] if p.specialty else ""
+        return " ".join(self._cell_values(p) + [extra]).lower()
 
-    def _visible(self) -> list:
-        """Jugadores tras el filtro de busqueda y el orden elegido (copia, no muta)."""
+    def _filtered_players(self) -> list:
+        """Jugadores tras el buscador y el filtro de especialidad (sin ordenar)."""
         players = self._players
         if self._query:
             q = self._query.lower()
             players = [p for p in players if q in self._haystack(p)]
+        if self._spec_filter is not None:
+            players = [p for p in players if p.specialty is self._spec_filter]
+        return players
+
+    def _visible(self) -> list:
+        """Jugadores tras buscador + filtro de especialidad + orden (copia, no muta)."""
+        players = self._filtered_players()
         if self._sort_key is not None:
             _label, fn = _SORT_BY_ID[self._sort_key]
             players = sorted(players, key=lambda p: fn(p, self._today),
                              reverse=self._sort_desc)
         return players
+
+    def _squad_specialties(self) -> list:
+        """Especialidades presentes HOY en el plantel, en orden de enum (dinamico)."""
+        present = {p.specialty for p in self._players if p.specialty is not None}
+        return [s for s in Specialty if s in present]
 
     # --- Render por pestaña ---
     def render_tab(self, index: int) -> Text:
@@ -451,12 +472,16 @@ class PlayersScreen(SectionScreen):
         page_players = visible[start:start + size]
 
         t = Text()
-        subtitle = f"{club.name}   {len(self._players)} jugadores"
-        if self._query:
-            subtitle += f"   [{total} coinciden]"
-        subtitle += f"   Orden: {self._sort_desc_text()}   "
-        t.append(subtitle, style="grey62")
-        t.append_text(hint(("O", "ordenar")))   # la tecla en amarillo (acento)
+        squad = len(self._players)
+        filtered = self._query or self._spec_filter is not None
+        status = f"{club.name}   "
+        status += f"{total}/{squad} jug" if filtered else f"{squad} jugadores"
+        status += f"   Orden: {self._sort_desc_text()}"
+        if self._spec_filter is not None:
+            status += f"   Filtro: {SPECIALTY_LABEL[self._spec_filter]}"
+        status += "   "
+        t.append(status[:66], style="grey62")   # se acota: el detalle completo esta en [O]
+        t.append_text(hint(("O", "filtros")))   # la tecla en amarillo (acento)
         t.append("\n")
         self._append_header(t)
         if total == 0:
@@ -516,35 +541,82 @@ class PlayersScreen(SectionScreen):
                     self._sort_col, self._sort_row = ci, ri
         self._refresh_content()
 
+    def _picker_field(self):
+        """El campo (id, etiqueta, fn) resaltado en el selector."""
+        return _SORT_GROUPS[self._sort_col][1][self._sort_row]
+
+    def _spec_filter_text(self) -> str:
+        """Etiqueta del filtro de especialidad actual (o 'Todas')."""
+        return SPECIALTY_LABEL[self._spec_filter] if self._spec_filter else "Todas"
+
     def _sort_picker_text(self) -> Text:
+        fid, label, fn = self._picker_field()
         t = Text()
-        t.append("ORDENAR POR", style="bold green")
-        t.append(f"   (actual: {self._sort_desc_text()})\n", style="grey62")
+        t.append("ORDENAR / FILTRAR", style="bold green")
+        t.append(f"   (orden: {self._sort_desc_text()})\n", style="grey62")
+        # Filtro por especialidad (dinamico: solo las presentes en el plantel).
+        n_spec = len(self._squad_specialties())
+        t.append("Filtro especialidad: ", style="grey62")
+        t.append(self._spec_filter_text(),
+                 style="bold cyan" if self._spec_filter else "white")
+        t.append("   ")
+        t.append_text(hint(("F", f"cambiar ({n_spec} en el plantel)")))
+        t.append("\n")
         t.append("-" * _WIDTH + "\n", style="grey50")
-        col_w = 20
+        # --- Grilla de campos (5 columnas) ---
+        col_w = _WIDTH // len(_SORT_GROUPS)   # 80 / 5 = 16
         for gtitle, _fields in _SORT_GROUPS:
             t.append(gtitle.ljust(col_w), style="bold green")
         t.append("\n")
-        maxrows = max(len(f) for _g, f in _SORT_GROUPS)
-        for r in range(maxrows):
+        for r in range(max(len(f) for _g, f in _SORT_GROUPS)):
             for ci, (_g, fields) in enumerate(_SORT_GROUPS):
                 if r >= len(fields):
                     t.append(" " * col_w); continue
-                fid, label, _fn = fields[r]
+                f2id, f2label, _f2 = fields[r]
                 sel = ci == self._sort_col and r == self._sort_row
-                text = f" {'>' if sel else ' '}{label}"
+                text = f" {'>' if sel else ' '}{f2label}"
                 if sel:
                     style = "bold black on green"
-                elif fid == self._sort_key:
+                elif f2id == self._sort_key:
                     style = "bold cyan"      # el campo por el que se ordena ahora
                 else:
                     style = "white"
                 t.append(text[:col_w].ljust(col_w), style=style)
             t.append("\n")
+        # --- Vista previa en vivo: el plantel (filtrado) rankeado por el campo resaltado ---
         t.append("\n")
-        t.append_text(hint(("Flechas", "mover"), ("Enter", "aplicar (repetir invierte)"),
-                           ("Esc", "cancelar")))
+        pdesc = (not self._sort_desc) if fid == self._sort_key else (fid not in _SORT_TEXT)
+        base = self._filtered_players()
+        t.append(f"VISTA PREVIA   {label} {'desc' if pdesc else 'asc'}   "
+                 f"({len(base)} jug.)\n", style="bold green")
+        ranked = sorted(base, key=lambda p: fn(p, self._today), reverse=pdesc)
+        prows = 6
+        for i in range(prows):
+            line = Text()
+            for c in range(2):                # dos columnas de ranking
+                idx = c * prows + i
+                if idx < len(ranked):
+                    self._preview_cell(line, idx + 1, ranked[idx], fid, fn)
+                else:
+                    line.append(" " * 40)
+            t.append_text(line); t.append("\n")
+        t.append_text(hint(("Flechas", "mover"), ("Enter", "ordenar (repetir invierte)"),
+                           ("F", "filtrar"), ("Esc", "cerrar")))
         return t
+
+    def _preview_cell(self, line: Text, rank: int, p, fid: str, fn) -> None:
+        """Una celda del ranking de la vista previa: 'N. Nombre   valor'."""
+        val = fn(p, self._today)
+        if fid == "name":
+            disp = ""                          # el nombre ya se muestra
+        elif isinstance(val, float):
+            disp = f"{val:.1f}"
+        else:
+            disp = str(val)
+        line.append(f" {rank:>2}. ", style="grey50")   # 5
+        line.append(f"{p.full_name:<24.24}", style="white")  # 24
+        line.append(f" {disp:>6}", style=_attr_color(val) if isinstance(val, float) else "grey70")  # 7
+        line.append(" " * 4)                    # relleno hasta 40 por columna (5+24+7+4)
 
     def _key_sorting(self, event) -> None:
         key = event.key
@@ -561,10 +633,22 @@ class PlayersScreen(SectionScreen):
             event.stop(); self._sort_col = min(len(_SORT_GROUPS) - 1, self._sort_col + 1)
             self._sort_row = min(self._sort_row, len(_SORT_GROUPS[self._sort_col][1]) - 1)
             self._refresh_content()
+        elif event.character in ("f", "F"):
+            event.stop(); self._cycle_spec_filter(); self._refresh_content()
         elif key == "enter":
             event.stop(); self._apply_sort()
         elif key == "escape":
             event.stop(); self._sorting = False; self._refresh_content()
+
+    def _cycle_spec_filter(self) -> None:
+        """Cicla el filtro de especialidad: Todas -> cada especialidad presente -> Todas."""
+        options = [None] + self._squad_specialties()   # dinamico segun el plantel
+        try:
+            i = options.index(self._spec_filter)
+        except ValueError:
+            i = 0                                       # el filtro actual ya no esta presente
+        self._spec_filter = options[(i + 1) % len(options)]
+        self._selected = 0
 
     def _apply_sort(self) -> None:
         """Aplica el campo resaltado. Si ya era el activo, invierte el sentido."""
@@ -700,9 +784,10 @@ class PlayersScreen(SectionScreen):
         self._refresh_content()
 
     def content_captures_keys(self) -> bool:
-        # Con un buscador o el input de oferta abiertos, la pestaña consume TODO el
-        # teclado (para escribir sin que el marco cambie de seccion/pestaña).
-        return ((self._active_tab == _PLANTILLA and self._searching)
+        # Con un buscador, el input de oferta o el selector de orden/filtro abiertos, la
+        # pestaña consume TODO el teclado (para escribir/usar letras como 'F' sin que el
+        # marco cambie de seccion/pestaña).
+        return ((self._active_tab == _PLANTILLA and (self._searching or self._sorting))
                 or (self._active_tab == _MERCADO and (self._mkt_search or self._offering)))
 
     def on_content_key(self, event) -> None:
