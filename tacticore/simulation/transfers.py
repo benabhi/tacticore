@@ -20,6 +20,7 @@ from .finance_log import record_movement
 
 MIN_SQUAD = 14   # nadie vende por debajo de esto
 MAX_SQUAD = 24   # nadie compra por encima de esto
+MIN_ROSTER = 11  # piso duro de plantel: nunca menos de 11 (once titular)
 _COUNTER_FLOOR = 0.85  # ofertas por debajo del 85% del precio se rechazan
 
 
@@ -43,6 +44,21 @@ def list_player(player: Player, price: int | None = None, today=None) -> None:
 
 def unlist_player(player: Player) -> None:
     player.asking_price = None
+
+
+def can_release(club: Club) -> bool:
+    """True si el club puede despedir a un jugador sin bajar de `MIN_ROSTER`."""
+    return len(club.players) > MIN_ROSTER
+
+
+def release_player(club: Club, player: Player) -> bool:
+    """Despide (rescinde) a un jugador: lo saca del plantel gratis. No baja de 11.
+
+    Devuelve si se concreto. No entra plata (es una recision, no una venta)."""
+    if player not in club.players or not can_release(club):
+        return False
+    club.players.remove(player)
+    return True
 
 
 def all_listings(game) -> list[tuple[Player, Club]]:

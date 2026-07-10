@@ -67,6 +67,7 @@ class PlayersScreen(SectionScreen):
         self._searching = False  # si esta activo el buscador (se escribe)
         self._query = ""      # texto del filtro en vivo
         self._compare_from = None  # jugador marcado para comparar (A); None si no hay
+        self._releasing = None  # jugador a confirmar despido (None = no hay confirmacion)
         self._youth_sel = 0    # prospecto seleccionado en la Cantera
         # --- Estado del Mercado ---
         self._mkt_sel = 0      # listado seleccionado
@@ -418,12 +419,21 @@ class PlayersScreen(SectionScreen):
             t.append(f"Comparar con {self._compare_from.full_name:.16}: ",
                      style="bold cyan")
             t.append_text(hint(("Enter", "2do jugador"), ("Esc", "cancelar")))
+        elif self._releasing is not None:
+            # Confirmacion del despido (o aviso si el plantel esta en el minimo).
+            if T.can_release(self.app.game.player_club):
+                t.append(f"Despedir a {self._releasing.full_name:.20}? ", style="bold red")
+                t.append_text(hint(("Enter", "si"), ("Esc", "no")))
+            else:
+                t.append(f"Plantel en el minimo ({T.MIN_ROSTER}). No podes despedir. ",
+                         style="bold yellow")
+                t.append_text(hint(("Esc", "volver")))
         else:
             # El estado (lesion/sancion/venta) ya se lee en la columna EST y en el
-            # color del nombre; aca solo van los atajos (mas la tecla de comparar).
+            # color del nombre; aca solo van los atajos.
             t.append_text(hint(
-                ("Flechas", "mover"), ("Enter", "ficha"), ("M", "comparar"),
-                ("V", "vender"), ("/", "buscar"),
+                ("Enter", "ficha"), ("M", "comparar"), ("V", "vender"),
+                ("D", "despedir"), ("/", "buscar"),
             ))
         t.append(f"   Pag {page}/{pages}", style="grey62")
 
@@ -539,6 +549,9 @@ class PlayersScreen(SectionScreen):
         if self._searching:
             self._on_key_search(event, event.key)
             return
+        if self._releasing is not None:      # modal: confirmar/cancelar el despido
+            self._key_releasing(event)
+            return
         key = event.key
         comparing = self._compare_from is not None
         if key == "up":
@@ -559,11 +572,33 @@ class PlayersScreen(SectionScreen):
             event.stop(); self._open_detail()
         elif event.character == "v" and not comparing:  # bloqueado mientras se compara
             event.stop(); self._toggle_sale()
+        elif event.character == "d" and not comparing:  # despedir (con confirmacion)
+            event.stop()
+            visible = self._visible()
+            if visible:
+                self._releasing = visible[self._selected]
+                self._refresh_content()
         elif event.character == "/":
             self._searching = True
             self._query = ""
             self._selected = 0
             event.stop(); self._refresh_content()
+
+    def _key_releasing(self, event) -> None:
+        """Confirmacion del despido: Enter rescinde (si no baja de 11), Esc cancela."""
+        key = event.key
+        if key == "enter":
+            event.stop()
+            club = self.app.game.player_club
+            if T.release_player(club, self._releasing):
+                self._selected = max(0, self._selected - 1)
+                savegame.save_game(self.app.game)
+            self._releasing = None
+            self._refresh_content()
+        elif key == "escape":
+            event.stop(); self._releasing = None; self._refresh_content()
+        else:
+            event.stop()  # modal: el resto de las teclas no hacen nada
 
     def _toggle_compare_mark(self) -> None:
         """Marca (o desmarca) al jugador en foco como A para comparar."""
