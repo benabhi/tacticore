@@ -19,12 +19,27 @@ from ...persistence import savegame
 from ...simulation import transfers as T
 from ...simulation import youth
 from ..format import append_section, hint, money
-from ..player_labels import ATTR_LABEL, ATTR_SHORT, FOOT_SHORT, SPECIALTY_SHORT
+from ..player_labels import (
+    ATTR_GROUPS, ATTR_LABEL, ATTR_SHORT, FOOT_SHORT, SPECIALTY_SHORT)
 from .section_screen import SectionScreen
+
+
+def _attr_color(value: float) -> str:
+    """Color de un atributo por su nivel (gradiente verde -> rojo), como en la ficha."""
+    if value >= 80:
+        return "bold green"
+    if value >= 65:
+        return "green"
+    if value >= 50:
+        return "yellow"
+    if value >= 35:
+        return "orange1"
+    return "red"
 
 _WIDTH = 80       # ancho total de la tabla (toda la pantalla)
 _PAGE_SIZE = 14   # filas de jugadores por pagina
 _MKT_PAGE = 10    # listados por pagina en el Mercado (deja lugar a "Mis ofertas")
+_PEEK_PAGE = 8    # filas de jugadores cuando el panel de atributos esta abierto
 _PLANTILLA, _CANTERA, _MERCADO = 0, 1, 2  # indices de pestañas interactivas
 _YTH_LEFT = 28   # ancho de la columna de prospectos (Cantera)
 _YTH_RIGHT = 49  # ancho del detalle (Cantera): 80 - _YTH_LEFT - "| "
@@ -68,6 +83,7 @@ class PlayersScreen(SectionScreen):
         self._query = ""      # texto del filtro en vivo
         self._compare_from = None  # jugador marcado para comparar (A); None si no hay
         self._releasing = None  # jugador a confirmar despido (None = no hay confirmacion)
+        self._peek = False     # panel de atributos inline abierto (vistazo rapido)
         self._youth_sel = 0    # prospecto seleccionado en la Cantera
         # --- Estado del Mercado ---
         self._mkt_sel = 0      # listado seleccionado
@@ -375,6 +391,11 @@ class PlayersScreen(SectionScreen):
                            ("A", "aceptar"), ("X", "retirar"), ("/", "buscar")))
         t.append(f"   Pag {page}/{pages}", style="grey62")
 
+    @property
+    def _page_size(self) -> int:
+        """Filas de jugadores visibles (menos cuando el panel de atributos esta abierto)."""
+        return _PEEK_PAGE if self._peek else _PAGE_SIZE
+
     # --- Tabla de la plantilla ---
     def _table_text(self) -> Text:
         club = self.app.game.player_club if self.app.game else None
@@ -383,11 +404,12 @@ class PlayersScreen(SectionScreen):
 
         visible = self._visible()
         total = len(visible)
-        pages = max(1, (total + _PAGE_SIZE - 1) // _PAGE_SIZE)
+        size = self._page_size
+        pages = max(1, (total + size - 1) // size)
         self._selected = max(0, min(total - 1, self._selected)) if total else 0
-        page = self._selected // _PAGE_SIZE if total else 0
-        start = page * _PAGE_SIZE
-        page_players = visible[start:start + _PAGE_SIZE]
+        page = self._selected // size if total else 0
+        start = page * size
+        page_players = visible[start:start + size]
 
         t = Text()
         subtitle = f"{club.name}   {len(self._players)} jugadores"
@@ -402,11 +424,37 @@ class PlayersScreen(SectionScreen):
             for offset, player in enumerate(page_players):
                 self._append_row(t, player, start + offset == self._selected)
             shown = len(page_players)
-        for _ in range(_PAGE_SIZE - shown):
+        for _ in range(size - shown):
             t.append("\n")
-        t.append("\n")  # una linea de aire entre la tabla y la ayuda de teclas
+        if self._peek and total:                       # vistazo rapido inline
+            self._peek_panel(t, visible[self._selected])
+        else:
+            t.append("\n")  # aire entre la tabla y la ayuda de teclas
         self._append_footer(t, page + 1, pages)
         return t
+
+    def _peek_panel(self, t: Text, p) -> None:
+        """Panel inline con los 15 atributos del jugador en foco (sin popup)."""
+        t.append("-" * _WIDTH + "\n", style="grey50")
+        t.append(f"  {p.full_name}  {p.position.value} {p.age_on(self._today)}a   ",
+                 style="bold white")
+        t.append(f"OVR {p.overall:.0f}  POT {p.potential:.0f}  "
+                 f"FOR {p.form:.0f}  FIT {p.fitness:.0f}\n", style="grey70")
+        col_w = 26
+        for title, _attrs in ATTR_GROUPS:
+            t.append(title.ljust(col_w), style="bold green")
+        t.append("\n")
+        rows = max(len(attrs) for _t, attrs in ATTR_GROUPS)
+        for i in range(rows):
+            for _title, attrs in ATTR_GROUPS:
+                if i >= len(attrs):
+                    t.append(" " * col_w); continue
+                attr = attrs[i]
+                value = getattr(p, attr)
+                cell = (ATTR_LABEL[attr].ljust(13) + f"{value:.1f}".rjust(5)).ljust(col_w)
+                t.append(cell, style=_attr_color(value))
+            if i < rows - 1:
+                t.append("\n")
 
     def _append_footer(self, t: Text, page: int, pages: int) -> None:
         if self._searching:
@@ -431,11 +479,12 @@ class PlayersScreen(SectionScreen):
         else:
             # El estado (lesion/sancion/venta) ya se lee en la columna EST y en el
             # color del nombre; aca solo van los atajos.
+            peek = "ocultar" if self._peek else "atributos"
             t.append_text(hint(
-                ("Enter", "ficha"), ("M", "comparar"), ("V", "vender"),
-                ("D", "despedir"), ("/", "buscar"),
+                ("Enter", "ficha"), ("A", peek), ("M", "comp"),
+                ("V", "vender"), ("D", "desp"), ("/", "buscar"), sep="  ",
             ))
-        t.append(f"   Pag {page}/{pages}", style="grey62")
+        t.append(f"  Pag {page}/{pages}", style="grey62")
 
     @staticmethod
     def _fmt(text, width: int, align: str) -> str:
@@ -559,9 +608,11 @@ class PlayersScreen(SectionScreen):
         elif key == "down":
             event.stop(); self._move(1)
         elif key in ("left", "pageup"):
-            event.stop(); self._move(-_PAGE_SIZE)
+            event.stop(); self._move(-self._page_size)
         elif key in ("right", "pagedown"):
-            event.stop(); self._move(_PAGE_SIZE)
+            event.stop(); self._move(self._page_size)
+        elif event.character == "a":
+            event.stop(); self._peek = not self._peek; self._refresh_content()
         elif event.character == "m":
             event.stop(); self._toggle_compare_mark()
         elif comparing and key == "escape":
