@@ -13,16 +13,21 @@ para pestañas, letras para secciones) las maneja `SectionScreen`.
 
 from rich.text import Text
 
+from ...domain.player import ALL_ATTRS
 from ...domain.transfer import COUNTERED, PENDING
+from ...persistence import savegame
 from ...simulation import transfers as T
+from ...simulation import youth
 from ..format import append_section, hint, money
-from ..player_labels import FOOT_SHORT, SPECIALTY_SHORT
+from ..player_labels import ATTR_LABEL, ATTR_SHORT, FOOT_SHORT, SPECIALTY_SHORT
 from .section_screen import SectionScreen
 
 _WIDTH = 80       # ancho total de la tabla (toda la pantalla)
 _PAGE_SIZE = 14   # filas de jugadores por pagina
 _MKT_PAGE = 10    # listados por pagina en el Mercado (deja lugar a "Mis ofertas")
-_PLANTILLA, _MERCADO = 0, 2  # indices de pestañas interactivas
+_PLANTILLA, _CANTERA, _MERCADO = 0, 1, 2  # indices de pestañas interactivas
+_YTH_LEFT = 28   # ancho de la columna de prospectos (Cantera)
+_YTH_RIGHT = 49  # ancho del detalle (Cantera): 80 - _YTH_LEFT - "| "
 
 # Columnas: (titulo, ancho, alineacion). El nombre se calcula para llenar los 80.
 # EST = estado/disponibilidad (L#=lesionado con semanas, SUS=suspendido, 1A=una
@@ -62,6 +67,7 @@ class PlayersScreen(SectionScreen):
         self._searching = False  # si esta activo el buscador (se escribe)
         self._query = ""      # texto del filtro en vivo
         self._compare_from = None  # jugador marcado para comparar (A); None si no hay
+        self._youth_sel = 0    # prospecto seleccionado en la Cantera
         # --- Estado del Mercado ---
         self._mkt_sel = 0      # listado seleccionado
         self._mkt_search = False
@@ -101,15 +107,164 @@ class PlayersScreen(SectionScreen):
             return self._market_text()
         return self._table_text()
 
+    # --- Cantera (juveniles que traen los ojeadores; ver simulation/youth.py) ---
+    @property
+    def _club(self):
+        game = self.app.game
+        return game.player_club if game else None
+
     def _youth_text(self) -> Text:
+        club = self._club
+        if club is None:
+            return Text("Sin club todavia.", style="white")
+        game = self.app.game
+        today = game.calendar.current_date
+        prospects = club.prospects
+        # Sin Complejo juvenil / sin ojeadores: explicar como habilitar la cantera.
+        if not youth.has_academy(club) or not youth.scouts(club):
+            return self._youth_empty(club, game, today)
+        if not prospects:
+            nxt = youth.next_intake(game, today)
+            when = nxt.strftime("%d-%m-%Y") if nxt else "la proxima temporada"
+            t = Text()
+            append_section(t, "CANTERA", [
+                (f"Tus {len(youth.scouts(club))} ojeador(es) estan trabajando.", "white"),
+                "",
+                (f"Proxima camada de juveniles: {when}.", "grey70"),
+                ("Cuando lleguen, vas a poder revisar su informe y decidir.", "grey62"),
+            ])
+            return t
+
+        self._youth_sel = max(0, min(len(prospects) - 1, self._youth_sel))
         t = Text()
+        nxt = youth.next_intake(game, today)
+        t.append(f"CANTERA   {len(prospects)} juvenil(es)", style="bold green")
+        if nxt:
+            t.append(f"   Proxima camada {nxt.strftime('%d-%m')}", style="grey62")
+        t.append("\n")
+        t.append("-" * _WIDTH + "\n", style="grey50")
+        left = self._youth_left_lines(prospects, today)
+        right = self._youth_detail_lines(prospects[self._youth_sel], club, today)
+        rows = 16
+        for i in range(rows):
+            if i == rows - 1:
+                t.append("\n"); continue
+            lline = left[i] if i < len(left) else Text("")
+            rline = right[i] if i < len(right) else Text("")
+            t.append_text(lline)
+            t.append(" " * max(0, _YTH_LEFT - len(lline.plain)))
+            t.append("| ", style="grey50")
+            t.append_text(rline)
+            t.append("\n")
+        pr = prospects[self._youth_sel]
+        if not pr.revealed:
+            t.append_text(hint(("^v", "elegir"), ("Enter", "revisar informe"),
+                               ("Supr", "descartar")))
+        else:
+            t.append_text(hint(("^v", "elegir"), ("Enter", "fichar"),
+                               ("Supr", "descartar")))
+        return t
+
+    def _youth_empty(self, club, game, today) -> Text:
+        t = Text()
+        has_b = youth.has_academy(club)
         append_section(t, "CANTERA", [
-            ("Todavia no hay juveniles.", "grey62"),
+            ("Para descubrir juveniles necesitas:", "white"),
             "",
-            ("La red de cazatalentos (en Club > Empleados) va a descubrir", "grey62"),
-            ("promesas que apareceran aca para sumarlas al primer equipo.", "grey62"),
+            (f"  [{'x' if has_b else ' '}] Complejo juvenil "
+             f"(Club > Instalaciones)", "green" if has_b else "grey70"),
+            (f"  [{'x' if youth.scouts(club) else ' '}] Cazatalentos contratados "
+             f"(Club > Empleados)", "green" if youth.scouts(club) else "grey70"),
+            "",
+            ("Cada ojeador trae un juvenil dos veces por temporada; vos decidis", "grey62"),
+            ("si lo incorporas. Son jovenes con techo alto (entrenan rapido).", "grey62"),
         ])
         return t
+
+    def _youth_left_lines(self, prospects, today) -> list:
+        lines = [Text("PROSPECTOS", style="bold green")]
+        for i, pr in enumerate(prospects):
+            p = pr.player
+            tag = "visto" if pr.revealed else "nuevo"
+            text = f" {p.full_name:<16.16} {p.position.value:<3} {p.age_on(today)}a {tag}"
+            if i == self._youth_sel:
+                lines.append(Text(text[:_YTH_LEFT].ljust(_YTH_LEFT), style="bold black on green"))
+            else:
+                lines.append(Text(text[:_YTH_LEFT], style="white" if pr.revealed else "yellow"))
+        return lines
+
+    def _youth_detail_lines(self, pr, club, today) -> list:
+        p = pr.player
+        lines = [Text(f"{p.full_name}", style="bold white"),
+                 Text(f"{p.position.value}  {p.age_on(today)} anios  {p.nationality}  "
+                      f"pie {FOOT_SHORT[p.foot]}", style="grey70")]
+        if not pr.revealed:
+            n = youth.reveal_count(pr.scout_skill)
+            lines += [
+                Text(""),
+                Text(f"Informe sin revisar.", style="yellow"),
+                Text(f"Ojeador con Ojeo {pr.scout_skill:.0f}: evaluo {n} de "
+                     f"{len(ALL_ATTRS)} atributos.", style="grey70"),
+                Text(""),
+                Text("Enter: revisar el informe (descubrir).", style="bold cyan"),
+            ]
+            return lines
+        # Revelado: potencial, destacado y los atributos evaluados (resto "?").
+        shown = set(youth.revealed_attrs(pr))
+        standout = youth.standout_attr(pr)
+        lines.append(Text(f"Potencial est: {youth.potential_stars(pr)}   "
+                          f"Destacado: {ATTR_LABEL[standout]}", style="white"))
+        lines.append(Text(""))
+        # Grilla de 3 columnas: sigla + valor (o "?" si el ojeador no lo evaluo).
+        col_w = _YTH_RIGHT // 3
+        for r in range(5):
+            line = Text()
+            for c in range(3):
+                idx = c * 5 + r
+                if idx >= len(ALL_ATTRS):
+                    line.append(" " * col_w); continue
+                attr = ALL_ATTRS[idx]
+                val = f"{getattr(p, attr):.0f}" if attr in shown else "?"
+                cell = f"{ATTR_SHORT[attr]} {val:>4}".ljust(col_w)
+                line.append(cell, style="bold cyan" if attr == standout else
+                            ("white" if attr in shown else "grey42"))
+            lines.append(line)
+        lines.append(Text(""))
+        if len(club.players) >= T.MAX_SQUAD:
+            lines.append(Text(f"Plantel lleno ({T.MAX_SQUAD}). Vende para fichar.", "grey62"))
+        else:
+            lines.append(Text("Enter: fichar (gratis)    Supr: descartar", style="green"))
+        return lines
+
+    def _key_cantera(self, event) -> None:
+        club = self._club
+        if club is None:
+            return
+        prospects = club.prospects
+        if not prospects:
+            return
+        key = event.key
+        if key == "up":
+            event.stop(); self._youth_sel = max(0, self._youth_sel - 1); self._refresh_content()
+        elif key == "down":
+            event.stop(); self._youth_sel = min(len(prospects) - 1, self._youth_sel + 1); self._refresh_content()
+        elif key == "enter":
+            event.stop(); self._youth_action(prospects[self._youth_sel])
+        elif key in ("delete", "backspace") or event.character in ("x", "X"):
+            event.stop()
+            youth.discard(self.app.game, prospects[self._youth_sel])
+            self._youth_sel = max(0, self._youth_sel - 1)
+            savegame.save_game(self.app.game)
+            self._refresh_content()
+
+    def _youth_action(self, pr) -> None:
+        """Enter: primero revisa el informe; ya revisado, ficha al juvenil."""
+        if not pr.revealed:
+            youth.reveal(pr)
+        elif youth.sign(self.app.game, pr):
+            self._youth_sel = max(0, self._youth_sel - 1)
+        savegame.save_game(self.app.game)
+        self._refresh_content()
 
     # --- Mercado (interactivo: listados, ofertas, negociacion) ---
     def _mkt_listings(self) -> list:
@@ -370,6 +525,9 @@ class PlayersScreen(SectionScreen):
                 or (self._active_tab == _MERCADO and (self._mkt_search or self._offering)))
 
     def on_content_key(self, event) -> None:
+        if self._active_tab == _CANTERA:
+            self._key_cantera(event)
+            return
         if self._active_tab == _PLANTILLA:
             self._key_plantilla(event)
         elif self._active_tab == _MERCADO:

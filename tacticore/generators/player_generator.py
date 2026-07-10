@@ -157,3 +157,80 @@ class PlayerGenerator:
         player.leadership = rng.choices([1, 2, 3, 4, 5], weights=[1, 2, 4, 3, 2])[0]
         player.character = rng.choices([1, 2, 3, 4, 5], weights=[1, 2, 4, 3, 2])[0]
         return player
+
+    # Tope duro del potencial de un juvenil por encima de la base del tier: alto
+    # margen de crecimiento pero NUNCA desbocado (nunca 99). Ver docs de balance.
+    _YOUTH_POT_MARGIN = 25
+    _YOUTH_POT_HARD_CAP = 95
+
+    def generate_youth(
+        self,
+        tier: LeagueTier = LeagueTier.D,
+        scout_skill: float = 50.0,
+        country_code: str | None = None,
+        today: date | None = None,
+        position: Position | None = None,
+        quality_bonus: float = 0.0,
+    ) -> Player:
+        """Genera un JUVENIL (15-18) crudo pero con potencial alto y acotado.
+
+        El juvenil rinde poco HOY (nivel actual bajo) pero tiene mucho margen de
+        crecimiento y entrena rapido por su edad. Trae un atributo DESTACADO
+        (prioritario de su posicion) de forma moderada. La calidad del ojeador
+        (`scout_skill`, 1-100) y el `quality_bonus` del Complejo juvenil elevan el
+        potencial (con tope duro). Determinista con el rng que se le paso.
+        """
+        today = today or config.SEASON_START_DATE
+        rng = self._rng
+        pos = position or rng.choice(list(Position))
+        base = _TIER_BASE[tier]
+        offsets = _ROLE_OFFSETS[pos]
+
+        # Potencial (techo): base del tier + calidad del ojeador + edificio, acotado.
+        scout_factor = (max(1.0, min(100.0, scout_skill)) / 100.0) * 22.0
+        ceiling = min(self._YOUTH_POT_HARD_CAP, base + self._YOUTH_POT_MARGIN)
+        potential = _clamp(min(ceiling, base + scout_factor + quality_bonus + rng.uniform(-4, 4)))
+
+        # Nivel ACTUAL: bien por DEBAJO del potencial (rinde poco hoy, mucho por crecer).
+        current = potential - rng.uniform(16, 28)
+        raw = current - 6.0  # los prioritarios suben por sus offsets -> overall ~ current
+        talent = rng.uniform(-3, 5)
+        attrs = {}
+        for attr in ALL_ATTRS:
+            v = raw + offsets.get(attr, 0.0) + talent + rng.uniform(-_NOISE, _NOISE)
+            attrs[attr] = _clamp(min(potential - 2, v))  # ningun atributo por encima del techo
+        # Un atributo DESTACADO (prioritario de la posicion), subida moderada y bajo el techo.
+        standout = POSITION_PRIORITIES[pos][0]
+        attrs[standout] = _clamp(min(potential - 2, attrs[standout] + rng.uniform(7, 13)))
+
+        age = rng.randint(15, 18)
+        # Cumpleanios ya cumplido este anio (mes/dia <= hoy) -> la edad efectiva
+        # (age_on) coincide exacto con `age` y el juvenil queda en la banda 15-18.
+        month = rng.randint(1, today.month)
+        day = rng.randint(1, 28) if month < today.month else rng.randint(1, min(28, today.day))
+        birth_date = date(today.year - age, month, day)
+        if line_of(pos) in (Line.GOALKEEPER, Line.DEFENSE):
+            height = rng.randint(178, 198)
+        else:
+            height = rng.randint(165, 190)
+        weight = height - 100 + rng.randint(-6, 6)
+
+        first, last = self._names.player_first_last(country_code)
+        specialty = (
+            rng.choice(list(Specialty)) if rng.random() < _SPECIALTY_CHANCE * 0.5 else None
+        )
+
+        player = Player(
+            first_name=first, last_name=last, nationality=country_code or "FAN",
+            position=pos, foot=rng.choices(list(Foot), weights=[3, 6, 1])[0],
+            birth_date=birth_date, height_cm=height, weight_kg=weight, **attrs,
+            form=_clamp(rng.uniform(40, 65)), fitness=100.0,
+            experience=_clamp((age - 15) * 3.0 + rng.uniform(0, 4)),  # verde
+            morale=rng.choices(list(Morale), weights=[1, 2, 4, 3, 2])[0],
+            specialty=specialty,
+            injury_proneness=_clamp(rng.uniform(10, 70)),
+        )
+        player.potential = potential
+        player.leadership = rng.choices([1, 2, 3, 4, 5], weights=[2, 3, 4, 2, 1])[0]
+        player.character = rng.choices([1, 2, 3, 4, 5], weights=[2, 3, 4, 2, 1])[0]
+        return player

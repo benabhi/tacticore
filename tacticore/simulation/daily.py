@@ -114,6 +114,9 @@ def advance_day(game, rng: random.Random | None = None, progress=None,
     recover_injuries(game, today)
     # Las ofertas del jugador maduran un dia por vez (el vendedor responde).
     resolve_offers(game)
+    # Cantera: poda prospectos vencidos y, en las fechas fijas, cae una camada.
+    from . import youth
+    youth.run_intake(game, today, rng)
     wd = today.weekday()
     if wd == 0:  # lunes: reaccion de socios + ciclo de ofertas de patrocinio
         _fans_update(game, rng, progress)

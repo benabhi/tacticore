@@ -33,13 +33,11 @@ _ROLE_SHORT = {
     EmployeeRole.FINANCE: "Dir. financiero",
     EmployeeRole.ASSISTANT: "Asistente tec.",
     EmployeeRole.PSYCHOLOGIST: "Psicologo",
+    EmployeeRole.SCOUT: "Cazatalentos",
 }
-# Roles que todavia no existen: se muestran como placeholder (con su detalle) para que
-# se vea que vienen. Cada uno: (titulo, descripcion de que hara).
-_FUTURE_ROLES = [
-    ("Cazatalentos",
-     "Ojeara juveniles para nutrir la Cantera (Complejo juvenil)."),
-]
+# Ya no quedan roles "proximamente": todos existen (el Cazatalentos se habilita al
+# construir el Complejo juvenil). Se deja la lista para futuros roles.
+_FUTURE_ROLES: list[tuple[str, str]] = []
 # Alto fijo del bloque de dos columnas de Empleados: empuja la ayuda al fondo del
 # area de contenido, dejando una linea en blanco antes del menu inferior.
 _STAFF_ROWS = 16
@@ -857,7 +855,12 @@ class ClubScreen(SectionScreen):
                 shown_hire_hdr = True
             lines.append(self._emp_person_row(kind, e, i == self._emp_sel))
         if not people:
-            lines.append(Text("Sin candidatos (cupo lleno).", style="grey62"))
+            if role is EmployeeRole.SCOUT and slots == 0:
+                for wl in _wrap("Construi el Complejo juvenil (Instalaciones) para "
+                                "habilitar ojeadores y descubrir juveniles.", _EMP_RIGHT - 1):
+                    lines.append(Text(wl, style="grey62"))
+            else:
+                lines.append(Text("Sin candidatos (cupo lleno).", style="grey62"))
         # Detalle (bonus) del seleccionado + accion.
         lines.append(Text(""))
         if 0 <= self._emp_sel < len(people):

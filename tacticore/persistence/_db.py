@@ -27,6 +27,7 @@ from ..domain.match import Match
 from ..domain.movement import Movement
 from ..domain.notification import Notification
 from ..domain.player import ALL_ATTRS, Player
+from ..domain.prospect import Prospect
 from ..domain.sponsor import Sponsor, SponsorContract
 from ..domain.stadium import Stadium
 from ..domain.transfer import TransferOffer
@@ -41,7 +42,7 @@ from ..domain.transfer import TransferOffer
 # huerfana). v9: notificaciones, amistosos y libro de caja; v8 entrenamiento de
 # formaciones; v7 liderazgo/caracter; v6 mercado; v5 instalaciones; v4 estadio por
 # sectores + patrocinadores; v3 el DT.
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16   # v16: cantera (prospectos de juveniles por ojeador)
 
 
 class IncompatibleSaveError(Exception):
@@ -61,6 +62,40 @@ _PLAYER_COLS = _PLAYER_BASE_COLS + list(ALL_ATTRS)
 
 # DDL. Los atributos del jugador (ALL_ATTRS) son columnas REAL generadas aca.
 _PLAYER_ATTR_DDL = ",\n    ".join(f"{attr} REAL NOT NULL" for attr in ALL_ATTRS)
+
+# Columnas de un jugador (sin id/club_id), compartidas por las tablas `players` y
+# `prospects` (los juveniles de la cantera son Players a la espera de decision).
+# Compartir el DDL garantiza paridad de columnas -> `_player_from_row` sirve para
+# ambas tablas.
+_PLAYER_COLS_DDL = f"""    first_name       TEXT NOT NULL,
+    last_name        TEXT NOT NULL,
+    nationality      TEXT NOT NULL,
+    position         TEXT NOT NULL,
+    foot             TEXT NOT NULL,
+    birth_date       TEXT NOT NULL,
+    height_cm        INTEGER NOT NULL,
+    weight_kg        INTEGER NOT NULL,
+    form             REAL NOT NULL,
+    fitness          REAL NOT NULL,
+    experience       REAL NOT NULL,
+    morale           INTEGER NOT NULL,
+    specialty        TEXT,
+    nickname         TEXT,
+    shirt_number     INTEGER,
+    origin_club      TEXT,
+    potential        REAL NOT NULL,
+    injury_proneness REAL NOT NULL,
+    asking_price     INTEGER,
+    leadership       INTEGER NOT NULL DEFAULT 3,
+    character        INTEGER NOT NULL DEFAULT 3,
+    yellow_cards       INTEGER NOT NULL DEFAULT 0,
+    matches_suspended  INTEGER NOT NULL DEFAULT 0,
+    injury_type        TEXT,
+    injury_severity    INTEGER,
+    injury_start       TEXT,
+    injury_return      TEXT,
+    training_focus     TEXT,
+    {_PLAYER_ATTR_DDL}"""
 
 SCHEMA = f"""
 PRAGMA foreign_keys = ON;
@@ -121,35 +156,20 @@ CREATE TABLE clubs (
 CREATE TABLE players (
     id        INTEGER PRIMARY KEY,
     club_id   INTEGER NOT NULL REFERENCES clubs(id),
-    first_name       TEXT NOT NULL,
-    last_name        TEXT NOT NULL,
-    nationality      TEXT NOT NULL,
-    position         TEXT NOT NULL,
-    foot             TEXT NOT NULL,
-    birth_date       TEXT NOT NULL,
-    height_cm        INTEGER NOT NULL,
-    weight_kg        INTEGER NOT NULL,
-    form             REAL NOT NULL,
-    fitness          REAL NOT NULL,
-    experience       REAL NOT NULL,
-    morale           INTEGER NOT NULL,
-    specialty        TEXT,
-    nickname         TEXT,
-    shirt_number     INTEGER,
-    origin_club      TEXT,
-    potential        REAL NOT NULL,
-    injury_proneness REAL NOT NULL,
-    asking_price     INTEGER,
-    leadership       INTEGER NOT NULL DEFAULT 3,
-    character        INTEGER NOT NULL DEFAULT 3,
-    yellow_cards       INTEGER NOT NULL DEFAULT 0,
-    matches_suspended  INTEGER NOT NULL DEFAULT 0,
-    injury_type        TEXT,
-    injury_severity    INTEGER,
-    injury_start       TEXT,
-    injury_return      TEXT,
-    training_focus     TEXT,
-    {_PLAYER_ATTR_DDL}
+{_PLAYER_COLS_DDL}
+);
+
+-- Prospectos de la cantera: juveniles que trajo un ojeador, a la espera de
+-- decision. Reusan las columnas de jugador + metadatos del ojeo. Solo el club del
+-- jugador tiene filas.
+CREATE TABLE prospects (
+    id          INTEGER PRIMARY KEY,
+    club_id     INTEGER NOT NULL REFERENCES clubs(id),
+    scout_skill REAL NOT NULL,
+    revealed    INTEGER NOT NULL,
+    found_date  TEXT NOT NULL,
+    expires     TEXT NOT NULL,
+{_PLAYER_COLS_DDL}
 );
 
 -- Patrocinador principal de cada club (0 o 1 por club, tabla aparte).
@@ -324,6 +344,7 @@ def write_game(conn: sqlite3.Connection, game: GameState) -> None:
                 if is_player:
                     player_club_id = club_id
                 _insert_players(conn, club_id, club.players)
+                _insert_prospects(conn, club_id, club.prospects)
             _insert_matches(conn, league_id, league.matches, club_ids)
 
     _insert_offers(conn, game, club_ids)
@@ -554,6 +575,22 @@ def _insert_players(
     )
 
 
+def _insert_prospects(conn: sqlite3.Connection, club_id: int, prospects: list) -> None:
+    """Vuelca los prospectos de la cantera (metadatos del ojeo + columnas de jugador)."""
+    if not prospects:
+        return
+    meta_cols = ["scout_skill", "revealed", "found_date", "expires"]
+    columns = "club_id, " + ", ".join(meta_cols + _PLAYER_COLS)
+    placeholders = ", ".join(["?"] * (1 + len(meta_cols) + len(_PLAYER_COLS)))
+    rows = []
+    for pr in prospects:
+        meta = (pr.scout_skill, 1 if pr.revealed else 0,
+                pr.found_date.isoformat(), pr.expires.isoformat())
+        rows.append((club_id, *meta, *_player_row(club_id, pr.player)[1:]))
+    conn.executemany(
+        f"INSERT INTO prospects ({columns}) VALUES ({placeholders})", rows)
+
+
 def _player_row(club_id: int, p: Player) -> tuple:
     inj = p.injury
     base = (
@@ -741,7 +778,24 @@ def _club_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Club:
             for mv in conn.execute(
                 "SELECT * FROM movements WHERE club_id = ? ORDER BY id", (row["id"],))
         ],
+        prospects=_prospects_from_db(conn, row["id"]),
     )
+
+
+def _prospects_from_db(conn: sqlite3.Connection, club_id: int) -> list:
+    """Reconstruye los prospectos de la cantera (jugador + metadatos del ojeo)."""
+    out = []
+    for pr in conn.execute(
+        "SELECT * FROM prospects WHERE club_id = ? ORDER BY id", (club_id,)
+    ):
+        out.append(Prospect(
+            player=_player_from_row(pr),
+            scout_skill=pr["scout_skill"],
+            found_date=_date(pr["found_date"]),
+            expires=_date(pr["expires"]),
+            revealed=bool(pr["revealed"]),
+        ))
+    return out
 
 
 def _matches_for_league(

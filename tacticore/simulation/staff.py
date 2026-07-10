@@ -22,12 +22,14 @@ _ROLE_PRIMARY: dict[EmployeeRole, BonusType] = {
     EmployeeRole.FINANCE: B.INCOME,
     EmployeeRole.ASSISTANT: B.TRAINING,
     EmployeeRole.PSYCHOLOGIST: B.MORALE,
+    EmployeeRole.SCOUT: B.SCOUTING,
 }
 _ROLE_EXTRAS: dict[EmployeeRole, list[BonusType]] = {
     EmployeeRole.DOCTOR: [B.INJURY_RECOVER, B.TRAINING, B.MORALE],   # salud/bienestar
     EmployeeRole.FINANCE: [B.GATE, B.TRANSFERS, B.WAGES],            # dinero
     EmployeeRole.ASSISTANT: [B.MORALE, B.INJURY_RECOVER],            # cuerpo tecnico
     EmployeeRole.PSYCHOLOGIST: [B.TRAINING, B.INJURY_PREVENT],       # cabeza/bienestar
+    EmployeeRole.SCOUT: [],                                          # puro ojeo (sin extras)
 }
 
 # --- Magnitud y modo de agregacion de cada tipo de bonus ---
@@ -41,7 +43,7 @@ _CAP: dict[BonusType, float] = {
 }
 # Tipos con efecto real hoy (los demas se muestran marcados "proximo").
 _LIVE = {B.INJURY_PREVENT, B.INJURY_RECOVER, B.INCOME, B.GATE, B.TRANSFERS, B.WAGES,
-         B.TRAINING, B.MORALE}
+         B.TRAINING, B.MORALE, B.SCOUTING}
 # El bonus de entrenamiento aporta PUNTOS a la capacidad de entreno (no un %).
 _TRAIN_PTS_RATE = 0.20   # una fuerza 100 -> ~20 puntos de capacidad
 _TRAIN_PTS_CAP = 25
@@ -68,7 +70,11 @@ _HOME_FACILITY: dict[EmployeeRole, str] = {
     EmployeeRole.FINANCE: "oficina",      # Oficinas administrativas
     EmployeeRole.ASSISTANT: "training",   # Centro de entrenamiento
     EmployeeRole.PSYCHOLOGIST: "medical",  # Enfermeria (salud fisica y mental)
+    EmployeeRole.SCOUT: "youth",          # Complejo juvenil (cupo especial, ver abajo)
 }
+# El ojeador es un caso especial: NO tiene base por tier; su cupo es directamente el
+# nivel del Complejo juvenil (0 sin edificio), con tope duro.
+_MAX_SCOUTS = 3
 _INCOME_COMBINED_CAP = 0.20  # tope del bonus de ingresos (empleados + oficina)
 
 
@@ -106,6 +112,8 @@ def bonus_desc(t: BonusType, strength: float) -> str:
         return f"+{round(_TRAIN_PTS_RATE * strength)} de entrenamiento"
     if t is B.MORALE:
         return f"+{round(_MORALE_PTS_RATE * strength)} a la moral"
+    if t is B.SCOUTING:
+        return f"Ojeo nivel {round(strength)}"
     pct = round(_RATE[t] * strength)
     text = {
         B.INJURY_PREVENT: f"-{pct}% lesiones",
@@ -144,7 +152,10 @@ def staff_slots(club: Club, role: EmployeeRole) -> int:
     """Cupos de `role`: base por tier + nivel de la instalacion hogar del rol.
 
     El base crece al ascender de liga y el edificio ancla (Enfermeria/Centro de
-    entrenamiento/Oficinas) suma su nivel encima."""
+    entrenamiento/Oficinas) suma su nivel encima. El Cazatalentos es especial: su
+    cupo es directamente el nivel del Complejo juvenil (0 sin edificio, tope 3)."""
+    if role is EmployeeRole.SCOUT:
+        return min(_MAX_SCOUTS, fac.level(club, "youth"))
     return _TIER_SLOT_BASE[club.tier] + fac.level(club, _HOME_FACILITY[role])
 
 

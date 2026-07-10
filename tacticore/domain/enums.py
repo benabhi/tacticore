@@ -114,15 +114,16 @@ class EmployeeRole(Enum):
     El nombre del miembro va en ingles (directiva 4); el valor es la etiqueta en
     espanol que se muestra en pantalla. Cada rol engancha con un sistema vivo: el
     Medico baja las lesiones, el Director financiero mejora las finanzas, el
-    Asistente tecnico sube la capacidad de entrenamiento y el Psicologo mejora la
-    moral del plantel. El Cazatalentos llegara con la Cantera (por eso todavia no
-    esta aca: se muestra como placeholder en la UI).
+    Asistente tecnico sube la capacidad de entrenamiento, el Psicologo mejora la
+    moral del plantel y el Cazatalentos descubre juveniles para la Cantera (se
+    habilita al construir el Complejo juvenil).
     """
 
     DOCTOR = "Medico"
     FINANCE = "Director financiero"
     ASSISTANT = "Asistente tecnico"
     PSYCHOLOGIST = "Psicologo deportivo"
+    SCOUT = "Cazatalentos"
 
 
 class BonusType(Enum):
@@ -139,8 +140,9 @@ class BonusType(Enum):
     GATE = "Taquilla"                       # +% recaudacion de local
     TRANSFERS = "Ventas"                    # +% en la venta de jugadores
     WAGES = "Sueldos"                       # -% masa salarial
-    TRAINING = "Entrenamiento"              # INERTE: llega con el entrenamiento
-    MORALE = "Moral"                        # INERTE: llega cuando la moral pese
+    TRAINING = "Entrenamiento"              # +capacidad de entrenamiento del plantel
+    MORALE = "Moral"                        # +moral base del plantel
+    SCOUTING = "Ojeo"                       # calidad del ojeador (descubre juveniles)
 
 
 class Morale(Enum):

@@ -24,11 +24,12 @@ def _game(seed, monkeypatch):
     return game, club
 
 
-def test_sport_facilities_are_buildable_youth_is_not():
+def test_sport_facilities_are_buildable():
     assert fac.spec("medical").buildable
     assert fac.spec("training").buildable
     assert fac.spec("oficina").buildable
-    assert not fac.spec("youth").buildable          # cantera: proximamente
+    assert fac.spec("youth").buildable              # Complejo juvenil (cantera)
+    assert fac.spec("youth").min_tier is LeagueTier.D
 
 
 def test_medical_and_oficina_min_tier_anchor(monkeypatch):
