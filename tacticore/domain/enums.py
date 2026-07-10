@@ -113,13 +113,16 @@ class EmployeeRole(Enum):
 
     El nombre del miembro va en ingles (directiva 4); el valor es la etiqueta en
     espanol que se muestra en pantalla. Cada rol engancha con un sistema vivo: el
-    Medico baja las lesiones, el Director financiero mejora las finanzas. Otros
-    roles (asistente, psicologo, cazatalentos) llegaran cuando su sistema tenga
-    efecto en el juego.
+    Medico baja las lesiones, el Director financiero mejora las finanzas, el
+    Asistente tecnico sube la capacidad de entrenamiento y el Psicologo mejora la
+    moral del plantel. El Cazatalentos llegara con la Cantera (por eso todavia no
+    esta aca: se muestra como placeholder en la UI).
     """
 
     DOCTOR = "Medico"
     FINANCE = "Director financiero"
+    ASSISTANT = "Asistente tecnico"
+    PSYCHOLOGIST = "Psicologo deportivo"
 
 
 class BonusType(Enum):

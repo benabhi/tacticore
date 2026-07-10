@@ -1,10 +1,10 @@
 """Seccion Club: la institucion.
 
 Pestañas:
-- Resumen: emblema + identidad del club (datos reales).
-- Instalaciones: estadio y construcciones (placeholder).
-- Empleados: staff, incluida la red de cazatalentos (placeholder).
-- Aficionados: socios, animo de la hinchada y prensa (placeholder).
+- Resumen: tablero + pantallazo (emblema, identidad, proximo partido, novedades).
+- Notificaciones: registro de novedades y eventos accionables.
+- Instalaciones: estadio y construcciones (plan en borrador).
+- Empleados: cuerpo de trabajo (DT + roles), contratos y candidatos por rol.
 """
 
 import copy
@@ -13,6 +13,7 @@ from rich.text import Text
 
 from ...core.rng import new_rng
 from ...domain.enums import EmployeeRole
+from ...generators.coach_generator import CoachGenerator
 from ...generators.employee_generator import EmployeeGenerator
 from ...persistence import savegame
 from ...simulation import facilities as fac
@@ -26,25 +27,24 @@ from ..format import append_section, hint, money
 from ..identicon import emblem_lines
 from .section_screen import SectionScreen
 
-# Titulo de la seccion de cada rol de empleado en la pestana Empleados.
-_ROLE_SECTION = {
-    EmployeeRole.DOCTOR: "CUERPO MEDICO",
-    EmployeeRole.FINANCE: "DIRECCION FINANCIERA",
+# Etiqueta corta de cada rol para la lista de la izquierda en Empleados.
+_ROLE_SHORT = {
+    EmployeeRole.DOCTOR: "Medico",
+    EmployeeRole.FINANCE: "Dir. financiero",
+    EmployeeRole.ASSISTANT: "Asistente tec.",
+    EmployeeRole.PSYCHOLOGIST: "Psicologo",
 }
 # Roles que todavia no existen: se muestran como placeholder (con su detalle) para que
 # se vea que vienen. Cada uno: (titulo, descripcion de que hara).
 _FUTURE_ROLES = [
-    ("Asistente tecnico",
-     "Sumara a la capacidad de entrenamiento del plantel. Llega con el fichaje de DT."),
-    ("Psicologo deportivo",
-     "Subira la moral del plantel, cuando la moral pese en el rendimiento del partido."),
     ("Cazatalentos",
      "Ojeara juveniles para nutrir la Cantera (Complejo juvenil)."),
 ]
 # Alto fijo del bloque de dos columnas de Empleados: empuja la ayuda al fondo del
-# area de contenido, dejando una linea en blanco antes del menu inferior (el total
-# queda en 19 lineas: cabecera + regla + _STAFF_ROWS + ayuda).
+# area de contenido, dejando una linea en blanco antes del menu inferior.
 _STAFF_ROWS = 16
+_EMP_LEFT = 24   # ancho de la columna de roles (izquierda)
+_EMP_RIGHT = 54  # ancho del detalle del rol (derecha): 80 - _EMP_LEFT - "| "
 
 # Color de cada estado de un edificio (para la lista de instalaciones).
 _FAC_STYLE = {
@@ -95,7 +95,8 @@ class ClubScreen(SectionScreen):
         self._fac_sel = 0       # item seleccionado en Instalaciones (lista paginada)
         self._fac_plan: list = []  # cambios en borrador (se confirman con G)
         self._fac_msg = ""      # aviso (rechazo / confirmado)
-        self._emp_sel = 0       # empleado seleccionado en Empleados
+        self._emp_role = 0      # rol seleccionado en Empleados (columna izquierda)
+        self._emp_sel = 0       # persona seleccionada dentro del rol (columna derecha)
 
     @property
     def _club(self):
@@ -645,31 +646,73 @@ class ClubScreen(SectionScreen):
         t.append(f"          {n.message}"[:80] + "\n", style="grey70")
 
     def _staff_key(self, event) -> None:
-        # OJO: el frame se queda con las letras de seccion (o/c/j/p/e/f) antes de
-        # llegar aca, por eso "contratar" va en Enter (no en 'c') y "despedir" en
-        # Supr/Retroceso/'d'.
+        # OJO: el frame se queda con las letras de seccion (c/j/p/e/f) antes de
+        # llegar aca, por eso "contratar/reemplazar" va en Enter y "despedir" en
+        # Supr/Retroceso/'d'. Izq/der cambian de rol; arriba/abajo, de persona.
         key = event.key
-        items = self._emp_items()
+        roles = self._emp_roles()
+        if key == "left":
+            event.stop(); self._emp_role = max(0, self._emp_role - 1); self._emp_sel = 0
+            self._refresh_content(); return
+        if key == "right":
+            event.stop(); self._emp_role = min(len(roles) - 1, self._emp_role + 1); self._emp_sel = 0
+            self._refresh_content(); return
+        entry = roles[self._emp_role]
+        people = self._emp_people(entry)
         if key == "up":
             event.stop(); self._emp_sel = max(0, self._emp_sel - 1); self._refresh_content()
         elif key == "down":
-            event.stop(); self._emp_sel = min(len(items) - 1, self._emp_sel + 1); self._refresh_content()
+            event.stop(); self._emp_sel = min(max(0, len(people) - 1), self._emp_sel + 1); self._refresh_content()
         elif key == "enter":
-            event.stop()
-            if items:
-                kind, _role, e = items[self._emp_sel]
-                if kind == "cand" and staff.hire(self.app.game, e):
-                    savegame.save_game(self.app.game)
-                    self._refresh_content()
+            event.stop(); self._emp_hire(entry, people)
         elif key in ("delete", "backspace") or event.character in ("d", "D"):
-            event.stop()
-            if items:
-                kind, _role, e = items[self._emp_sel]
-                if kind == "staff":
-                    staff.fire(self.app.game, e)
-                    self._emp_sel = max(0, self._emp_sel - 1)
-                    savegame.save_game(self.app.game)
-                    self._refresh_content()
+            event.stop(); self._emp_fire(entry, people)
+
+    def _emp_hire(self, entry, people) -> None:
+        """Enter: contrata un candidato de empleado o reemplaza al DT."""
+        if not (0 <= self._emp_sel < len(people)):
+            return
+        kind, obj = people[self._emp_sel]
+        if kind == "coach_cand":
+            staff.replace_coach(self.app.game, obj)
+        elif kind == "cand" and staff.hire(self.app.game, obj):
+            pass
+        else:
+            return
+        savegame.save_game(self.app.game)
+        self._refresh_content()
+
+    def _emp_fire(self, entry, people) -> None:
+        """Supr: despide al empleado seleccionado (el DT no se despide, se reemplaza)."""
+        if not (0 <= self._emp_sel < len(people)):
+            return
+        kind, obj = people[self._emp_sel]
+        if kind == "staff":
+            staff.fire(self.app.game, obj)
+            self._emp_sel = max(0, self._emp_sel - 1)
+            savegame.save_game(self.app.game)
+            self._refresh_content()
+
+    # --- Modelo de la pestana Empleados (roles a la izquierda, personas a la derecha) ---
+    def _emp_roles(self) -> list:
+        """Entradas de la columna de roles: DT + roles reales + placeholders futuros."""
+        entries = [("coach", None)]
+        entries += [("role", role) for role in EmployeeRole]
+        entries += [("future", i) for i in range(len(_FUTURE_ROLES))]
+        return entries
+
+    def _emp_people(self, entry) -> list:
+        """Personas navegables del rol elegido: (kind, obj). Vacio para roles futuros."""
+        club = self._club
+        kind, ref = entry
+        if kind == "coach":
+            people = [("coach_cur", club.coach)] if club.coach else []
+            people += [("coach_cand", c) for c in self._coach_candidates()]
+            return people
+        if kind == "role":
+            return ([("staff", e) for e in staff.employees_of(club, ref)]
+                    + [("cand", e) for e in self._candidates(ref)])
+        return []
 
     def _candidates(self, role) -> list:
         """Terna de candidatos del rol para HOY (determinista; vacia si no hay cupo).
@@ -684,39 +727,32 @@ class ClubScreen(SectionScreen):
         gen = EmployeeGenerator(new_rng(self.app.game.seed + today.toordinal() + offset))
         return gen.candidates(role, club.tier, club.country_code, today, n=3)
 
-    def _emp_items(self) -> list:
-        """Items navegables de Empleados, en orden de rol: staff (despedible) y
-        candidatos (contratable). Cada item es (kind, role, employee)."""
+    def _coach_candidates(self) -> list:
+        """Terna de DTs para reemplazar al actual (determinista, estable en el dia)."""
         club = self._club
-        if club is None:
-            return []
-        out = []
-        for role in EmployeeRole:
-            out += [("staff", role, e) for e in staff.employees_of(club, role)]
-            out += [("cand", role, e) for e in self._candidates(role)]
-        out += [("future", i, None) for i in range(len(_FUTURE_ROLES))]  # placeholders
-        return out
+        today = self.app.game.calendar.current_date
+        gen = CoachGenerator(new_rng(self.app.game.seed + today.toordinal() + 999))
+        return [gen.generate(club.country_code, club.tier, today) for _ in range(3)]
 
     def _staff_text(self) -> Text:
         club = self._club
         if club is None:
             return Text("Sin club todavia.", style="white")
         today = self.app.game.calendar.current_date
-        items = self._emp_items()
-        self._emp_sel = max(0, min(len(items) - 1, self._emp_sel)) if items else 0
+        roles = self._emp_roles()
+        self._emp_role = max(0, min(len(roles) - 1, self._emp_role))
+        entry = roles[self._emp_role]
+        people = self._emp_people(entry)
+        self._emp_sel = max(0, min(len(people) - 1, self._emp_sel)) if people else 0
 
         t = Text()
-        coach = club.coach
         t.append("EMPLEADOS   ", style="bold green")
-        if coach is not None:
-            t.append(f"DT {coach.full_name} "
-                     f"(Hab {coach.skill:.0f}, Lid {coach.leadership:.0f})   ",
-                     style="white")
-        t.append(f"Sueldos {money(staff.staff_wage_bill(club))}/sem\n", style="grey70")
+        t.append(f"Sueldos {money(staff.staff_wage_bill(club))}/sem   "
+                 f"(incluye al DT)\n", style="grey70")
         t.append("-" * 80 + "\n", style="grey50")
 
-        left = self._emp_left_lines(club, today, items)
-        right = self._emp_detail_lines(club, today, items)
+        left = self._emp_role_lines(club, roles)
+        right = self._emp_detail_lines(club, today, entry, people)
         for i in range(_STAFF_ROWS):
             if i == _STAFF_ROWS - 1:
                 t.append("\n")   # ultima fila en blanco: separa la ayuda del menu (sin "|")
@@ -724,86 +760,133 @@ class ClubScreen(SectionScreen):
             lline = left[i] if i < len(left) else Text("")
             rline = right[i] if i < len(right) else Text("")
             t.append_text(lline)
-            t.append(" " * max(0, _FAC_LEFT - len(lline.plain)))
+            t.append(" " * max(0, _EMP_LEFT - len(lline.plain)))
             t.append("| ", style="grey50")
             t.append_text(rline)
             t.append("\n")
-        t.append_text(hint(("^v", "mover"), ("Enter", "contratar"),
-                           ("Supr", "despedir")))
+        t.append_text(self._emp_hint(entry))
         return t
 
-    def _emp_left_lines(self, club, today, items) -> list:
-        """Columna izquierda: por rol, encabezado (no seleccionable) + sus filas."""
-        lines = []
-        idx = 0
-        for role in EmployeeRole:
-            emps = staff.employees_of(club, role)
-            slots = staff.staff_slots(club, role)
-            lines.append(Text(f"{_ROLE_SECTION[role]} ({len(emps)}/{slots})",
-                              style="bold green"))
-            role_items = ([("staff", e) for e in emps]
-                          + [("cand", e) for e in self._candidates(role)])
-            if not role_items:
-                lines.append(Text("  (cupo lleno)", style="grey62"))
-            for kind, e in role_items:
-                lines.append(self._emp_left_row(kind, e, idx == self._emp_sel))
-                idx += 1
-            lines.append(Text(""))
-        # Roles futuros (placeholder): titulo + una fila seleccionable por rol.
-        lines.append(Text("PROXIMAMENTE", style="bold grey62"))
-        for label, _desc in _FUTURE_ROLES:
-            text = f" {label}  (proximo)"
-            if idx == self._emp_sel:
-                lines.append(Text(text[:_FAC_LEFT].ljust(_FAC_LEFT), style="bold black on green"))
+    def _emp_hint(self, entry):
+        kind = entry[0]
+        if kind == "coach":
+            return hint(("<>", "rol"), ("^v", "elegir"), ("Enter", "reemplazar DT"))
+        if kind == "future":
+            return hint(("<>", "rol"))
+        return hint(("<>", "rol"), ("^v", "elegir"), ("Enter", "contratar"),
+                    ("Supr", "despedir"))
+
+    def _emp_role_lines(self, club, roles) -> list:
+        """Columna izquierda: la lista de roles con su cupo; resalta el activo."""
+        lines = [Text("ROLES", style="bold green")]
+        for idx, (kind, ref) in enumerate(roles):
+            if kind == "coach":
+                label = f"DT {club.coach.last_name}" if club.coach else "DT"
+                cupo = "1/1"
+            elif kind == "role":
+                label = _ROLE_SHORT[ref]
+                cupo = f"{staff.role_count(club, ref)}/{staff.staff_slots(club, ref)}"
             else:
-                lines.append(Text(text[:_FAC_LEFT], style="grey50"))
-            idx += 1
+                label = _FUTURE_ROLES[ref][0]
+                cupo = "prox"
+            text = f" {label:<15.15}{cupo:>6}"
+            if idx == self._emp_role:
+                lines.append(Text(text[:_EMP_LEFT].ljust(_EMP_LEFT), style="bold black on green"))
+            else:
+                style = "grey50" if kind == "future" else "white"
+                lines.append(Text(text[:_EMP_LEFT], style=style))
         return lines
 
-    def _emp_left_row(self, kind, e, selected: bool) -> Text:
-        mark = " " if kind == "staff" else "+"
-        nb = len(e.bonuses)  # cuantos bonus trae (para leer de un vistazo el "build")
-        text = f" {mark}{e.full_name:<19.19} {nb}b Pod {e.power:>3.0f} {money(e.weekly_wage)}"
-        if selected:
-            return Text(text[:_FAC_LEFT].ljust(_FAC_LEFT), style="bold black on green")
-        return Text(text[:_FAC_LEFT], style="white" if kind == "staff" else "green")
+    def _emp_detail_lines(self, club, today, entry, people) -> list:
+        """Columna derecha: detalle del rol elegido (contratados + candidatos)."""
+        kind = entry[0]
+        if kind == "future":
+            return self._emp_future_lines(entry[1])
+        if kind == "coach":
+            return self._emp_coach_lines(club, today, people)
+        return self._emp_role_detail_lines(club, today, entry[1], people)
 
-    def _emp_detail_lines(self, club, today, items) -> list:
-        """Columna derecha: detalle del item seleccionado (staff o candidato)."""
-        lines = [Text("DETALLE", style="bold green")]
-        if not items:
-            lines.append(Text("Sin empleados ni candidatos.", style="grey62"))
-            lines.append(Text("Subi de division para mas cupos.", style="grey62"))
-            return lines
-        kind, role, e = items[self._emp_sel]
-        if kind == "future":                       # placeholder de un rol futuro
-            label, desc = _FUTURE_ROLES[role]
-            lines.append(Text(label, style="bold white"))
-            lines.append(Text("Rol futuro", style="grey70"))
-            lines.append(Text(""))
-            for wl in _wrap(desc, _FAC_RIGHT - 2):
-                lines.append(Text(wl, style="grey62"))
-            lines.append(Text(""))
-            lines.append(Text("Se implementara mas adelante.", style="yellow"))
-            return lines
-        lines += [
-            Text(e.full_name, style="bold white"),
-            Text(role.value, style="white"),
-            Text(f"Nacion: {e.nationality}   Edad: {e.age_on(today)}", style="grey70"),
-            Text(f"Poder {e.power:.0f}    Sueldo {money(e.weekly_wage)}/sem", style="white"),
-            Text(""),
-            Text("Bonus:", style="grey70"),
-        ]
-        for btype, strength in e.bonuses.items():  # primario primero (orden de insercion)
-            live = staff.is_live(btype)
-            lines.append(Text(f"  {staff.bonus_desc(btype, strength)}",
-                              style="grey70" if live else "grey50"))
+    def _emp_future_lines(self, i) -> list:
+        label, desc = _FUTURE_ROLES[i]
+        lines = [Text(label.upper(), style="bold green"), Text("Rol futuro", style="grey70"),
+                 Text("")]
+        for wl in _wrap(desc, _EMP_RIGHT - 1):
+            lines.append(Text(wl, style="grey62"))
         lines.append(Text(""))
-        if kind == "staff":
-            lines.append(Text("[Supr] despedir", style="red"))
-        else:
-            can = staff.can_hire(club, role)
-            lines.append(Text(f"[Enter] contratar ({money(e.weekly_wage)}/sem)",
-                              style="green" if can else "grey62"))
+        lines.append(Text("Se implementara con la Cantera.", style="yellow"))
         return lines
+
+    def _emp_coach_lines(self, club, today, people) -> list:
+        lines = [self._emp_head("DIRECTOR TECNICO", "1/1")]
+        for i, (kind, c) in enumerate(people):
+            if kind == "coach_cur":
+                lines.append(Text("Actual:", style="grey70"))
+            elif i == 1:
+                lines.append(Text("Reemplazar por:", style="grey70"))
+            lines.append(self._emp_coach_row(c, i == self._emp_sel, kind == "coach_cur"))
+        # Detalle del seleccionado + accion.
+        lines.append(Text(""))
+        if 0 <= self._emp_sel < len(people):
+            kind, c = people[self._emp_sel]
+            lines.append(Text(f"Ment: {c.mentality.value}   Edad: {c.age_on(today)}",
+                              style="grey70"))
+            if kind == "coach_cand":
+                lines.append(Text(f"[Enter] reemplazar DT ({money(staff.coach_wage(c, club.tier))}/sem)",
+                                  style="green"))
+            else:
+                lines.append(Text("Es tu DT actual.", style="grey62"))
+        return lines
+
+    def _emp_coach_row(self, c, selected: bool, current: bool) -> Text:
+        wage = staff.coach_wage(c, self._club.tier)
+        mark = " " if current else "+"
+        text = f" {mark}{c.full_name:<20.20} Hab {c.skill:>4.1f} Lid {c.leadership:>4.1f} {money(wage)}"
+        if selected:
+            return Text(text[:_EMP_RIGHT].ljust(_EMP_RIGHT), style="bold black on green")
+        return Text(text[:_EMP_RIGHT], style="white" if current else "green")
+
+    def _emp_role_detail_lines(self, club, today, role, people) -> list:
+        slots = staff.staff_slots(club, role)
+        lines = [self._emp_head(role.value.upper(), f"{staff.role_count(club, role)}/{slots}")]
+        shown_hire_hdr = False
+        for i, (kind, e) in enumerate(people):
+            if kind == "staff" and i == 0:
+                lines.append(Text("Contratados:", style="grey70"))
+            if kind == "cand" and not shown_hire_hdr:
+                lines.append(Text("Para contratar:", style="grey70"))
+                shown_hire_hdr = True
+            lines.append(self._emp_person_row(kind, e, i == self._emp_sel))
+        if not people:
+            lines.append(Text("Sin candidatos (cupo lleno).", style="grey62"))
+        # Detalle (bonus) del seleccionado + accion.
+        lines.append(Text(""))
+        if 0 <= self._emp_sel < len(people):
+            kind, e = people[self._emp_sel]
+            lines.append(Text(f"Bonus de {e.full_name:.28}:", style="grey70"))
+            for btype, strength in e.bonuses.items():  # primario primero
+                live = staff.is_live(btype)
+                lines.append(Text(f"  {staff.bonus_desc(btype, strength)}",
+                                  style="grey70" if live else "grey50"))
+            if kind == "staff":
+                lines.append(Text("[Supr] despedir", style="red"))
+            else:
+                can = staff.can_hire(club, role)
+                lines.append(Text(f"[Enter] contratar ({money(e.weekly_wage)}/sem)",
+                                  style="green" if can else "grey62"))
+        return lines
+
+    def _emp_person_row(self, kind, e, selected: bool) -> Text:
+        mark = " " if kind == "staff" else "+"
+        nb = len(e.bonuses)  # cuantos bonus trae (para leer el "build" de un vistazo)
+        text = f" {mark}{e.full_name:<22.22} {nb}b Pod {e.power:>3.0f} {money(e.weekly_wage)}"
+        if selected:
+            return Text(text[:_EMP_RIGHT].ljust(_EMP_RIGHT), style="bold black on green")
+        return Text(text[:_EMP_RIGHT], style="white" if kind == "staff" else "green")
+
+    def _emp_head(self, title: str, cupo: str) -> Text:
+        """Encabezado del detalle: titulo del rol a la izquierda + cupo a la derecha."""
+        head = Text(f"{title} ", style="bold green")
+        pad = max(1, _EMP_RIGHT - len(title) - 1 - len(f"{cupo} cupos"))
+        head.append(" " * pad + f"{cupo} cupos", style="grey62")
+        return head
 

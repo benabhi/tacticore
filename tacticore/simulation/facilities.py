@@ -262,7 +262,7 @@ def office_income_bonus(club: Club) -> float:
 def facility_effect_desc(facility_id: str) -> str:
     """Texto del efecto POR NIVEL de una instalacion deportiva/gestion (o '' si no tiene)."""
     return {
-        "medical": "+1 cupo Medico y -6% lesiones por nivel",
-        "training": "+15% entrenamiento por nivel",
+        "medical": "+1 cupo Medico/Psicologo y -6% lesiones por nivel",
+        "training": "+1 cupo Asistente y +15% entrenamiento por nivel",
         "oficina": "+1 cupo Dir. financiero y +3% ingresos por nivel",
     }.get(facility_id, "")

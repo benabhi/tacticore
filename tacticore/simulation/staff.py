@@ -20,10 +20,14 @@ B = BonusType
 _ROLE_PRIMARY: dict[EmployeeRole, BonusType] = {
     EmployeeRole.DOCTOR: B.INJURY_PREVENT,
     EmployeeRole.FINANCE: B.INCOME,
+    EmployeeRole.ASSISTANT: B.TRAINING,
+    EmployeeRole.PSYCHOLOGIST: B.MORALE,
 }
 _ROLE_EXTRAS: dict[EmployeeRole, list[BonusType]] = {
     EmployeeRole.DOCTOR: [B.INJURY_RECOVER, B.TRAINING, B.MORALE],   # salud/bienestar
     EmployeeRole.FINANCE: [B.GATE, B.TRANSFERS, B.WAGES],            # dinero
+    EmployeeRole.ASSISTANT: [B.MORALE, B.INJURY_RECOVER],            # cuerpo tecnico
+    EmployeeRole.PSYCHOLOGIST: [B.TRAINING, B.INJURY_PREVENT],       # cabeza/bienestar
 }
 
 # --- Magnitud y modo de agregacion de cada tipo de bonus ---
@@ -37,10 +41,14 @@ _CAP: dict[BonusType, float] = {
 }
 # Tipos con efecto real hoy (los demas se muestran marcados "proximo").
 _LIVE = {B.INJURY_PREVENT, B.INJURY_RECOVER, B.INCOME, B.GATE, B.TRANSFERS, B.WAGES,
-         B.TRAINING}
+         B.TRAINING, B.MORALE}
 # El bonus de entrenamiento aporta PUNTOS a la capacidad de entreno (no un %).
 _TRAIN_PTS_RATE = 0.20   # una fuerza 100 -> ~20 puntos de capacidad
 _TRAIN_PTS_CAP = 25
+# La moral aporta PUNTOS al liderazgo efectivo (no un %): sube la moral base del
+# plantel junto al DT (ver daily._drift_morale). Una fuerza 100 -> ~25 puntos.
+_MORALE_PTS_RATE = 0.25
+_MORALE_PTS_CAP = 30
 
 # --- Sueldo (barrera; convexo en el poder total, escalado por tier) ---
 _WAGE_BASE = 600   # sueldo de un empleado de poder 50 en la liga E
@@ -50,12 +58,16 @@ _TIER_WAGE_MULT: dict[LeagueTier, float] = {
 }
 _WAGE_MIN = 300
 
-# --- Cupos por rol: base fijo + nivel de la instalacion "hogar" del rol ---
-# Siempre podes tener 1; construir la instalacion (con su min_tier de ancla) sube el tope.
-_BASE_SLOTS = 1
+# --- Cupos por rol: base por tier + nivel de la instalacion "hogar" del rol ---
+# El base sube al ascender de liga; construir/mejorar la instalacion ancla suma mas.
+_TIER_SLOT_BASE: dict[LeagueTier, int] = {
+    LeagueTier.E: 1, LeagueTier.D: 1, LeagueTier.C: 1, LeagueTier.B: 2, LeagueTier.A: 2,
+}
 _HOME_FACILITY: dict[EmployeeRole, str] = {
-    EmployeeRole.DOCTOR: "medical",     # Enfermeria
-    EmployeeRole.FINANCE: "oficina",    # Oficinas administrativas
+    EmployeeRole.DOCTOR: "medical",       # Enfermeria
+    EmployeeRole.FINANCE: "oficina",      # Oficinas administrativas
+    EmployeeRole.ASSISTANT: "training",   # Centro de entrenamiento
+    EmployeeRole.PSYCHOLOGIST: "medical",  # Enfermeria (salud fisica y mental)
 }
 _INCOME_COMBINED_CAP = 0.20  # tope del bonus de ingresos (empleados + oficina)
 
@@ -78,10 +90,22 @@ def staff_wage(power: float, tier: LeagueTier) -> int:
     return max(_WAGE_MIN, round(_WAGE_BASE * (0.5 + power / 100) ** 2 * _TIER_WAGE_MULT[tier]))
 
 
+def coach_wage(coach, tier: LeagueTier) -> int:
+    """Sueldo semanal del DT, calculado al vuelo (no se persiste, como el del jugador).
+
+    El DT es el staff mas caro: su "poder" combina habilidad y liderazgo."""
+    if coach is None:
+        return 0
+    power = coach.skill + 0.5 * coach.leadership
+    return staff_wage(power, tier)
+
+
 def bonus_desc(t: BonusType, strength: float) -> str:
     """Texto corto del efecto de UN bonus (para la UI). Inerte -> '(proximo)'."""
     if t is B.TRAINING:
         return f"+{round(_TRAIN_PTS_RATE * strength)} de entrenamiento"
+    if t is B.MORALE:
+        return f"+{round(_MORALE_PTS_RATE * strength)} a la moral"
     pct = round(_RATE[t] * strength)
     text = {
         B.INJURY_PREVENT: f"-{pct}% lesiones",
@@ -104,10 +128,24 @@ def training_bonus(club: Club) -> float:
     return min(_TRAIN_PTS_CAP, total)
 
 
+def morale_support(club: Club) -> float:
+    """Puntos de liderazgo efectivo que aporta el staff (bonus MORALE, ej. Psicologo).
+
+    Se suman al liderazgo del DT para fijar la moral base del plantel (ver
+    daily._drift_morale). Rendimiento decreciente y tope, como el entrenamiento."""
+    total = 0.0
+    for i, s in enumerate(_strengths(club, B.MORALE)):
+        total += _MORALE_PTS_RATE * s * (1.0 if i == 0 else 0.5)
+    return min(_MORALE_PTS_CAP, total)
+
+
 # --- Cupos, contratacion, sueldos ---
 def staff_slots(club: Club, role: EmployeeRole) -> int:
-    """Cupos de `role`: base + nivel de la instalacion hogar del rol (Enfermeria/Oficina)."""
-    return _BASE_SLOTS + fac.level(club, _HOME_FACILITY[role])
+    """Cupos de `role`: base por tier + nivel de la instalacion hogar del rol.
+
+    El base crece al ascender de liga y el edificio ancla (Enfermeria/Centro de
+    entrenamiento/Oficinas) suma su nivel encima."""
+    return _TIER_SLOT_BASE[club.tier] + fac.level(club, _HOME_FACILITY[role])
 
 
 def employees_of(club: Club, role: EmployeeRole) -> list[Employee]:
@@ -138,8 +176,16 @@ def fire(game, employee: Employee) -> None:
         club.employees.remove(employee)
 
 
+def replace_coach(game, coach) -> None:
+    """Reemplaza al DT del club del jugador (siempre hay uno: no se despide, se cambia)."""
+    club = game.player_club
+    if club is not None:
+        club.coach = coach
+
+
 def staff_wage_bill(club: Club) -> int:
-    return sum(e.weekly_wage for e in club.employees)
+    """Masa salarial del cuerpo de trabajo: empleados + el DT (sueldo calculado)."""
+    return sum(e.weekly_wage for e in club.employees) + coach_wage(club.coach, club.tier)
 
 
 # --- Agregacion de efectos POR TIPO (sobre todos los empleados) ---

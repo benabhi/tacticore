@@ -111,13 +111,65 @@ def test_new_live_bonuses_aggregate(monkeypatch):
     assert 0 < staff.wage_reduction(club) <= 0.10
 
 
-def test_training_live_and_morale_inert(monkeypatch):
+def test_training_and_morale_live(monkeypatch):
     game, club = _game(11, monkeypatch)
     staff.hire(game, _emp(EmployeeRole.DOCTOR,
                           {B.INJURY_PREVENT: 40, B.TRAINING: 90, B.MORALE: 90}))
-    assert staff.is_live(B.TRAINING) and not staff.is_live(B.MORALE)   # TRAINING ya vive
-    assert staff.training_bonus(club) > 0                              # aporta capacidad
-    assert staff.income_bonus(club) == 0 and staff.gate_bonus(club) == 0  # moral no hace nada
+    assert staff.is_live(B.TRAINING) and staff.is_live(B.MORALE)   # ambos vivos
+    assert staff.training_bonus(club) > 0                          # aporta capacidad
+    assert staff.morale_support(club) > 0                          # aporta a la moral base
+    assert staff.income_bonus(club) == 0 and staff.gate_bonus(club) == 0  # no toca finanzas
+
+
+def test_new_roles_primary_bonus_and_slots(monkeypatch):
+    game, club = _game(11, monkeypatch)
+    # El Asistente trae Entrenamiento; el Psicologo, Moral.
+    asst = EmployeeGenerator(new_rng(4)).generate(EmployeeRole.ASSISTANT, "AR", LeagueTier.C)
+    psy = EmployeeGenerator(new_rng(4)).generate(EmployeeRole.PSYCHOLOGIST, "AR", LeagueTier.C)
+    assert B.TRAINING in asst.bonuses and B.MORALE in psy.bonuses
+    # Cupos: Asistente ancla en Centro de entrenamiento; Psicologo en Enfermeria.
+    assert staff.staff_slots(club, EmployeeRole.ASSISTANT) == 1     # base E, sin edificio
+    club.facilities["training"] = 2
+    assert staff.staff_slots(club, EmployeeRole.ASSISTANT) == 3     # base + nivel
+    club.facilities["medical"] = 1
+    assert staff.staff_slots(club, EmployeeRole.PSYCHOLOGIST) == 2  # comparte Enfermeria
+
+
+def test_slots_grow_with_tier(monkeypatch):
+    game, club = _game(11, monkeypatch)
+    club.tier = LeagueTier.E
+    assert staff.staff_slots(club, EmployeeRole.DOCTOR) == 1        # base E
+    club.tier = LeagueTier.A
+    assert staff.staff_slots(club, EmployeeRole.DOCTOR) == 2        # mas base al ascender
+
+
+def test_coach_wage_and_bill_and_replace(monkeypatch):
+    game, club = _game(11, monkeypatch)
+    assert club.coach is not None
+    wage = staff.coach_wage(club.coach, club.tier)
+    assert wage > 0
+    # La masa salarial del staff INCLUYE al DT (aunque no haya empleados).
+    assert staff.staff_wage_bill(club) == wage
+    # Reemplazar el DT lo cambia (siempre hay uno).
+    old = club.coach
+    from tacticore.generators import CoachGenerator
+    repl = CoachGenerator(new_rng(9)).generate(club.country_code, club.tier,
+                                               game.calendar.current_date)
+    staff.replace_coach(game, repl)
+    assert club.coach is repl and club.coach is not old
+
+
+def test_psychologist_lifts_morale_target(monkeypatch):
+    import random
+    game, club = _game(11, monkeypatch)
+    # DT de liderazgo bajo -> sin psicologo la moral tiende a bajar.
+    club.coach.leadership = 30.0
+    assert staff.morale_support(club) == 0.0
+    staff.hire(game, _emp(EmployeeRole.PSYCHOLOGIST, {B.MORALE: 100}))
+    assert staff.morale_support(club) > 0.0
+    # Con el aporte del psicologo el liderazgo efectivo cruza el umbral (>=40).
+    effective = club.coach.leadership + staff.morale_support(club)
+    assert effective >= 40.0
 
 
 def test_weekly_economy_uses_staff_bonuses(monkeypatch):
@@ -134,7 +186,7 @@ def test_weekly_economy_uses_staff_bonuses(monkeypatch):
 
 
 def test_generated_employee_has_primary_and_1_to_3_bonuses():
-    for role in (EmployeeRole.DOCTOR, EmployeeRole.FINANCE):
+    for role in EmployeeRole:                                  # todos los roles reales
         e = EmployeeGenerator(new_rng(7)).generate(role, "AR", LeagueTier.C)
         assert staff.role_primary(role) in e.bonuses          # el primario del rol
         assert 1 <= len(e.bonuses) <= 3
@@ -157,13 +209,16 @@ def test_round_trip_employees(monkeypatch):
     staff.hire(game, _emp(EmployeeRole.DOCTOR,
                           {B.INJURY_PREVENT: 62.5, B.INJURY_RECOVER: 30.0}))
     staff.hire(game, _emp(EmployeeRole.FINANCE, {B.INCOME: 71.0}))
+    club.facilities["training"] = 1  # cupo para el asistente
+    staff.hire(game, _emp(EmployeeRole.ASSISTANT, {B.TRAINING: 55.0}))  # rol nuevo
     conn = sqlite3.connect(":memory:")
     _db.write_game(conn, game)
     g2 = _db.read_game(conn)
     emps = g2.player_club.employees
-    assert len(emps) == 2
+    assert len(emps) == 3
     by_role = {e.role: e for e in emps}
     doc = by_role[EmployeeRole.DOCTOR]
     assert abs(doc.bonuses[B.INJURY_PREVENT] - 62.5) < 1e-6
     assert abs(doc.bonuses[B.INJURY_RECOVER] - 30.0) < 1e-6
     assert by_role[EmployeeRole.FINANCE].bonuses == {B.INCOME: 71.0}
+    assert by_role[EmployeeRole.ASSISTANT].bonuses == {B.TRAINING: 55.0}  # enum nuevo persiste

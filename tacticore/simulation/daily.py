@@ -213,10 +213,13 @@ def _notify_weekly_economy(game, club, net: int) -> None:
 
 
 def _drift_morale(club, rng: random.Random) -> None:
-    """La moral del plantel deriva hacia una base fijada por el liderazgo del DT."""
+    """La moral del plantel deriva hacia una base por el liderazgo EFECTIVO.
+
+    El liderazgo del DT mas el aporte del staff (Psicologo, bonus MORALE) fijan el
+    nivel al que tiende la moral del plantel."""
     if not club.players:
         return
-    lead = club.coach.leadership if club.coach else 50.0
+    lead = (club.coach.leadership if club.coach else 50.0) + staff.morale_support(club)
     target = 4 if lead >= 65 else 3 if lead >= 40 else 2
     for p in club.players:
         v = p.morale.value
