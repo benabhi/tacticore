@@ -13,7 +13,8 @@ para pestañas, letras para secciones) las maneja `SectionScreen`.
 
 from rich.text import Text
 
-from ...domain.player import ALL_ATTRS
+from ...domain.player import (
+    ALL_ATTRS, MENTAL_ATTRS, PHYSICAL_ATTRS, TECHNICAL_ATTRS)
 from ...domain.transfer import COUNTERED, PENDING
 from ...persistence import savegame
 from ...simulation import transfers as T
@@ -35,6 +36,32 @@ def _attr_color(value: float) -> str:
     if value >= 35:
         return "orange1"
     return "red"
+
+
+def _mk_attr_key(attr: str):
+    return lambda p, today: getattr(p, attr)
+
+
+# Campos por los que se puede ordenar la plantilla, agrupados (para el selector en
+# grilla). Cada campo: (id, etiqueta, funcion(player, today) -> valor comparable).
+_SORT_GROUPS = [
+    ("RESUMEN", [
+        ("ovr", "OVR", lambda p, t: p.overall),
+        ("pot", "POT", lambda p, t: p.potential),
+        ("form", "Forma", lambda p, t: p.form),
+        ("fit", "Fitness", lambda p, t: p.fitness),
+        ("age", "Edad", lambda p, t: p.age_on(t)),
+        ("morale", "Moral", lambda p, t: p.morale.value),
+        ("name", "Nombre", lambda p, t: p.last_name.lower()),
+        ("pos", "Posicion", lambda p, t: p.position.value),
+        ("shirt", "Dorsal", lambda p, t: p.shirt_number or 0),
+    ]),
+    ("FISICOS", [(a, ATTR_LABEL[a], _mk_attr_key(a)) for a in PHYSICAL_ATTRS]),
+    ("TECNICOS", [(a, ATTR_LABEL[a], _mk_attr_key(a)) for a in TECHNICAL_ATTRS]),
+    ("MENTALES", [(a, ATTR_LABEL[a], _mk_attr_key(a)) for a in MENTAL_ATTRS]),
+]
+_SORT_BY_ID = {fid: (label, fn) for _g, fields in _SORT_GROUPS for fid, label, fn in fields}
+_SORT_TEXT = {"name", "pos"}   # campos de texto: por defecto ascendente (alfabetico)
 
 _WIDTH = 80       # ancho total de la tabla (toda la pantalla)
 _PAGE_SIZE = 14   # filas de jugadores por pagina
@@ -84,6 +111,12 @@ class PlayersScreen(SectionScreen):
         self._compare_from = None  # jugador marcado para comparar (A); None si no hay
         self._releasing = None  # jugador a confirmar despido (None = no hay confirmacion)
         self._peek = False     # panel de atributos inline abierto (vistazo rapido)
+        # --- Orden de la plantilla ---
+        self._sort_key = None  # id del campo por el que se ordena (None = orden de plantel)
+        self._sort_desc = True  # True = descendente (mayor primero)
+        self._sorting = False  # selector de orden abierto
+        self._sort_col = 0     # columna (grupo) resaltada en el selector
+        self._sort_row = 0     # fila (campo) resaltada en el selector
         self._youth_sel = 0    # prospecto seleccionado en la Cantera
         # --- Estado del Mercado ---
         self._mkt_sel = 0      # listado seleccionado
@@ -109,12 +142,16 @@ class PlayersScreen(SectionScreen):
         return " ".join(self._cell_values(p)).lower()
 
     def _visible(self) -> list:
-        """Jugadores que pasan el filtro de busqueda (todos si no hay filtro)."""
+        """Jugadores tras el filtro de busqueda y el orden elegido (copia, no muta)."""
         players = self._players
-        if not self._query:
-            return players
-        q = self._query.lower()
-        return [p for p in players if q in self._haystack(p)]
+        if self._query:
+            q = self._query.lower()
+            players = [p for p in players if q in self._haystack(p)]
+        if self._sort_key is not None:
+            _label, fn = _SORT_BY_ID[self._sort_key]
+            players = sorted(players, key=lambda p: fn(p, self._today),
+                             reverse=self._sort_desc)
+        return players
 
     # --- Render por pestaña ---
     def render_tab(self, index: int) -> Text:
@@ -401,6 +438,8 @@ class PlayersScreen(SectionScreen):
         club = self.app.game.player_club if self.app.game else None
         if not self._players:
             return Text("No hay jugadores para mostrar.", style="white")
+        if self._sorting:
+            return self._sort_picker_text()
 
         visible = self._visible()
         total = len(visible)
@@ -415,7 +454,10 @@ class PlayersScreen(SectionScreen):
         subtitle = f"{club.name}   {len(self._players)} jugadores"
         if self._query:
             subtitle += f"   [{total} coinciden]"
-        t.append(subtitle + "\n", style="grey62")
+        subtitle += f"   Orden: {self._sort_desc_text()}   "
+        t.append(subtitle, style="grey62")
+        t.append_text(hint(("O", "ordenar")))   # la tecla en amarillo (acento)
+        t.append("\n")
         self._append_header(t)
         if total == 0:
             t.append(f"  Sin resultados para \"{self._query}\".\n", style="grey62")
@@ -455,6 +497,86 @@ class PlayersScreen(SectionScreen):
                 t.append(cell, style=_attr_color(value))
             if i < rows - 1:
                 t.append("\n")
+
+    # --- Orden de la plantilla (selector en grilla + aplicacion) ---
+    def _sort_desc_text(self) -> str:
+        """Texto del orden actual para el subtitulo (ej. 'OVR desc' o 'plantel')."""
+        if self._sort_key is None:
+            return "plantel"
+        label, _fn = _SORT_BY_ID[self._sort_key]
+        return f"{label} {'desc' if self._sort_desc else 'asc'}"
+
+    def _open_sort(self) -> None:
+        """Abre el selector de orden, posicionado sobre el campo actual (si hay)."""
+        self._sorting = True
+        self._sort_col, self._sort_row = 0, 0
+        for ci, (_g, fields) in enumerate(_SORT_GROUPS):
+            for ri, (fid, _l, _fn) in enumerate(fields):
+                if fid == self._sort_key:
+                    self._sort_col, self._sort_row = ci, ri
+        self._refresh_content()
+
+    def _sort_picker_text(self) -> Text:
+        t = Text()
+        t.append("ORDENAR POR", style="bold green")
+        t.append(f"   (actual: {self._sort_desc_text()})\n", style="grey62")
+        t.append("-" * _WIDTH + "\n", style="grey50")
+        col_w = 20
+        for gtitle, _fields in _SORT_GROUPS:
+            t.append(gtitle.ljust(col_w), style="bold green")
+        t.append("\n")
+        maxrows = max(len(f) for _g, f in _SORT_GROUPS)
+        for r in range(maxrows):
+            for ci, (_g, fields) in enumerate(_SORT_GROUPS):
+                if r >= len(fields):
+                    t.append(" " * col_w); continue
+                fid, label, _fn = fields[r]
+                sel = ci == self._sort_col and r == self._sort_row
+                text = f" {'>' if sel else ' '}{label}"
+                if sel:
+                    style = "bold black on green"
+                elif fid == self._sort_key:
+                    style = "bold cyan"      # el campo por el que se ordena ahora
+                else:
+                    style = "white"
+                t.append(text[:col_w].ljust(col_w), style=style)
+            t.append("\n")
+        t.append("\n")
+        t.append_text(hint(("Flechas", "mover"), ("Enter", "aplicar (repetir invierte)"),
+                           ("Esc", "cancelar")))
+        return t
+
+    def _key_sorting(self, event) -> None:
+        key = event.key
+        fields = _SORT_GROUPS[self._sort_col][1]
+        if key == "up":
+            event.stop(); self._sort_row = max(0, self._sort_row - 1); self._refresh_content()
+        elif key == "down":
+            event.stop(); self._sort_row = min(len(fields) - 1, self._sort_row + 1); self._refresh_content()
+        elif key == "left":
+            event.stop(); self._sort_col = max(0, self._sort_col - 1)
+            self._sort_row = min(self._sort_row, len(_SORT_GROUPS[self._sort_col][1]) - 1)
+            self._refresh_content()
+        elif key == "right":
+            event.stop(); self._sort_col = min(len(_SORT_GROUPS) - 1, self._sort_col + 1)
+            self._sort_row = min(self._sort_row, len(_SORT_GROUPS[self._sort_col][1]) - 1)
+            self._refresh_content()
+        elif key == "enter":
+            event.stop(); self._apply_sort()
+        elif key == "escape":
+            event.stop(); self._sorting = False; self._refresh_content()
+
+    def _apply_sort(self) -> None:
+        """Aplica el campo resaltado. Si ya era el activo, invierte el sentido."""
+        fid, _label, _fn = _SORT_GROUPS[self._sort_col][1][self._sort_row]
+        if self._sort_key == fid:
+            self._sort_desc = not self._sort_desc          # mismo campo -> invertir
+        else:
+            self._sort_key = fid
+            self._sort_desc = fid not in _SORT_TEXT        # numerico desc, texto asc
+        self._sorting = False
+        self._selected = 0
+        self._refresh_content()
 
     def _append_footer(self, t: Text, page: int, pages: int) -> None:
         if self._searching:
@@ -601,6 +723,9 @@ class PlayersScreen(SectionScreen):
         if self._releasing is not None:      # modal: confirmar/cancelar el despido
             self._key_releasing(event)
             return
+        if self._sorting:                    # modal: selector de orden
+            self._key_sorting(event)
+            return
         key = event.key
         comparing = self._compare_from is not None
         if key == "up":
@@ -613,6 +738,8 @@ class PlayersScreen(SectionScreen):
             event.stop(); self._move(self._page_size)
         elif event.character == "a":
             event.stop(); self._peek = not self._peek; self._refresh_content()
+        elif event.character == "o" and not comparing:
+            event.stop(); self._open_sort()
         elif event.character == "m":
             event.stop(); self._toggle_compare_mark()
         elif comparing and key == "escape":
