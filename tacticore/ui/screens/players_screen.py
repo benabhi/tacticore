@@ -6,9 +6,9 @@ Pestañas:
 - Mercado: transferencias in/out (placeholder).
 
 La Plantilla es la unica pestaña interactiva: recibe el teclado en `on_content_key`
-(flechas para moverse, Enter para la ficha, "/" para buscar en vivo). Las demas
-teclas del marco (numeros/Tab para pestañas, letras para secciones) las maneja
-`SectionScreen`.
+(flechas para moverse, Enter para la ficha, "/" para buscar en vivo, "m" para
+marcar un jugador y comparar con otro). Las demas teclas del marco (numeros/Tab
+para pestañas, letras para secciones) las maneja `SectionScreen`.
 """
 
 from rich.text import Text
@@ -61,6 +61,7 @@ class PlayersScreen(SectionScreen):
         self._selected = 0    # indice del jugador seleccionado (sobre los visibles)
         self._searching = False  # si esta activo el buscador (se escribe)
         self._query = ""      # texto del filtro en vivo
+        self._compare_from = None  # jugador marcado para comparar (A); None si no hay
         # --- Estado del Mercado ---
         self._mkt_sel = 0      # listado seleccionado
         self._mkt_search = False
@@ -257,20 +258,18 @@ class PlayersScreen(SectionScreen):
             t.append(self._query + "_", style="bold white")
             t.append("   ")
             t.append_text(hint(("Enter", "ficha"), ("Esc", "cancelar")))
+        elif self._compare_from is not None:
+            # Modo comparar: barra propia (elegir el 2do jugador o cancelar).
+            t.append(f"Comparar con {self._compare_from.full_name:.16}: ",
+                     style="bold cyan")
+            t.append_text(hint(("Enter", "2do jugador"), ("Esc", "cancelar")))
         else:
+            # El estado (lesion/sancion/venta) ya se lee en la columna EST y en el
+            # color del nombre; aca solo van los atajos (mas la tecla de comparar).
             t.append_text(hint(
-                ("Flechas", "mover"), ("Enter", "ficha"),
+                ("Flechas", "mover"), ("Enter", "ficha"), ("M", "comparar"),
                 ("V", "vender"), ("/", "buscar"),
             ))
-            visible = self._visible()
-            sel = visible[self._selected] if visible else None
-            if sel is not None and sel.injury is not None:
-                t.append(f"   LESIONADO ({sel.injury_weeks_left(self._today)} sem)",
-                         style="bold red")
-            elif sel is not None and sel.matches_suspended > 0:
-                t.append(f"   SUSPENDIDO ({sel.matches_suspended})", style="bold red")
-            elif sel is not None and sel.asking_price is not None:
-                t.append(f"   EN VENTA {money(sel.asking_price)}", style="bold yellow")
         t.append(f"   Pag {page}/{pages}", style="grey62")
 
     @staticmethod
@@ -291,9 +290,12 @@ class PlayersScreen(SectionScreen):
             line = ("> " + " ".join(cells)).ljust(_WIDTH)
             t.append(line + "\n", style="bold black on green")
             return
-        t.append("  ")
+        marked = p is self._compare_from  # A de la comparacion (no en foco)
+        t.append("A " if marked else "  ", style="bold cyan" if marked else "white")
         for i, cell in enumerate(cells):
-            if i == 1 and p.asking_price is not None:
+            if marked and i == 1:
+                style = "bold cyan"     # nombre en cyan = marcado para comparar
+            elif i == 1 and p.asking_price is not None:
                 style = "bold yellow"   # nombre en amarillo = esta en venta
             elif i == _MOR_IDX:
                 style = _MORALE_STYLE.get(int(cell), "white")
@@ -380,6 +382,7 @@ class PlayersScreen(SectionScreen):
             self._on_key_search(event, event.key)
             return
         key = event.key
+        comparing = self._compare_from is not None
         if key == "up":
             event.stop(); self._move(-1)
         elif key == "down":
@@ -388,15 +391,49 @@ class PlayersScreen(SectionScreen):
             event.stop(); self._move(-_PAGE_SIZE)
         elif key in ("right", "pagedown"):
             event.stop(); self._move(_PAGE_SIZE)
+        elif event.character == "m":
+            event.stop(); self._toggle_compare_mark()
+        elif comparing and key == "escape":
+            event.stop(); self._compare_from = None; self._refresh_content()
+        elif comparing and key == "enter":
+            event.stop(); self._open_compare()
         elif key == "enter":
             event.stop(); self._open_detail()
-        elif event.character == "v":
+        elif event.character == "v" and not comparing:  # bloqueado mientras se compara
             event.stop(); self._toggle_sale()
         elif event.character == "/":
             self._searching = True
             self._query = ""
             self._selected = 0
             event.stop(); self._refresh_content()
+
+    def _toggle_compare_mark(self) -> None:
+        """Marca (o desmarca) al jugador en foco como A para comparar."""
+        visible = self._visible()
+        if not visible:
+            return
+        focused = visible[self._selected]
+        self._compare_from = None if focused is self._compare_from else focused
+        self._refresh_content()
+
+    def _open_compare(self) -> None:
+        """Abre la comparacion entre A (marcado) y B (en foco)."""
+        visible = self._visible()
+        if not visible:
+            return
+        b = visible[self._selected]
+        if b is self._compare_from:  # no comparar a un jugador consigo mismo
+            return
+        from .compare_players_screen import ComparePlayersScreen
+
+        self.app.push_screen(
+            ComparePlayersScreen(self._compare_from, b, self._today,
+                                 self._on_compare_close)
+        )
+
+    def _on_compare_close(self) -> None:
+        self._compare_from = None
+        self._refresh_content()
 
     def _toggle_sale(self) -> None:
         visible = self._visible()
