@@ -111,7 +111,7 @@ class PlayerDetailScreen(BaseScreen):
 
     def _hint_text(self) -> Text:
         return hint(
-            ("Esc", "volver"), ("<- ->", "jugador"), ("1-3", "pestaña"),
+            ("Esc", "volver"), ("<- ->", "jugador"), ("1-3", "pestana"),
             ("c", f"color ({_MODE_NAMES[self._color_mode]})"),
         )
 
@@ -164,6 +164,10 @@ class PlayerDetailScreen(BaseScreen):
 
         # --- Detalle en dos columnas con titulos, valores alineados. ---
         years, days = p.age_parts_on(self._today)
+        # Fragilidad: propension a lesionarse (baja = aguanta; alta = se rompe seguido).
+        ip = p.injury_proneness
+        frag = "Baja" if ip < 35 else "Media" if ip < 65 else "Alta"
+        frag_style = "green" if ip < 35 else "yellow" if ip < 65 else "red"
         identidad = [
             ("Nacionalidad", p.nationality),
             ("Pie", FOOT_LABEL[p.foot]),
@@ -171,6 +175,7 @@ class PlayerDetailScreen(BaseScreen):
             ("Nacimiento", p.birth_date.strftime("%d-%m-%Y")),
             ("Altura", f"{p.height_cm} cm"),
             ("Peso", f"{p.weight_kg} kg"),
+            ("Fragilidad", frag, frag_style),
             ("Cantera", p.origin_club or "-"),
         ]
         if p.injury is None:
