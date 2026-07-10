@@ -2,7 +2,7 @@
 
 Arranca en la pantalla de titulo. El flujo de una partida nueva es:
 
-    Titulo -> Carga (genera el mundo) -> Crea tu club -> Club (Resumen)
+    Titulo -> Carga (genera el mundo) -> Crea tu club -> Club (Oficina)
 
 Si hay una partida guardada, el Titulo ofrece "Continuar" y carga directo al
 Club. Todo el estado vive en `self.game` (un `GameState`), que es lo que se

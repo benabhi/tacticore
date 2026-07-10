@@ -160,7 +160,7 @@ class TitleScreen(BaseScreen):
             # Ya hay una partida en curso en memoria.
             self.app.switch_screen(ClubScreen())
         elif savegame.compatible_save_exists():
-            # Continuar: cargar la partida guardada y entrar al Club (Resumen).
+            # Continuar: cargar la partida guardada y entrar al Club (Oficina).
             self.app.game = savegame.load_game()
             # Los fixtures y amistosos ya vienen persistidos; por las dudas,
             # aseguramos que existan (idempotente) para saves viejos que nunca

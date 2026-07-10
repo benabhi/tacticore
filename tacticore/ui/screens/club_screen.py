@@ -1,13 +1,15 @@
 """Seccion Club: la institucion.
 
 Pestañas:
-- Resumen: tablero + pantallazo (emblema, identidad, proximo partido, novedades).
+- Oficina: tablero + pantallazo (emblema, identidad, proximo partido, novedades) y
+  un segundo bloque alternable (V) entre calendario semanal y estadisticas.
 - Notificaciones: registro de novedades y eventos accionables.
 - Instalaciones: estadio y construcciones (plan en borrador).
 - Empleados: cuerpo de trabajo (DT + roles), contratos y candidatos por rol.
 """
 
 import copy
+from datetime import timedelta
 
 from rich.text import Text
 
@@ -20,11 +22,13 @@ from ...simulation import facilities as fac
 from ...simulation import notifications as notif
 from ...simulation import staff
 from ...simulation import training as tr
+from ...simulation import youth
 from ...simulation.economy import (
     membership_income, player_value, squad_wage_bill, stadium_upkeep)
 from ...simulation.season import compute_standings
 from ..format import append_section, hint, money
 from ..identicon import emblem_lines
+from ..palette import ACCENT
 from .section_screen import SectionScreen
 
 # Etiqueta corta de cada rol para la lista de la izquierda en Empleados.
@@ -61,6 +65,20 @@ _CAT_STYLE = {
 }
 _NOTIF_PAGE = 8  # notificaciones por pagina (2 lineas c/u) en la pestana
 
+# Calendario semanal (Oficina): dia de la semana y evento fijo de cada dia (0=lunes).
+_CAL_DOW = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
+_CAL_COL = 11  # ancho de cada una de las 7 columnas del calendario (7*11 = 77)
+_OF_BLOCK_ROWS = 11  # alto fijo del segundo bloque de Oficina (ancla la ayuda al fondo)
+_ROUTINE = {   # evento fijo por dia de la semana: (etiqueta corta, estilo)
+    0: ("Hinchas", "grey62"),
+    1: ("Libre", "grey50"),
+    2: ("Mercado", "yellow"),
+    3: ("Entreno", "magenta"),
+    4: ("Finanzas", "green"),
+    5: ("Previa", "grey62"),
+    6: ("Liga", "cyan"),
+}
+
 
 def _wrap(text: str, width: int) -> list[str]:
     """Parte `text` en lineas de a lo sumo `width` (corta por palabras)."""
@@ -82,13 +100,16 @@ class ClubScreen(SectionScreen):
 
     section_key = "C"
     section_title = "Club"
-    tabs = ("Resumen", "Notificaciones", "Instalaciones", "Empleados")
+    tabs = ("Oficina", "Notificaciones", "Instalaciones", "Empleados")
+    _OFICINA_TAB = 0  # indice de la pestana Oficina (tablero + calendario)
     _NOTIF_TAB = 1  # indice de la pestana Notificaciones (interactiva)
     _FAC_TAB = 2    # indice de la pestana Instalaciones (interactiva)
     _STAFF_TAB = 3  # indice de la pestana Empleados (interactiva)
 
     def __init__(self) -> None:
         super().__init__()
+        self._of_view = "calendar"  # segundo bloque de Oficina: "calendar" (default) o "stats"
+        self._cal_offset = 0        # desplazamiento del calendario, en dias (multiplos de 7)
         self._notif_sel = 0     # cursor en Notificaciones
         self._fac_sel = 0       # item seleccionado en Instalaciones (lista paginada)
         self._fac_plan: list = []  # cambios en borrador (se confirman con G)
@@ -116,7 +137,6 @@ class ClubScreen(SectionScreen):
             return Text("Sin club todavia.", style="white")
         game = self.app.game
         today = game.calendar.current_date
-        cap = f"{club.stadium.capacity:,}".replace(",", ".")
         manager = club.manager.full_name if club.manager else "-"
 
         # --- Cabecera a tres columnas: emblema | identidad | pantallazo ---
@@ -146,7 +166,26 @@ class ClubScreen(SectionScreen):
             t.append(gtext[:80 - _GLANCE_COL] + "\n", style=gstyle)
         t.append("-" * 80 + "\n", style="grey50")
 
-        # --- Datos para el tablero ---
+        # --- Segundo bloque: calendario (default) o estadisticas, alternable con V ---
+        lines = (self._calendar_lines(club, game, today) if self._of_view == "calendar"
+                 else self._stats_lines(club, game, today))
+        for ln in lines[:_OF_BLOCK_ROWS]:
+            t.append_text(ln); t.append("\n")
+        for _ in range(_OF_BLOCK_ROWS - len(lines)):
+            t.append("\n")                      # rellena para anclar la ayuda al fondo
+        t.append_text(self._oficina_hint())
+        return t
+
+    def _oficina_hint(self) -> Text:
+        if self._of_view != "calendar":
+            return hint(("V", "calendario"))
+        items = [("V", "estadisticas"), ("<>", "semana")]
+        if self._cal_offset != 0:
+            items.append(("Esc", "volver a hoy"))
+        return hint(*items)
+
+    # --- Oficina: bloque de estadisticas ---
+    def _stats_lines(self, club, game, today) -> list:
         squad_value = sum(player_value(p, today) for p in club.players)
         injured = sum(1 for p in club.players if p.injury is not None)
         suspended = sum(1 for p in club.players if p.matches_suspended > 0)
@@ -167,6 +206,7 @@ class ClubScreen(SectionScreen):
         works = club.constructions
         works_txt = (f"{len(works)} (prox {min(w.days_remaining for w in works)}d)"
                      if works else "ninguna")
+        cap = f"{club.stadium.capacity:,}".replace(",", ".")
 
         left = self._sec("PLANTEL", [
             ("OVR medio", str(club.overall)),
@@ -192,14 +232,88 @@ class ClubScreen(SectionScreen):
             ("Sueldo staff", f"{money(staff.staff_wage_bill(club))}/sem"),
             ("Cap. entreno", f"{tr.capacity(club):.0f}  ({assigned} entrenando)"),
         ])
+        out = []
         for i in range(max(len(left), len(right))):
             lline = left[i] if i < len(left) else Text("")
             rline = right[i] if i < len(right) else Text("")
-            t.append_text(lline)
-            t.append(" " * max(0, 40 - len(lline.plain)))
-            t.append_text(rline)
-            t.append("\n")
-        return t
+            row = Text()
+            row.append_text(lline)
+            row.append(" " * max(0, 40 - len(lline.plain)))
+            row.append_text(rline)
+            out.append(row)
+        return out
+
+    # --- Oficina: calendario semanal (marquesina de 7 dias, desplazable +-7) ---
+    def _calendar_lines(self, club, game, today) -> list:
+        monday = today - timedelta(days=today.weekday())
+        start = monday + timedelta(days=self._cal_offset)
+        days = [start + timedelta(days=i) for i in range(7)]
+
+        head = Text()
+        head.append("CALENDARIO", style="bold green")
+        head.append(f"   Semana {days[0].strftime('%d-%m')} - {days[6].strftime('%d-%m')}",
+                    style="grey62")
+        if self._cal_offset == 0:
+            head.append("  (esta semana)", style="grey50")
+        out = [head]
+        # Fila de encabezados de dia (dia + numero), con hoy resaltado.
+        hdr = Text()
+        for d in days:
+            label = f"{_CAL_DOW[d.weekday()]} {d.day:02d}"
+            if d == today:
+                hdr.append(label.ljust(_CAL_COL - 1)[:_CAL_COL - 1], style=f"bold black on {ACCENT}")
+                hdr.append(" ")
+            else:
+                hdr.append(label.ljust(_CAL_COL), style="bold white")
+        out.append(hdr)
+        out.append(Text("-" * (_CAL_COL * 7 - 2), style="grey50"))
+        # Eventos por dia, en filas (columna por dia).
+        cells = [self._day_events(game, club, d) for d in days]
+        nrows = max((len(c) for c in cells), default=0)
+        for r in range(nrows):
+            row = Text()
+            for c in cells:
+                if r < len(c):
+                    label, style = c[r]
+                    row.append(label[:_CAL_COL - 1].ljust(_CAL_COL), style=style)
+                else:
+                    row.append(" " * _CAL_COL)
+            out.append(row)
+        return out
+
+    def _match_on_date(self, game, club, d):
+        """Partido del club del jugador en la fecha `d` (liga o amistoso), jugado o no."""
+        league = game.player_league
+        pool = list(league.matches if league else []) + list(game.friendlies)
+        for m in pool:
+            if m.match_date == d and (m.home is club or m.away is club):
+                return m
+        return None
+
+    def _day_events(self, game, club, d) -> list:
+        """Eventos de la fecha `d` para el calendario: (etiqueta corta, estilo).
+
+        Del partido se muestra solo el tipo (y la jornada en liga) + local/visita; el
+        rival y el detalle viven en el pantallazo de arriba y en la seccion Partidos."""
+        m = self._match_on_date(game, club, d)
+        label, style = _ROUTINE[d.weekday()]
+        # La rutina "Liga" del domingo se omite si ya hay partido de liga (lo dice el
+        # renglon del partido); el resto de los dias siempre muestra su rutina.
+        out = [] if (m is not None and m.kind.value == "Liga") else [(label, style)]
+        if m is not None:
+            venue = "L" if m.home is club else "V"
+            kind = {"Liga": "Liga", "Amistoso": "Amistoso", "Copa": "Copa"}[m.kind.value]
+            if m.kind.value == "Liga":
+                kind = f"Liga J{m.matchday}"
+            if m.played:
+                gh, ga = m.home_goals, m.away_goals
+                mine, theirs = (gh, ga) if m.home is club else (ga, gh)
+                out.append((f"{kind[:7]} {mine}-{theirs}", "grey70"))
+            else:
+                out.append((f"{kind} {venue}"[:_CAL_COL - 1], "bold cyan"))
+        if d in youth.intake_dates(game):
+            out.append(("Cantera", "bold yellow"))
+        return out
 
     def _glance_lines(self, club, game) -> list:
         """Pantallazo (7 filas) al costado de la identidad: proximo partido con
@@ -517,6 +631,9 @@ class ClubScreen(SectionScreen):
 
     # --- Teclado (pestanas interactivas: Instalaciones y Empleados) ---
     def on_content_key(self, event) -> None:
+        if self._active_tab == self._OFICINA_TAB:
+            self._oficina_key(event)
+            return
         if self._active_tab == self._NOTIF_TAB:
             self._notif_key(event)
             return
@@ -526,6 +643,20 @@ class ClubScreen(SectionScreen):
             self._facilities_key(event)
         elif self._active_tab == self._STAFF_TAB:
             self._staff_key(event)
+
+    def _oficina_key(self, event) -> None:
+        """Teclas de Oficina: V alterna calendario/estadisticas; izq/der mueve la semana."""
+        key = event.key
+        if event.character in ("v", "V"):
+            event.stop()
+            self._of_view = "stats" if self._of_view == "calendar" else "calendar"
+            self._refresh_content()
+        elif self._of_view == "calendar" and key == "left":
+            event.stop(); self._cal_offset -= 7; self._refresh_content()
+        elif self._of_view == "calendar" and key == "right":
+            event.stop(); self._cal_offset += 7; self._refresh_content()
+        elif self._of_view == "calendar" and key == "escape" and self._cal_offset != 0:
+            event.stop(); self._cal_offset = 0; self._refresh_content()   # volver a hoy
 
     def _facilities_key(self, event) -> None:
         # OJO: 'g' no es letra de seccion (o/c/j/p/e/f), asi que llega aca para confirmar.
