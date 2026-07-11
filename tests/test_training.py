@@ -26,6 +26,39 @@ def _game(seed, monkeypatch):
     return game, club
 
 
+def test_last_gains_recorded_and_reset_each_training(monkeypatch):
+    game, club = _game(5, monkeypatch)
+    # Todos entrenan Velocidad; los que mejoran quedan con last_gains['speed'].
+    for p in club.players:
+        tr.assign(p, "speed")
+    tr.run_training(game, new_rng(1), game.calendar.current_date)
+    improved = [p for p in club.players if p.last_gains]
+    assert improved, "alguno deberia haber mejorado"
+    for p in improved:
+        assert set(p.last_gains) == {"speed"} and p.last_gains["speed"] > 0
+
+    # Al siguiente entrenamiento (ahora Pase) las mejoras viejas se reinician.
+    for p in club.players:
+        tr.assign(p, "passing")
+    tr.run_training(game, new_rng(2), game.calendar.current_date)
+    for p in club.players:
+        assert "speed" not in p.last_gains          # la mejora anterior se reseteo
+        assert all(a == "passing" for a in p.last_gains)  # solo la de este entreno
+
+
+def test_last_gains_not_persisted(monkeypatch):
+    game, club = _game(5, monkeypatch)
+    for p in club.players:
+        tr.assign(p, "speed")
+    tr.run_training(game, new_rng(1), game.calendar.current_date)
+    assert any(p.last_gains for p in club.players)
+    conn = sqlite3.connect(":memory:")
+    _db.write_game(conn, game)
+    g2 = _db.read_game(conn)
+    # Es un realce transitorio: no viaja al save (queda vacio al cargar).
+    assert all(not p.last_gains for p in g2.player_club.players)
+
+
 def test_capacity_sums_coach_facility_and_staff(monkeypatch):
     game, club = _game(3, monkeypatch)
     base = tr.capacity(club)

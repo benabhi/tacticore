@@ -114,6 +114,9 @@ def run_training(game, rng, today: date) -> None:
     if club is None:
         return
     cap = capacity(club)
+    # Cada entrenamiento reinicia las mejoras mostradas: solo se ven las de ESTA semana.
+    for p in club.players:
+        p.last_gains = {}
     groups: dict[str, list] = {}
     for p in club.players:
         if p.training_focus in TRAINABLE:
@@ -126,19 +129,26 @@ def run_training(game, rng, today: date) -> None:
             g = train_gain(p, attr, cap, len(players), today, rng)
             if g > 0:
                 results.append((p, attr, g))
+                p.last_gains[attr] = g   # se resalta en verde en la ficha del jugador
     _notify(game, cap, sum(len(v) for v in groups.values()), results)
 
 
 def _notify(game, cap: float, trained: int, results: list) -> None:
+    """Notificacion COMPLETA del entreno de la semana: capacidad, cuantos entrenaron y
+    la lista entera de mejoras (jugador + cuanto subio + atributo), de mayor a menor.
+
+    El detalle va en el `message` (una mejora por renglon): la pantalla de
+    Entrenamiento lo muestra completo y la lista de notificaciones, resumido."""
     if not results:
         notif.notify(
-            game, "Entrenamiento semanal",
+            game, "Entrenamiento: nadie mejoro",
             f"Entrenaron {trained} jugadores pero ninguno mejoro esta semana "
-            f"(capacidad {cap:.0f}).", notif.TRAINING)
+            f"(capacidad {cap:.0f}). A veces la semana sale seca; segui insistiendo.",
+            notif.TRAINING)
         return
-    top = sorted(results, key=lambda r: -r[2])[:4]
-    detail = ", ".join(f"{p.full_name} +{g:.1f} {attr_label(a)}" for p, a, g in top)
-    more = f" y {len(results) - len(top)} mas" if len(results) > len(top) else ""
+    lines = [f"Capacidad {cap:.0f}. Entrenaron {trained}, mejoraron {len(results)}:"]
+    for p, a, g in sorted(results, key=lambda r: -r[2]):
+        lines.append(f"  {p.full_name} +{g:.1f} {attr_label(a)}")
     notif.notify(
-        game, "Entrenamiento semanal",
-        f"Mejoraron {len(results)} de {trained}: {detail}{more}.", notif.TRAINING)
+        game, f"Entrenamiento: {len(results)} mejoras",
+        "\n".join(lines), notif.TRAINING)

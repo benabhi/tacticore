@@ -272,6 +272,7 @@ class PlayerDetailScreen(BaseScreen):
         t.append("\n")
 
         priorities = POSITION_PRIORITIES[self._player.position]
+        gains = self._player.last_gains
         rows = max(len(attrs) for _, attrs in ATTR_GROUPS)
         for i in range(rows):
             for _title, attrs in ATTR_GROUPS:
@@ -280,8 +281,14 @@ class PlayerDetailScreen(BaseScreen):
                     continue
                 attr = attrs[i]
                 value = getattr(self._player, attr)
-                cell = (ATTR_LABEL[attr].ljust(13) + f"{value:.1f}".rjust(5)).ljust(col_w)
-                t.append(cell, style=self._attr_style(attr, value, priorities))
+                base = ATTR_LABEL[attr].ljust(13) + f"{value:.1f}".rjust(5)   # 18 chars
+                t.append(base, style=self._attr_style(attr, value, priorities))
+                # Lo que gano en el ULTIMO entrenamiento, en verde (se resetea cada entreno).
+                gain = gains.get(attr, 0.0)
+                extra = f" +{gain:.1f}" if gain > 0 else ""
+                if extra:
+                    t.append(extra, style="bold green")
+                t.append(" " * (col_w - len(base) - len(extra)))
             if i < rows - 1:  # sin salto final: evita una linea vacia que desborda
                 t.append("\n")
 

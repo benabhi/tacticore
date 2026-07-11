@@ -91,6 +91,9 @@ class Player:
     injury_proneness: float = 50.0  # propension a lesionarse (1-100)
     injury_history: list[Injury] = field(default_factory=list)
     training_focus: str | None = None  # atributo que entrena esta semana (o None)
+    # Mejoras del ULTIMO entrenamiento (atributo -> cuanto subio), para resaltarlas en
+    # la ficha. Transitorio: se reinicia en cada entrenamiento y NO se persiste.
+    last_gains: dict[str, float] = field(default_factory=dict)
 
     # --- Mercado ---
     asking_price: int | None = None  # si esta seteado, esta a la venta a ese precio

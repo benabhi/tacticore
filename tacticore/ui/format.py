@@ -10,6 +10,58 @@ def money(amount: int) -> str:
     return "$" + f"{amount:,}".replace(",", ".")
 
 
+_TR_COL_W = 40  # ancho de cada columna del informe de entrenamiento (2 x 40 = 80)
+
+
+def _training_cell(line: str) -> Text:
+    """Una mejora ('Nombre +0.7 Atributo') como celda: nombre gris + ganancia VERDE."""
+    t = Text()
+    if " +" in line:
+        name, rest = line.split(" +", 1)
+        gain, _, attr = rest.partition(" ")
+        t.append(f"{name[:18]:<18} ", style="grey70")
+        t.append(f"+{gain}", style="bold green")
+        t.append(f" {attr[:14]}", style="grey62")
+    else:
+        t.append(line[:_TR_COL_W], style="grey70")
+    return t
+
+
+def training_report_lines(message: str, max_rows: int, cols: int = 2) -> list[Text]:
+    """Formatea un informe de entrenamiento en columnas legibles (aprovecha el ancho).
+
+    El `message` es: una linea de resumen + una mejora por renglon ('Nombre +0.7
+    Atributo'). Devuelve el resumen y las mejoras repartidas en `cols` columnas,
+    acotado a `max_rows` filas (con '... y N mas' si no entran todas)."""
+    parts = message.split("\n")
+    summary = parts[0] if parts else ""
+    imps = [p.strip() for p in parts[1:] if p.strip()]
+    out = [Text(summary, style="white")]
+    body_rows = max(0, max_rows - 1)
+    if not imps or body_rows == 0:
+        return out
+    fit = body_rows * cols
+    if len(imps) <= fit:
+        shown, extra = imps, 0
+    else:                                  # deja la ultima fila para el "... y N mas"
+        shown, extra = imps[:(body_rows - 1) * cols], len(imps) - (body_rows - 1) * cols
+    disp_rows = (len(shown) + cols - 1) // cols
+    for r in range(disp_rows):
+        line = Text()
+        for c in range(cols):
+            idx = c * disp_rows + r        # llenado por columnas
+            if idx < len(shown):
+                cell = _training_cell(shown[idx])
+                line.append_text(cell)
+                line.append(" " * max(0, _TR_COL_W - len(cell.plain)))
+            else:
+                line.append(" " * _TR_COL_W)
+        out.append(line)
+    if extra:
+        out.append(Text(f"  ... y {extra} mejoras mas", style="grey50"))
+    return out
+
+
 def hint(*items, sep: str = "   ") -> Text:
     """Linea de ayuda con la TECLA en amarillo (acento) y la descripcion en gris.
 
