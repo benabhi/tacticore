@@ -26,7 +26,7 @@ from ...simulation import youth
 from ...simulation.economy import (
     membership_income, player_value, squad_wage_bill, stadium_upkeep)
 from ...simulation.season import compute_standings
-from ..format import append_section, hint, money
+from ..format import append_section, hint, money, training_report_lines
 from ..identicon import emblem_lines
 from ..palette import ACCENT
 from .section_screen import SectionScreen
@@ -63,7 +63,13 @@ _CAT_STYLE = {
     notif.FINANCE: "green", notif.MATCH: "cyan", notif.MARKET: "yellow",
     notif.TRAINING: "magenta", notif.SQUAD: "red", notif.GENERAL: "white",
 }
+# Etiqueta corta del tipo de notificacion (para la tabla de novedades).
+_CAT_LABEL = {
+    notif.FINANCE: "Finanzas", notif.MATCH: "Partido", notif.MARKET: "Mercado",
+    notif.TRAINING: "Entreno", notif.SQUAD: "Plantel", notif.GENERAL: "General",
+}
 _NOTIF_PAGE = 8  # notificaciones por pagina (2 lineas c/u) en la pestana
+_NOV_ROWS = 3    # novedades recientes en la tabla de Oficina (encima del calendario)
 
 # Calendario semanal (Oficina): dia de la semana y evento fijo de cada dia (0=lunes).
 _CAL_DOW = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
@@ -111,6 +117,7 @@ class ClubScreen(SectionScreen):
         self._of_view = "calendar"  # segundo bloque de Oficina: "calendar" (default) o "stats"
         self._cal_offset = 0        # desplazamiento del calendario, en dias (multiplos de 7)
         self._notif_sel = 0     # cursor en Notificaciones
+        self._notif_expanded = False  # ver la notificacion completa (desplegada)
         self._fac_sel = 0       # item seleccionado en Instalaciones (lista paginada)
         self._fac_plan: list = []  # cambios en borrador (se confirman con G)
         self._fac_msg = ""      # aviso (rechazo / confirmado)
@@ -255,7 +262,9 @@ class ClubScreen(SectionScreen):
                     style="grey62")
         if self._cal_offset == 0:
             head.append("  (esta semana)", style="grey50")
-        out = [head]
+        # Tabla de novedades (ultimas notificaciones) encima del calendario.
+        out = self._novedades_lines(game)
+        out.append(head)
         # Fila de encabezados de dia (dia + numero), con hoy resaltado.
         hdr = Text()
         for d in days:
@@ -280,6 +289,37 @@ class ClubScreen(SectionScreen):
                     row.append(" " * _CAL_COL)
             out.append(row)
         return out
+
+    def _novedades_lines(self, game) -> list:
+        """Tabla compacta de las ultimas novedades (encima del calendario en Oficina)."""
+        unread = notif.unread_count(game)
+        recent = notif.recent(game, _NOV_ROWS)
+        title = Text()
+        title.append("NOVEDADES", style="bold green")
+        tag = f"{unread} sin leer" if unread else "al dia"
+        title.append(" " * max(1, 80 - len("NOVEDADES") - len(tag)))
+        title.append(tag, style=f"bold {ACCENT}" if unread else "grey62")
+        out = [title]
+        for i in range(_NOV_ROWS):
+            out.append(self._novedad_row(recent[i]) if i < len(recent)
+                       else Text("  (sin novedades)" if i == 0 and not recent else ""))
+        out.append(Text("-" * 80, style="grey50"))
+        return out
+
+    def _novedad_row(self, n) -> Text:
+        """Una fila de novedad: fecha + [Tipo] + asunto y algo del contenido."""
+        row = Text()
+        row.append(n.date.strftime("%d-%m") + " ", style="grey50")
+        cat = _CAT_LABEL.get(n.category, "General")
+        row.append(f"[{cat}]".ljust(11), style=_CAT_STYLE.get(n.category, "white"))
+        row.append(" ")
+        snippet = n.message.split("\n")[0]   # solo la 1a linea (los detalles pueden ser multilinea)
+        body = f"{n.subject} - {snippet}" if snippet else n.subject
+        width = 80 - 5 - 1 - 11 - 1
+        if len(body) > width:                # marca el recorte con "..."
+            body = body[:width - 3] + "..."
+        row.append(body[:width], style="white" if not n.read else "grey62")
+        return row
 
     def _match_on_date(self, game, club, d):
         """Partido del club del jugador en la fecha `d` (liga o amistoso), jugado o no."""
@@ -691,19 +731,30 @@ class ClubScreen(SectionScreen):
     def on_tab_shown(self, index: int) -> None:
         # Al entrar a Notificaciones se marcan leidas las informativas (baja el badge).
         if index == self._NOTIF_TAB and self.app.game is not None:
+            self._notif_expanded = False    # siempre arranca en la lista
             notif.mark_all_read(self.app.game)
             self._refresh_topbar()
         # Al salir de Instalaciones, se descartan los cambios en borrador no confirmados.
         if index != self._FAC_TAB and self._fac_plan:
             self._reset()
 
-    # --- Notificaciones (lista navegable + apertura de eventos accionables) ---
+    # --- Notificaciones (lista navegable + detalle desplegable + eventos) ---
     def _notif_key(self, event) -> None:
         game = self.app.game
         if game is None:
             return
         total = len(notif.all_newest_first(game))
         key = event.key
+        if self._notif_expanded:            # viendo el detalle completo
+            if key in ("escape", "backspace"):
+                event.stop(); self._notif_expanded = False; self._refresh_content()
+            elif key == "up":
+                event.stop(); self._notif_sel = max(0, self._notif_sel - 1); self._refresh_content()
+            elif key == "down":
+                event.stop(); self._notif_sel = min(total - 1, self._notif_sel + 1); self._refresh_content()
+            elif key == "enter":
+                event.stop(); self._open_selected()   # si es evento, abre el modal
+            return
         if key == "up":
             event.stop(); self._notif_sel = max(0, self._notif_sel - 1); self._refresh_content()
         elif key == "down":
@@ -713,10 +764,11 @@ class ClubScreen(SectionScreen):
         elif key in ("right", "pagedown"):
             event.stop(); self._notif_sel = min(total - 1, self._notif_sel + _NOTIF_PAGE); self._refresh_content()
         elif key == "enter":
-            event.stop(); self._open_event()
+            event.stop(); self._open_selected()
 
-    def _open_event(self) -> None:
-        """Abre el evento seleccionado (si es accionable). Despacha por `kind`."""
+    def _open_selected(self) -> None:
+        """Enter sobre una notificacion: si es un evento accionable abre su modal; si no,
+        despliega el detalle completo (mensaje entero)."""
         game = self.app.game
         items = notif.all_newest_first(game)
         if not (0 <= self._notif_sel < len(items)):
@@ -726,6 +778,9 @@ class ClubScreen(SectionScreen):
             from .sponsor_offer_screen import SponsorOfferScreen
 
             self.app.push_screen(SponsorOfferScreen(game, n, on_close=self._on_event_closed))
+        else:
+            self._notif_expanded = True
+            self._refresh_content()
 
     def _on_event_closed(self) -> None:
         self._refresh_content()
@@ -743,6 +798,8 @@ class ClubScreen(SectionScreen):
             ])
             return t
         self._notif_sel = max(0, min(len(items) - 1, self._notif_sel))
+        if self._notif_expanded:
+            return self._notif_detail_text(items[self._notif_sel], len(items))
         pages = max(1, (len(items) + _NOTIF_PAGE - 1) // _NOTIF_PAGE)
         page = self._notif_sel // _NOTIF_PAGE
         rows = list(enumerate(items))[page * _NOTIF_PAGE: page * _NOTIF_PAGE + _NOTIF_PAGE]
@@ -757,7 +814,7 @@ class ClubScreen(SectionScreen):
             self._append_notif(t, n, i == self._notif_sel)
         t.append("\n" * max(0, _NOTIF_PAGE - len(rows)) * 2)  # relleno para dejar aire
         t.append_text(hint(("arr/aba", "elegir"), ("izq/der", "pagina"),
-                           ("Enter", "abrir evento")))
+                           ("Enter", "ver detalle")))
         return t
 
     def _append_notif(self, t: Text, n, selected: bool) -> None:
@@ -772,7 +829,42 @@ class ClubScreen(SectionScreen):
             t.append(mark + " ", style="yellow" if pending else "grey50")
             t.append(f"{when}  ", style="grey50")
             t.append(n.subject + "\n", style=style)
-        t.append(f"          {n.message}"[:80] + "\n", style="grey70")
+        snippet = n.message.split("\n")[0]   # 1a linea (el detalle puede ser multilinea)
+        t.append(f"          {snippet}"[:80] + "\n", style="grey70")
+
+    def _notif_detail_text(self, n, total: int) -> Text:
+        """Vista desplegada de UNA notificacion: asunto, fecha, tipo y el mensaje entero."""
+        t = Text()
+        cat = _CAT_LABEL.get(n.category, "General")
+        t.append("NOTIFICACION", style="bold green")
+        t.append(f"   {self._notif_sel + 1} de {total}\n", style="grey50")
+        t.append("-" * 80 + "\n", style="grey50")
+        t.append(n.subject + "\n", style=f"bold {_CAT_STYLE.get(n.category, 'white')}")
+        t.append(f"{n.date.strftime('%d-%m-%Y')}   [{cat}]\n", style="grey70")
+        t.append("\n")
+        avail = 11
+        if n.category == notif.TRAINING:
+            # Informe de entreno: 2 columnas legibles (aprovecha el ancho).
+            body = training_report_lines(n.message, avail)
+        else:
+            # Resto: el mensaje envuelto a 78 columnas, respetando sus saltos de linea.
+            wrapped: list[str] = []
+            for para in n.message.split("\n"):
+                wrapped += _wrap(para, 78) if para.strip() else [""]
+            body = [Text("  " + wl, style="grey70") for wl in wrapped[:avail]]
+            if len(wrapped) > avail:
+                body.append(Text(f"  ... (+{len(wrapped) - avail} lineas)", style="grey50"))
+        for ln in body:
+            t.append_text(ln); t.append("\n")
+        if n.is_pending_event:
+            t.append("\n[!] Evento pendiente: Enter para resolverlo.\n", style="bold yellow")
+        shown = len(body) + (2 if n.is_pending_event else 0)
+        t.append("\n" * max(0, 12 - shown))     # empuja la ayuda hacia abajo
+        keys = [("Esc", "volver"), ("arr/aba", "otra notif")]
+        if n.is_pending_event:
+            keys.append(("Enter", "resolver"))
+        t.append_text(hint(*keys))
+        return t
 
     def _staff_key(self, event) -> None:
         # OJO: el frame se queda con las letras de seccion (c/j/p/e/f) antes de

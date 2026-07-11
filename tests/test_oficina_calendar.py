@@ -97,6 +97,38 @@ def test_oficina_calendar_default_toggle_and_scroll(monkeypatch):
     asyncio.run(run())
 
 
+def test_novedades_table_above_calendar(monkeypatch):
+    from tacticore.simulation import notifications as notif
+    game = _game(monkeypatch)
+    notif.notify(game, "Cierre economico",
+                 "La caja quedo en $200.000 tras pagar sueldos, upkeep, socios y demas "
+                 "gastos de la semana con detalle largo.", notif.FINANCE)
+    notif.notify(game, "Fichaje", "Llego un juvenil", notif.MARKET)
+
+    async def run():
+        app = TacticoreApp()
+        async with app.run_test(size=(80, 25)) as pilot:
+            app.game = game
+            await app.push_screen(ClubScreen())
+            await pilot.pause()
+            strips = [s.text for s in app.screen._compositor.render_strips()]
+            # La tabla NOVEDADES va ARRIBA del calendario, con el contador sin leer.
+            nov_row = next(y for y, r in enumerate(strips) if r.startswith("NOVEDADES"))
+            cal_row = next(y for y, r in enumerate(strips) if "CALENDARIO" in r)
+            assert nov_row < cal_row
+            txt = "\n".join(strips)
+            assert "sin leer" in txt and "[Finanzas]" in txt and "[Mercado]" in txt
+            assert "Cierre economico" in txt
+            # Las filas largas se recortan con "..." para indicar que hay mas.
+            nrow = next(r for r in strips if "[Finanzas]" in r)
+            assert nrow.rstrip().endswith("...")
+            for r in strips:
+                assert len(r.rstrip()) <= 80
+                assert all(0x20 <= ord(c) <= 0x7E for c in r)
+
+    asyncio.run(run())
+
+
 def test_calendar_shows_match_events_abbreviated(monkeypatch):
     game = _game(monkeypatch)
 
