@@ -92,6 +92,15 @@ def _all_clubs(game) -> list:
     return [c for lg in _leagues(game) for c in lg.clubs]
 
 
+def _familiarity(game, club, match) -> float:
+    """Familiaridad de la formacion que juega `club` en `match` (para el efecto en el
+    resultado): la del planteo del jugador si lo hay, o la mejor entrenada del club."""
+    from .formation_training import best_familiarity, training_level
+    if club is game.player_club and match.tactic is not None:
+        return training_level(club, match.tactic.formation)
+    return best_familiarity(club)
+
+
 def advance_day(game, rng: random.Random | None = None, progress=None,
                 skip_player_match: bool = False) -> date:
     """Avanza un dia y procesa el evento de ese dia de la semana. Devuelve la fecha.
@@ -155,7 +164,9 @@ def _play_friendly(game, today: date, rng: random.Random, skip: bool) -> None:
     match = player_match_on(game, today)
     if match is None:
         return
-    res = simulate_match(match.home, match.away, rng)
+    res = simulate_match(match.home, match.away, rng,
+                         _familiarity(game, match.home, match),
+                         _familiarity(game, match.away, match))
     finish_player_match(game, match, res.home_goals, res.away_goals)
 
 
@@ -247,7 +258,9 @@ def _play_matchday(game, today: date, rng: random.Random, progress, skip=None) -
             if m is skip:
                 continue
             if m.match_date == today and not m.played:
-                res = simulate_match(m.home, m.away, rng)
+                res = simulate_match(m.home, m.away, rng,
+                                     _familiarity(game, m.home, m),
+                                     _familiarity(game, m.away, m))
                 if pc in (m.home, m.away):
                     # El partido del jugador (caso headless, no en vivo) pasa por el
                     # mismo cierre que en vivo: taquilla, racha, entreno y disciplina.
@@ -298,6 +311,10 @@ def finish_player_match(game, match, home_goals: int, away_goals: int,
     pc = game.player_club
     if pc in (match.home, match.away) and match.tactic is not None:
         train_formation(pc, match.tactic.formation, pc.coach)
+    # La forma del plantel se mueve por participacion, solo con los partidos de liga.
+    if pc in (match.home, match.away) and match.kind is MatchKind.LEAGUE:
+        from .form import update_after_match
+        update_after_match(game, match)
     apply_player_match_discipline(game, match, when, rng)
     _notify_result(game, match)
 

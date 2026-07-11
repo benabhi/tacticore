@@ -15,14 +15,20 @@ from ..domain.match import Match
 _HOME_ADVANTAGE = 4.0   # bonus de fuerza por jugar de local (en puntos de overall)
 _BASE_GOALS = 1.35      # goles esperados de un equipo parejo
 _GOAL_SWING = 0.35      # cuanto inclina el marcador cada 10 puntos de diferencia
+# Efecto de la familiaridad con la formacion: cada punto de familiaridad por encima
+# (o debajo) de 50 suma (o resta) esto a la fuerza. Familiaridad 100 -> ~+4 overall.
+_FAM_WEIGHT = 0.08
 
 
-def _strength(club: Club) -> float:
-    """Fuerza del equipo: promedio de overall de sus 11 mejores (o de los que haya)."""
+def _strength(club: Club, familiarity: float = 50.0) -> float:
+    """Fuerza del equipo: promedio de overall de sus 11 mejores, ajustada por cuan
+    entrenada esta la formacion que juega (familiaridad 1-100; 50 = neutro)."""
     if not club.players:
-        return 40.0
-    top = sorted(club.players, key=lambda p: p.overall, reverse=True)[:11]
-    return sum(p.overall for p in top) / len(top)
+        base = 40.0
+    else:
+        top = sorted(club.players, key=lambda p: p.overall, reverse=True)[:11]
+        base = sum(p.overall for p in top) / len(top)
+    return base + (familiarity - 50.0) * _FAM_WEIGHT
 
 
 def _poisson(rng: random.Random, lam: float) -> int:
@@ -36,9 +42,13 @@ def _poisson(rng: random.Random, lam: float) -> int:
             return k - 1
 
 
-def simulate_match(home: Club, away: Club, rng: random.Random) -> Match:
-    """Simula un partido y devuelve un `Match` ya jugado con su marcador."""
-    diff = (_strength(home) + _HOME_ADVANTAGE - _strength(away)) / 10.0
+def simulate_match(home: Club, away: Club, rng: random.Random,
+                   home_fam: float = 50.0, away_fam: float = 50.0) -> Match:
+    """Simula un partido y devuelve un `Match` ya jugado con su marcador.
+
+    `home_fam`/`away_fam` (1-100, 50 = neutro) son la familiaridad de cada equipo con
+    la formacion que juega: una formacion poco entrenada rinde peor."""
+    diff = (_strength(home, home_fam) + _HOME_ADVANTAGE - _strength(away, away_fam)) / 10.0
     lam_home = min(5.0, max(0.2, _BASE_GOALS + diff * _GOAL_SWING))
     lam_away = min(5.0, max(0.2, _BASE_GOALS - diff * _GOAL_SWING))
     return Match(

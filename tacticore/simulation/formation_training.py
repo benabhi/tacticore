@@ -71,6 +71,11 @@ def training_level(club: Club, name: str) -> float:
     return club.formation_training.get(name, _NEUTRAL_BASE)
 
 
+def best_familiarity(club: Club) -> float:
+    """Mejor familiaridad de formacion del club (la que jugaria mejor entrenada)."""
+    return max(club.formation_training.values(), default=_NEUTRAL_BASE)
+
+
 def train_formation(club: Club, name: str, coach: Coach | None) -> None:
     """Sube el entrenamiento de una formacion al jugar con ella (rinde menos cerca
     de 100; un DT con mas habilidad y el Centro de entrenamiento entrenan mas rapido)."""
